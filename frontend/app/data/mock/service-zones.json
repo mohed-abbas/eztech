@@ -1,0 +1,65 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "zone_paris_central",
+        "name": "Paris Centre",
+        "isActive": true
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [2.3000, 48.8350],
+            [2.3000, 48.8800],
+            [2.3850, 48.8800],
+            [2.3850, 48.8350],
+            [2.3000, 48.8350]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "zone_paris_east",
+        "name": "Paris Est",
+        "isActive": true
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [2.3850, 48.8350],
+            [2.3850, 48.8800],
+            [2.4600, 48.8800],
+            [2.4600, 48.8350],
+            [2.3850, 48.8350]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "zone_paris_west",
+        "name": "Paris Ouest",
+        "isActive": false
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [2.2200, 48.8400],
+            [2.2200, 48.8800],
+            [2.3000, 48.8800],
+            [2.3000, 48.8400],
+            [2.2200, 48.8400]
+          ]
+        ]
+      }
+    }
+  ]
+}

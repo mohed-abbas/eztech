@@ -1,0 +1,58 @@
+[
+  {
+    "id": "user_001",
+    "name": "Marie Dupont",
+    "email": "marie@example.com",
+    "password": "password123",
+    "phone": "+33 6 11 22 33 44",
+    "role": "customer",
+    "addresses": [
+      {
+        "id": "addr_001",
+        "label": "Bureau",
+        "street": "45 Rue du Faubourg Saint-Antoine",
+        "city": "Paris",
+        "zipCode": "75011",
+        "coordinates": { "lat": 48.8516, "lng": 2.3727 }
+      },
+      {
+        "id": "addr_002",
+        "label": "Domicile",
+        "street": "12 Rue de Rivoli",
+        "city": "Paris",
+        "zipCode": "75004",
+        "coordinates": { "lat": 48.8556, "lng": 2.3522 }
+      }
+    ],
+    "createdAt": "2026-01-15T10:00:00Z"
+  },
+  {
+    "id": "user_002",
+    "name": "Thomas Bernard",
+    "email": "thomas@example.com",
+    "password": "password123",
+    "phone": "+33 6 55 66 77 88",
+    "role": "customer",
+    "addresses": [
+      {
+        "id": "addr_003",
+        "label": "Coworking",
+        "street": "28 Boulevard Beaumarchais",
+        "city": "Paris",
+        "zipCode": "75011",
+        "coordinates": { "lat": 48.8553, "lng": 2.3679 }
+      }
+    ],
+    "createdAt": "2026-02-01T09:00:00Z"
+  },
+  {
+    "id": "user_003",
+    "name": "Admin EzTech",
+    "email": "admin@eztech.fr",
+    "password": "admin123",
+    "phone": "+33 1 00 00 00 00",
+    "role": "admin",
+    "addresses": [],
+    "createdAt": "2026-01-01T00:00:00Z"
+  }
+]

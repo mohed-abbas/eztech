@@ -28,6 +28,7 @@ const sections = [
   { id: 'icons', label: 'Icons' },
   { id: 'layout', label: 'Layout Patterns' },
   { id: 'shadows', label: 'Shadows & Borders' },
+  { id: 'cta-banner', label: 'CTA Banner' },
 ]
 
 const activeSection = ref('colors')
@@ -1371,6 +1372,94 @@ const IconSwatch = defineComponent({
               <div class="rounded-xl border-2 border-error p-4 text-center">
                 <p class="text-body-sm font-medium text-text-primary">Error</p>
                 <code class="text-caption text-text-muted">border-error</code>
+              </div>
+            </div>
+          </section>
+
+          <!-- =================================================================
+               SECTION: CTA Banner (Gradient Card)
+               ================================================================= -->
+          <section id="cta-banner" class="scroll-mt-20 border-t border-border pt-16 pb-16">
+            <SectionHeading title="CTA Banner (Gradient Card)" description="Asymmetric-radius gradient banner with left-aligned content and decorative concentric circles. Used as an inline call-to-action." />
+
+            <!-- Live preview -->
+            <div
+              class="relative overflow-hidden rounded-tl-[100px] rounded-tr-[20px] rounded-br-[100px] rounded-bl-[20px] px-10 py-16 lg:px-[70px] lg:py-[100px]"
+              style="background: linear-gradient(161deg, var(--color-primary-500) 0%, var(--color-primary-300) 100%)"
+            >
+              <!-- Content -->
+              <div class="relative z-10 flex max-w-xl flex-col gap-8">
+                <div class="flex flex-col gap-4">
+                  <h2 class="text-h1 font-bold leading-display text-white lg:text-[3.5rem]">
+                    Let's Redefine Healthcare Together
+                  </h2>
+                  <p class="text-body-lg leading-body text-neutral-200 lg:text-xl">
+                    Partner with Curepath to make expert medical care faster, smarter,
+                    and truly accessible — anytime, anywhere.
+                  </p>
+                </div>
+                <div>
+                  <a
+                    href="#"
+                    class="inline-flex items-center gap-2.5 rounded-full bg-white px-5 py-2.5 text-body font-medium text-neutral-800 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    Get Started Now
+                    <Icon name="ph:arrow-right" class="size-5" aria-hidden="true" />
+                  </a>
+                </div>
+              </div>
+
+              <!-- Decorative circles -->
+              <img
+                src="/assets/cta-banner-circles.svg"
+                alt=""
+                aria-hidden="true"
+                class="pointer-events-none absolute right-0 top-1/2 h-auto w-[500px] -translate-y-1/2 translate-x-1/4 lg:w-[900px]"
+              />
+            </div>
+
+            <!-- Specs table -->
+            <div class="mt-8">
+              <h3 class="mb-4 text-h4 font-semibold text-text-primary">Design Specs</h3>
+              <div class="overflow-x-auto rounded-xl border border-border">
+                <table class="w-full text-left text-body-sm">
+                  <thead class="bg-neutral-50">
+                    <tr>
+                      <th class="px-4 py-3 font-semibold text-text-primary">Property</th>
+                      <th class="px-4 py-3 font-semibold text-text-primary">Value</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-border">
+                    <tr>
+                      <td class="px-4 py-3 text-text-secondary">Background</td>
+                      <td class="px-4 py-3 font-mono text-caption text-text-primary">linear-gradient(161deg, primary-500, primary-300)</td>
+                    </tr>
+                    <tr>
+                      <td class="px-4 py-3 text-text-secondary">Border Radius</td>
+                      <td class="px-4 py-3 font-mono text-caption text-text-primary">TL 100px, TR 20px, BR 100px, BL 20px</td>
+                    </tr>
+                    <tr>
+                      <td class="px-4 py-3 text-text-secondary">Padding (desktop)</td>
+                      <td class="px-4 py-3 font-mono text-caption text-text-primary">px-[70px] py-[100px]</td>
+                    </tr>
+                    <tr>
+                      <td class="px-4 py-3 text-text-secondary">Heading</td>
+                      <td class="px-4 py-3 font-mono text-caption text-text-primary">3.5rem (56px), leading-display, white</td>
+                    </tr>
+                    <tr>
+                      <td class="px-4 py-3 text-text-secondary">Subtitle</td>
+                      <td class="px-4 py-3 font-mono text-caption text-text-primary">text-xl (20px), leading-body, neutral-200</td>
+                    </tr>
+                    <tr>
+                      <td class="px-4 py-3 text-text-secondary">Button</td>
+                      <td class="px-4 py-3 font-mono text-caption text-text-primary">White pill, text-neutral-800, rounded-full</td>
+                    </tr>
+                    <tr>
+                      <td class="px-4 py-3 text-text-secondary">Decorative Circles</td>
+                      <td class="px-4 py-3 font-mono text-caption text-text-primary">/assets/cta-banner-circles.svg, absolute right</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </section>

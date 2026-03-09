@@ -1,0 +1,112 @@
+[
+  {
+    "id": "notif_001",
+    "userId": "user_001",
+    "type": "order_confirmed",
+    "title": "Commande confirmée",
+    "message": "Votre commande #ord_001 a été confirmée. Un livreur sera bientôt assigné.",
+    "orderId": "ord_001",
+    "read": true,
+    "createdAt": "2026-03-08T14:31:00Z"
+  },
+  {
+    "id": "notif_002",
+    "userId": "user_001",
+    "type": "rider_assigned",
+    "title": "Livreur assigné",
+    "message": "Lucas Martin est en route pour récupérer votre commande #ord_001.",
+    "orderId": "ord_001",
+    "read": true,
+    "createdAt": "2026-03-08T14:35:00Z"
+  },
+  {
+    "id": "notif_003",
+    "userId": "user_001",
+    "type": "order_delivered",
+    "title": "Commande livrée",
+    "message": "Votre commande #ord_001 a été livrée. Bonne utilisation !",
+    "orderId": "ord_001",
+    "read": true,
+    "createdAt": "2026-03-08T14:52:00Z"
+  },
+  {
+    "id": "notif_004",
+    "userId": "user_001",
+    "type": "return_reminder",
+    "title": "Rappel de retour",
+    "message": "Votre location pour la commande #ord_001 se termine dans 2 heures.",
+    "orderId": "ord_001",
+    "read": false,
+    "createdAt": "2026-03-10T12:30:00Z"
+  },
+  {
+    "id": "notif_005",
+    "userId": "user_002",
+    "type": "order_confirmed",
+    "title": "Commande confirmée",
+    "message": "Votre commande #ord_002 a été confirmée.",
+    "orderId": "ord_002",
+    "read": true,
+    "createdAt": "2026-03-07T10:01:00Z"
+  },
+  {
+    "id": "notif_006",
+    "userId": "user_002",
+    "type": "order_cancelled",
+    "title": "Commande annulée",
+    "message": "Votre commande #ord_005 a été annulée. Le remboursement sera effectué sous 3-5 jours.",
+    "orderId": "ord_005",
+    "read": false,
+    "createdAt": "2026-03-06T16:10:00Z"
+  },
+  {
+    "id": "notif_007",
+    "userId": "user_001",
+    "type": "promotion",
+    "title": "Offre spéciale",
+    "message": "Profitez de -20% sur votre prochaine location d'écran avec le code SCREEN20.",
+    "orderId": null,
+    "read": false,
+    "createdAt": "2026-03-09T09:00:00Z"
+  },
+  {
+    "id": "notif_008",
+    "userId": "user_001",
+    "type": "order_confirmed",
+    "title": "Commande confirmée",
+    "message": "Votre commande #ord_003 a été confirmée. Préparation en cours.",
+    "orderId": "ord_003",
+    "read": false,
+    "createdAt": "2026-03-09T16:01:00Z"
+  },
+  {
+    "id": "notif_009",
+    "userId": "user_002",
+    "type": "rider_assigned",
+    "title": "Livreur assigné",
+    "message": "Camille Dupont est en route pour votre commande #ord_004.",
+    "orderId": "ord_004",
+    "read": true,
+    "createdAt": "2026-03-08T11:20:00Z"
+  },
+  {
+    "id": "notif_010",
+    "userId": "user_002",
+    "type": "order_delivered",
+    "title": "Commande livrée",
+    "message": "Votre commande #ord_004 a été livrée avec succès.",
+    "orderId": "ord_004",
+    "read": false,
+    "createdAt": "2026-03-08T11:48:00Z"
+  },
+  {
+    "id": "notif_011",
+    "userId": "user_001",
+    "type": "return_reminder",
+    "title": "Rappel de retour",
+    "message": "Votre location pour la commande #ord_006 expire demain. Pensez à organiser le retour.",
+    "orderId": "ord_006",
+    "read": false,
+    "createdAt": "2026-03-09T18:00:00Z"
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "rider_001",
+    "name": "Lucas Martin",
+    "email": "lucas.martin@email.com",
+    "phone": "+33 6 12 34 56 78",
+    "vehicleType": "bicycle",
+    "rating": 4.8,
+    "totalDeliveries": 234,
+    "isAvailable": true,
+    "currentLocation": { "lat": 48.8661, "lng": 2.3615 },
+    "avatar": "/assets/riders/lucas-martin.webp"
+  },
+  {
+    "id": "rider_002",
+    "name": "Camille Dupont",
+    "email": "camille.dupont@email.com",
+    "phone": "+33 6 23 45 67 89",
+    "vehicleType": "scooter",
+    "rating": 4.9,
+    "totalDeliveries": 412,
+    "isAvailable": true,
+    "currentLocation": { "lat": 48.8592, "lng": 2.3490 },
+    "avatar": "/assets/riders/camille-dupont.webp"
+  },
+  {
+    "id": "rider_003",
+    "name": "Antoine Bernard",
+    "email": "antoine.bernard@email.com",
+    "phone": "+33 6 34 56 78 90",
+    "vehicleType": "car",
+    "rating": 4.7,
+    "totalDeliveries": 189,
+    "isAvailable": false,
+    "currentLocation": { "lat": 48.8505, "lng": 2.3950 },
+    "avatar": "/assets/riders/antoine-bernard.webp"
+  },
+  {
+    "id": "rider_004",
+    "name": "Sophie Leroy",
+    "email": "sophie.leroy@email.com",
+    "phone": "+33 6 45 67 89 01",
+    "vehicleType": "bicycle",
+    "rating": 4.6,
+    "totalDeliveries": 156,
+    "isAvailable": true,
+    "currentLocation": { "lat": 48.8720, "lng": 2.3550 },
+    "avatar": "/assets/riders/sophie-leroy.webp"
+  },
+  {
+    "id": "rider_005",
+    "name": "Maxime Moreau",
+    "email": "maxime.moreau@email.com",
+    "phone": "+33 6 56 78 90 12",
+    "vehicleType": "scooter",
+    "rating": 4.5,
+    "totalDeliveries": 98,
+    "isAvailable": true,
+    "currentLocation": { "lat": 48.8534, "lng": 2.3812 },
+    "avatar": "/assets/riders/maxime-moreau.webp"
+  }
+]

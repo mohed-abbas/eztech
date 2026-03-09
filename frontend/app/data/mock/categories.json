@@ -1,0 +1,44 @@
+[
+  {
+    "id": "cat_chargers",
+    "name": "Chargeurs",
+    "slug": "chargers",
+    "description": "Chargeurs pour laptops, téléphones et tablettes",
+    "icon": "ph:battery-charging"
+  },
+  {
+    "id": "cat_cables",
+    "name": "Câbles",
+    "slug": "cables",
+    "description": "Câbles USB, HDMI, Ethernet et plus",
+    "icon": "ph:cable-car"
+  },
+  {
+    "id": "cat_laptops",
+    "name": "Ordinateurs",
+    "slug": "laptops",
+    "description": "Laptops et ultrabooks en location",
+    "icon": "ph:laptop"
+  },
+  {
+    "id": "cat_monitors",
+    "name": "Écrans",
+    "slug": "monitors",
+    "description": "Écrans externes et moniteurs portables",
+    "icon": "ph:monitor"
+  },
+  {
+    "id": "cat_peripherals",
+    "name": "Périphériques",
+    "slug": "peripherals",
+    "description": "Claviers, souris, casques et webcams",
+    "icon": "ph:keyboard"
+  },
+  {
+    "id": "cat_adapters",
+    "name": "Adaptateurs",
+    "slug": "adapters",
+    "description": "Hubs USB-C, dongles et adaptateurs vidéo",
+    "icon": "ph:plug"
+  }
+]

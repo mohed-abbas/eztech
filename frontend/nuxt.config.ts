@@ -17,5 +17,11 @@ export default defineNuxtConfig({
   shadcn: {
     prefix: '',
     componentDir: './app/components/ui'
+  },
+  runtimeConfig: {
+    public: {
+      useMock: process.env.VITE_USE_MOCK === 'true',
+      apiUrl: process.env.VITE_API_URL || 'http://localhost:3001/api'
+    }
   }
 })

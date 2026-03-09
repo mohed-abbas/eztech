@@ -1,0 +1,188 @@
+[
+  {
+    "id": "ord_001",
+    "userId": "user_001",
+    "items": [
+      { "productId": "prod_001", "quantity": 1, "duration": { "type": "flat", "value": 1 }, "unitPrice": 3.50, "total": 3.50 },
+      { "productId": "prod_006", "quantity": 1, "duration": { "type": "flat", "value": 1 }, "unitPrice": 1.50, "total": 1.50 }
+    ],
+    "status": "delivered",
+    "deliveryAddress": { "street": "45 Rue du Faubourg Saint-Antoine", "city": "Paris", "zipCode": "75011", "coordinates": { "lat": 48.8516, "lng": 2.3727 } },
+    "warehouseId": "wh_001",
+    "riderId": "rider_001",
+    "subtotal": 5.00,
+    "deliveryFee": 2.99,
+    "total": 7.99,
+    "createdAt": "2026-03-08T14:30:00Z",
+    "estimatedDelivery": "2026-03-08T15:00:00Z",
+    "deliveredAt": "2026-03-08T14:52:00Z",
+    "returnDue": "2026-03-10T14:30:00Z"
+  },
+  {
+    "id": "ord_002",
+    "userId": "user_002",
+    "items": [
+      { "productId": "prod_011", "quantity": 1, "duration": { "type": "daily", "value": 3 }, "unitPrice": 25, "total": 75 }
+    ],
+    "status": "returned",
+    "deliveryAddress": { "street": "28 Boulevard Beaumarchais", "city": "Paris", "zipCode": "75011", "coordinates": { "lat": 48.8553, "lng": 2.3679 } },
+    "warehouseId": "wh_001",
+    "riderId": "rider_002",
+    "subtotal": 75.00,
+    "deliveryFee": 2.99,
+    "total": 77.99,
+    "createdAt": "2026-03-05T10:00:00Z",
+    "estimatedDelivery": "2026-03-05T10:30:00Z",
+    "deliveredAt": "2026-03-05T10:22:00Z",
+    "returnDue": "2026-03-08T10:00:00Z"
+  },
+  {
+    "id": "ord_003",
+    "userId": "user_001",
+    "items": [
+      { "productId": "prod_016", "quantity": 1, "duration": { "type": "weekly", "value": 1 }, "unitPrice": 69, "total": 69 },
+      { "productId": "prod_008", "quantity": 1, "duration": { "type": "flat", "value": 1 }, "unitPrice": 2.50, "total": 2.50 }
+    ],
+    "status": "preparing",
+    "deliveryAddress": { "street": "12 Rue de Rivoli", "city": "Paris", "zipCode": "75004", "coordinates": { "lat": 48.8556, "lng": 2.3522 } },
+    "warehouseId": "wh_002",
+    "riderId": null,
+    "subtotal": 71.50,
+    "deliveryFee": 2.99,
+    "total": 74.49,
+    "createdAt": "2026-03-09T16:00:00Z",
+    "estimatedDelivery": "2026-03-09T16:40:00Z",
+    "deliveredAt": null,
+    "returnDue": null
+  },
+  {
+    "id": "ord_004",
+    "userId": "user_002",
+    "items": [
+      { "productId": "prod_024", "quantity": 1, "duration": { "type": "daily", "value": 1 }, "unitPrice": 8, "total": 8 }
+    ],
+    "status": "in_transit",
+    "deliveryAddress": { "street": "5 Rue de Turenne", "city": "Paris", "zipCode": "75003", "coordinates": { "lat": 48.8573, "lng": 2.3625 } },
+    "warehouseId": "wh_001",
+    "riderId": "rider_002",
+    "subtotal": 8.00,
+    "deliveryFee": 2.99,
+    "total": 10.99,
+    "createdAt": "2026-03-09T11:15:00Z",
+    "estimatedDelivery": "2026-03-09T11:45:00Z",
+    "deliveredAt": null,
+    "returnDue": null
+  },
+  {
+    "id": "ord_005",
+    "userId": "user_002",
+    "items": [
+      { "productId": "prod_026", "quantity": 1, "duration": { "type": "flat", "value": 1 }, "unitPrice": 3.00, "total": 3.00 }
+    ],
+    "status": "cancelled",
+    "deliveryAddress": { "street": "28 Boulevard Beaumarchais", "city": "Paris", "zipCode": "75011", "coordinates": { "lat": 48.8553, "lng": 2.3679 } },
+    "warehouseId": "wh_002",
+    "riderId": null,
+    "subtotal": 3.00,
+    "deliveryFee": 2.99,
+    "total": 5.99,
+    "createdAt": "2026-03-06T16:00:00Z",
+    "estimatedDelivery": null,
+    "deliveredAt": null,
+    "returnDue": null
+  },
+  {
+    "id": "ord_006",
+    "userId": "user_001",
+    "items": [
+      { "productId": "prod_013", "quantity": 1, "duration": { "type": "weekly", "value": 1 }, "unitPrice": 120, "total": 120 },
+      { "productId": "prod_020", "quantity": 1, "duration": { "type": "weekly", "value": 1 }, "unitPrice": 18, "total": 18 },
+      { "productId": "prod_021", "quantity": 1, "duration": { "type": "weekly", "value": 1 }, "unitPrice": 18, "total": 18 }
+    ],
+    "status": "delivered",
+    "deliveryAddress": { "street": "45 Rue du Faubourg Saint-Antoine", "city": "Paris", "zipCode": "75011", "coordinates": { "lat": 48.8516, "lng": 2.3727 } },
+    "warehouseId": "wh_001",
+    "riderId": "rider_003",
+    "subtotal": 156.00,
+    "deliveryFee": 0,
+    "total": 156.00,
+    "createdAt": "2026-03-03T09:00:00Z",
+    "estimatedDelivery": "2026-03-03T09:35:00Z",
+    "deliveredAt": "2026-03-03T09:28:00Z",
+    "returnDue": "2026-03-10T09:00:00Z"
+  },
+  {
+    "id": "ord_007",
+    "userId": "user_001",
+    "items": [
+      { "productId": "prod_004", "quantity": 1, "duration": { "type": "flat", "value": 1 }, "unitPrice": 4.00, "total": 4.00 }
+    ],
+    "status": "pending",
+    "deliveryAddress": { "street": "12 Rue de Rivoli", "city": "Paris", "zipCode": "75004", "coordinates": { "lat": 48.8556, "lng": 2.3522 } },
+    "warehouseId": "wh_002",
+    "riderId": null,
+    "subtotal": 4.00,
+    "deliveryFee": 2.99,
+    "total": 6.99,
+    "createdAt": "2026-03-09T18:30:00Z",
+    "estimatedDelivery": null,
+    "deliveredAt": null,
+    "returnDue": null
+  },
+  {
+    "id": "ord_008",
+    "userId": "user_002",
+    "items": [
+      { "productId": "prod_018", "quantity": 1, "duration": { "type": "daily", "value": 2 }, "unitPrice": 12, "total": 24 },
+      { "productId": "prod_027", "quantity": 1, "duration": { "type": "flat", "value": 1 }, "unitPrice": 1.50, "total": 1.50 }
+    ],
+    "status": "rider_assigned",
+    "deliveryAddress": { "street": "15 Rue Oberkampf", "city": "Paris", "zipCode": "75011", "coordinates": { "lat": 48.8645, "lng": 2.3710 } },
+    "warehouseId": "wh_001",
+    "riderId": "rider_004",
+    "subtotal": 25.50,
+    "deliveryFee": 2.99,
+    "total": 28.49,
+    "createdAt": "2026-03-09T17:00:00Z",
+    "estimatedDelivery": "2026-03-09T17:30:00Z",
+    "deliveredAt": null,
+    "returnDue": null
+  },
+  {
+    "id": "ord_009",
+    "userId": "user_001",
+    "items": [
+      { "productId": "prod_002", "quantity": 2, "duration": { "type": "flat", "value": 1 }, "unitPrice": 2.00, "total": 4.00 },
+      { "productId": "prod_007", "quantity": 2, "duration": { "type": "flat", "value": 1 }, "unitPrice": 2.00, "total": 4.00 }
+    ],
+    "status": "confirmed",
+    "deliveryAddress": { "street": "45 Rue du Faubourg Saint-Antoine", "city": "Paris", "zipCode": "75011", "coordinates": { "lat": 48.8516, "lng": 2.3727 } },
+    "warehouseId": "wh_001",
+    "riderId": null,
+    "subtotal": 8.00,
+    "deliveryFee": 2.99,
+    "total": 10.99,
+    "createdAt": "2026-03-09T19:00:00Z",
+    "estimatedDelivery": "2026-03-09T19:35:00Z",
+    "deliveredAt": null,
+    "returnDue": null
+  },
+  {
+    "id": "ord_010",
+    "userId": "user_002",
+    "items": [
+      { "productId": "prod_012", "quantity": 1, "duration": { "type": "daily", "value": 5 }, "unitPrice": 40, "total": 200 }
+    ],
+    "status": "picked_up",
+    "deliveryAddress": { "street": "72 Rue de la Roquette", "city": "Paris", "zipCode": "75011", "coordinates": { "lat": 48.8570, "lng": 2.3770 } },
+    "warehouseId": "wh_001",
+    "riderId": "rider_005",
+    "subtotal": 200.00,
+    "deliveryFee": 0,
+    "total": 200.00,
+    "createdAt": "2026-03-09T14:00:00Z",
+    "estimatedDelivery": "2026-03-09T14:35:00Z",
+    "deliveredAt": null,
+    "returnDue": null
+  }
+]
