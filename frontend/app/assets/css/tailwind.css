@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -66,6 +67,13 @@
 
   --color-popover: #FFFFFF;
   --color-popover-foreground: #262730;
+
+  /* Flat primary for shadcn components (bg-primary, text-primary-foreground) */
+  --color-primary: #8B5CF6;
+  --color-primary-foreground: #FFFFFF;
+
+  --color-secondary: #F3F4F6;
+  --color-secondary-foreground: #262730;
 
   --color-muted: #F3F4F6;
   --color-muted-foreground: #6B7280;
