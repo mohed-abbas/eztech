@@ -10,18 +10,7 @@ useHead({
   ],
 })
 
-const { login, loading, isAuthenticated } = useAuth()
-
-// Redirect if already authenticated
-if (isAuthenticated.value) {
-  navigateTo('/')
-}
-
-watch(isAuthenticated, (authenticated) => {
-  if (authenticated) {
-    navigateTo('/')
-  }
-})
+const { user, login, logout, loading, isAuthenticated } = useAuth()
 
 // Form state
 const email = ref('')
@@ -100,6 +89,32 @@ function handleGoogleOAuth() {
 
 <template>
   <div>
+    <!-- Already logged in -->
+    <div v-if="isAuthenticated" class="text-center py-8">
+      <div class="mx-auto flex size-16 items-center justify-center rounded-full bg-primary-100 mb-4">
+        <Icon name="ph:user" class="size-8 text-primary-600" />
+      </div>
+      <p class="text-body text-text-secondary mb-1">Logged in as</p>
+      <p class="text-h4 font-semibold text-text-primary">{{ user?.name }}</p>
+      <p class="text-body-sm text-text-muted">{{ user?.email }} &middot; {{ user?.role }}</p>
+      <div class="mt-6 flex flex-col gap-3">
+        <NuxtLink to="/">
+          <span class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize">
+            Go to Home
+          </span>
+        </NuxtLink>
+        <button
+          type="button"
+          class="w-full rounded-full border border-neutral-200 bg-white px-6 py-2.5 text-body-sm font-medium text-error hover:bg-error/5 transition-colors"
+          @click="logout()"
+        >
+          Log out
+        </button>
+      </div>
+    </div>
+
+    <!-- Login form (when not authenticated) -->
+    <template v-else>
     <!-- Heading -->
     <div class="mb-8">
       <h1 class="text-h2 font-bold text-text-primary leading-heading">
@@ -263,5 +278,6 @@ function handleGoogleOAuth() {
         <p><span class="font-medium text-text-secondary">Admin:</span> admin@eztech.fr / admin123</p>
       </div>
     </div>
+    </template>
   </div>
 </template>
