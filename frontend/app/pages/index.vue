@@ -2,6 +2,8 @@
 definePageMeta({
   layout: 'default'
 })
+
+const { user, isAuthenticated, logout } = useAuth()
 </script>
 
 <template>
@@ -17,11 +19,19 @@ definePageMeta({
           Browse Products
         </NuxtLink>
         <NuxtLink
+          v-if="!isAuthenticated"
           to="/login"
           class="inline-flex items-center gap-2 rounded-full border border-primary-500 px-6 py-3 text-primary-500 font-medium hover:bg-primary-50 transition-colors"
         >
           Sign In
         </NuxtLink>
+        <button
+          v-else
+          class="inline-flex items-center gap-2 rounded-full border border-error px-6 py-3 text-error font-medium hover:bg-error/5 transition-colors"
+          @click="logout()"
+        >
+          Log out ({{ user?.name }})
+        </button>
       </div>
     </div>
   </div>
