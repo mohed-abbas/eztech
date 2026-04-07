@@ -2,6 +2,9 @@
 const route = useRoute();
 const productId = route.params.id;
 const productData = ref(null);
+useHead({
+  title: `Product ${productId} - EZTech`,
+});
 
 onMounted(async () => {
   try {

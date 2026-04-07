@@ -12,7 +12,19 @@ export default defineNuxtConfig({
   ],
   css: ['~/assets/css/tailwind.css'],
   vite: {
-    plugins: [tailwindcss()]
+    plugins: [tailwindcss()],
+    server: {
+      hmr: {
+        protocol: 'ws',
+        host: '127.0.0.1',
+        port: 5173
+      },
+      watch: {
+        usePolling: true,
+        interval: 100
+      },
+      middlewareMode: false
+    }
   },
   shadcn: {
     prefix: '',
