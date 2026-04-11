@@ -54,5 +54,31 @@
     "role": "admin",
     "addresses": [],
     "createdAt": "2026-01-01T00:00:00Z"
+  },
+  {
+    "id": "user_004",
+    "name": "Lucas Martin",
+    "email": "lucas@example.com",
+    "password": "password123",
+    "phone": "+33 6 12 34 56 78",
+    "role": "rider",
+    "vehicleType": "bicycle",
+    "licenseNumber": "RIDER-2025-001",
+    "insuranceNumber": "INS-AXA-78456",
+    "addresses": [],
+    "createdAt": "2026-01-20T08:00:00Z"
+  },
+  {
+    "id": "user_005",
+    "name": "Camille Dupont",
+    "email": "camille@example.com",
+    "password": "password123",
+    "phone": "+33 6 23 45 67 89",
+    "role": "rider",
+    "vehicleType": "scooter",
+    "licenseNumber": "RIDER-2025-002",
+    "insuranceNumber": "INS-MAIF-92103",
+    "addresses": [],
+    "createdAt": "2026-02-10T09:00:00Z"
   }
 ]
