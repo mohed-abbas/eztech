@@ -1,79 +1,141 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'default' })
+import type { Address } from '~/composables/useAuth'
 
-// --- Formulaire paiement ---
+definePageMeta({ layout: 'default', middleware: 'auth' })
+
+const { items, subtotal, deliveryFee, total, isEmpty, clearCart, linePrice } = useCart()
+const { user } = useAuth()
+const { check: checkZone } = useServiceZone()
+const router = useRouter()
+
+// Redirect to cart if empty
+onMounted(() => {
+  if (isEmpty.value) router.replace('/cart')
+})
+
+// --- Address selection ---
+type AddressMode = 'saved' | 'manual' | 'geo'
+const addressMode = ref<AddressMode>('saved')
+const selectedSavedId = ref<string | null>(user.value?.addresses?.[0]?.id ?? null)
+
+const savedAddresses = computed<Address[]>(() => user.value?.addresses ?? [])
+
+const manualStreet = ref('')
+const manualCity = ref('Paris')
+const manualZip = ref('')
+const manualLat = ref<number | null>(null)
+const manualLng = ref<number | null>(null)
+
+const geoLoading = ref(false)
+const geoError = ref<string | null>(null)
+
+function useCurrentLocation() {
+  if (!('geolocation' in navigator)) {
+    geoError.value = 'Géolocalisation non supportée par votre navigateur.'
+    return
+  }
+  geoError.value = null
+  geoLoading.value = true
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      manualLat.value = pos.coords.latitude
+      manualLng.value = pos.coords.longitude
+      addressMode.value = 'geo'
+      geoLoading.value = false
+    },
+    (err) => {
+      geoError.value = `Impossible d'obtenir votre position : ${err.message}`
+      geoLoading.value = false
+    },
+    { enableHighAccuracy: true, timeout: 10000 },
+  )
+}
+
+// Resolve currently selected coordinates + printable address
+interface ResolvedAddress {
+  street: string
+  city: string
+  zipCode: string
+  coordinates: { lat: number, lng: number } | null
+}
+
+const resolvedAddress = computed<ResolvedAddress | null>(() => {
+  if (addressMode.value === 'saved') {
+    const saved = savedAddresses.value.find(a => a.id === selectedSavedId.value)
+    if (!saved) return null
+    return {
+      street: saved.street,
+      city: saved.city,
+      zipCode: saved.zipCode,
+      coordinates: saved.coordinates ?? null,
+    }
+  }
+  if (addressMode.value === 'geo') {
+    if (manualLat.value == null || manualLng.value == null) return null
+    return {
+      street: 'Position actuelle',
+      city: 'Paris',
+      zipCode: '',
+      coordinates: { lat: manualLat.value, lng: manualLng.value },
+    }
+  }
+  // manual
+  if (!manualStreet.value || !manualZip.value) return null
+  return {
+    street: manualStreet.value,
+    city: manualCity.value,
+    zipCode: manualZip.value,
+    coordinates: manualLat.value != null && manualLng.value != null
+      ? { lat: manualLat.value, lng: manualLng.value }
+      : null,
+  }
+})
+
+// Zone check — only runs when we have coordinates
+const zoneResult = computed(() => {
+  const addr = resolvedAddress.value
+  if (!addr?.coordinates) return null
+  return checkZone(addr.coordinates.lng, addr.coordinates.lat)
+})
+
+const canProceed = computed(() => {
+  if (!resolvedAddress.value) return false
+  // For manual without coordinates, allow (no zone check possible — mock fallback)
+  if (!resolvedAddress.value.coordinates) return true
+  return zoneResult.value?.inZone === true
+})
+
+// --- Card form ---
 const cardNumber = ref('')
 const cardExpiry = ref('')
 const cardCvc = ref('')
 const cardName = ref('')
 
-// Formatage numéro carte : 4242 4242 4242 4242
 function formatCardNumber(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 16)
   return digits.replace(/(.{4})/g, '$1 ').trim()
 }
-
 function onCardNumberInput(e: Event) {
   const input = e.target as HTMLInputElement
   cardNumber.value = formatCardNumber(input.value)
   input.value = cardNumber.value
 }
-
-// Formatage expiration : MM/AA
 function formatExpiry(value: string) {
   const digits = value.replace(/\D/g, '').slice(0, 4)
   if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`
   return digits
 }
-
 function onExpiryInput(e: Event) {
   const input = e.target as HTMLInputElement
   cardExpiry.value = formatExpiry(input.value)
   input.value = cardExpiry.value
 }
-
 function onCvcInput(e: Event) {
   const input = e.target as HTMLInputElement
   cardCvc.value = input.value.replace(/\D/g, '').slice(0, 3)
   input.value = cardCvc.value
 }
 
-// --- État du paiement ---
-type PaymentState = 'idle' | 'loading' | 'success' | 'error'
-const paymentState = ref<PaymentState>('idle')
-
-function submitPayment() {
-  if (!cardNumber.value || !cardExpiry.value || !cardCvc.value || !cardName.value) return
-  paymentState.value = 'loading'
-
-  setTimeout(() => {
-    // Simuler succès / échec : carte "0000" → échec
-    const digits = cardNumber.value.replace(/\s/g, '')
-    if (digits.endsWith('0000')) {
-      paymentState.value = 'error'
-    } else {
-      paymentState.value = 'success'
-      setTimeout(() => navigateTo('/orders/mock-123'), 1500)
-    }
-  }, 2500)
-}
-
-function retryPayment() {
-  paymentState.value = 'idle'
-}
-
-// --- Panier mock ---
-const cartItems = [
-  { name: 'iPhone 15 Pro 256Go', qty: 1, price: 1199, image: '📱' },
-  { name: 'Coque MagSafe transparente', qty: 2, price: 29, image: '🛡️' },
-  { name: 'Chargeur USB-C 30W', qty: 1, price: 49, image: '🔌' },
-]
-const rentalDays = 3
-const subtotal = computed(() => cartItems.reduce((s, i) => s + i.price * i.qty, 0))
-const deliveryFee = 4.99
-const total = computed(() => subtotal.value + deliveryFee)
-
-// Détection type de carte
 const cardBrand = computed(() => {
   const d = cardNumber.value.replace(/\s/g, '')
   if (d.startsWith('4')) return 'Visa'
@@ -81,11 +143,78 @@ const cardBrand = computed(() => {
   if (d.startsWith('3')) return 'Amex'
   return null
 })
+
+// --- Payment flow ---
+type PaymentState = 'idle' | 'loading' | 'success' | 'error'
+const paymentState = ref<PaymentState>('idle')
+
+const formComplete = computed(() =>
+  cardNumber.value && cardExpiry.value && cardCvc.value && cardName.value && canProceed.value,
+)
+
+function createMockOrder() {
+  const id = `ord_${Date.now().toString(36)}`
+  const addr = resolvedAddress.value!
+  const order = {
+    id,
+    userId: user.value?.id ?? 'guest',
+    items: items.value.map(i => ({
+      productId: i.productId,
+      name: i.name,
+      image: i.image,
+      quantity: i.quantity,
+      duration: { type: i.durationUnit, value: i.durationValue },
+      unitPrice: i.pricingType === 'flat'
+        ? (i.price.flat ?? 0)
+        : (i.price[i.durationUnit as 'hourly' | 'daily' | 'weekly'] ?? 0),
+      total: linePrice(i),
+    })),
+    status: 'preparing',
+    deliveryAddress: addr,
+    subtotal: subtotal.value,
+    deliveryFee: deliveryFee.value,
+    total: total.value,
+    createdAt: new Date().toISOString(),
+    estimatedDelivery: new Date(Date.now() + 30 * 60_000).toISOString(),
+  }
+
+  // Persist to localStorage so /orders/* can read it
+  const ORDERS_KEY = 'ez-orders'
+  try {
+    const existing = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]')
+    existing.push(order)
+    localStorage.setItem(ORDERS_KEY, JSON.stringify(existing))
+  }
+  catch {
+    localStorage.setItem(ORDERS_KEY, JSON.stringify([order]))
+  }
+  return id
+}
+
+function submitPayment() {
+  if (!formComplete.value) return
+  paymentState.value = 'loading'
+
+  setTimeout(() => {
+    const digits = cardNumber.value.replace(/\s/g, '')
+    if (digits.endsWith('0000')) {
+      paymentState.value = 'error'
+      return
+    }
+    paymentState.value = 'success'
+    const orderId = createMockOrder()
+    clearCart()
+    setTimeout(() => navigateTo(`/orders/${orderId}`), 1200)
+  }, 2000)
+}
+
+function retryPayment() {
+  paymentState.value = 'idle'
+}
 </script>
 
 <template>
   <div class="min-h-screen bg-bg-muted py-10 px-4">
-
     <!-- SUCCESS -->
     <Transition name="fade">
       <div v-if="paymentState === 'success'" class="max-w-md mx-auto text-center py-20">
@@ -99,7 +228,6 @@ const cardBrand = computed(() => {
       </div>
     </Transition>
 
-    <!-- FORM -->
     <div v-if="paymentState !== 'success'" class="max-w-5xl mx-auto">
       <div class="mb-8 flex items-center gap-3">
         <NuxtLink to="/cart" class="text-text-muted hover:text-text-primary transition-colors">
@@ -108,53 +236,168 @@ const cardBrand = computed(() => {
           </svg>
         </NuxtLink>
         <h1 class="text-h3 font-bold text-text-primary">Paiement sécurisé</h1>
-        <span class="ml-auto flex items-center gap-1.5 text-sm text-text-muted">
-          <svg class="w-4 h-4 text-success" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
-          </svg>
-          Paiement sécurisé SSL
-        </span>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-5 gap-8">
-
-        <!-- Formulaire paiement (3/5) -->
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <!-- Main column (3/5): address + card -->
         <div class="lg:col-span-3 space-y-5">
+          <!-- ADDRESS CARD -->
+          <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
+            <h2 class="font-semibold text-text-primary mb-4 flex items-center gap-2">
+              <svg class="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Adresse de livraison
+            </h2>
+
+            <!-- Mode tabs -->
+            <div class="flex flex-wrap gap-2 mb-4">
+              <button
+                v-if="savedAddresses.length > 0"
+                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                :class="addressMode === 'saved' ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-text-secondary hover:bg-neutral-200'"
+                @click="addressMode = 'saved'"
+              >
+                Mes adresses
+              </button>
+              <button
+                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                :class="addressMode === 'manual' ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-text-secondary hover:bg-neutral-200'"
+                @click="addressMode = 'manual'"
+              >
+                Saisir manuellement
+              </button>
+              <button
+                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
+                :class="addressMode === 'geo' ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-text-secondary hover:bg-neutral-200'"
+                :disabled="geoLoading"
+                @click="useCurrentLocation"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11a3 3 0 100-6 3 3 0 000 6z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2C8 2 4 5 4 9c0 5.5 8 13 8 13s8-7.5 8-13c0-4-4-7-8-7z" />
+                </svg>
+                {{ geoLoading ? 'Localisation…' : 'Ma position' }}
+              </button>
+            </div>
+
+            <!-- Saved mode -->
+            <div v-if="addressMode === 'saved'" class="space-y-2">
+              <label
+                v-for="addr in savedAddresses"
+                :key="addr.id"
+                class="flex gap-3 p-3 rounded-xl border cursor-pointer transition-colors"
+                :class="selectedSavedId === addr.id ? 'border-primary-500 bg-primary-50' : 'border-neutral-200 hover:bg-neutral-50'"
+              >
+                <input
+                  v-model="selectedSavedId"
+                  type="radio"
+                  :value="addr.id"
+                  class="mt-1 accent-primary-600"
+                >
+                <div class="flex-1">
+                  <p class="font-medium text-text-primary text-sm">{{ addr.label }}</p>
+                  <p class="text-sm text-text-muted">{{ addr.street }}, {{ addr.zipCode }} {{ addr.city }}</p>
+                </div>
+              </label>
+              <p v-if="savedAddresses.length === 0" class="text-sm text-text-muted">
+                Aucune adresse enregistrée. Passez en saisie manuelle.
+              </p>
+            </div>
+
+            <!-- Manual mode -->
+            <div v-else-if="addressMode === 'manual'" class="space-y-3">
+              <div>
+                <label class="block text-sm font-medium text-text-secondary mb-1.5">Rue</label>
+                <input
+                  v-model="manualStreet"
+                  type="text"
+                  placeholder="12 Rue de Rivoli"
+                  class="w-full rounded-xl border border-neutral-200 px-4 py-3 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-sm font-medium text-text-secondary mb-1.5">Code postal</label>
+                  <input
+                    v-model="manualZip"
+                    type="text"
+                    placeholder="75004"
+                    class="w-full rounded-xl border border-neutral-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-text-secondary mb-1.5">Ville</label>
+                  <input
+                    v-model="manualCity"
+                    type="text"
+                    class="w-full rounded-xl border border-neutral-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                </div>
+              </div>
+            </div>
+
+            <!-- Geo mode -->
+            <div v-else class="rounded-xl bg-primary-50 border border-primary-100 p-4">
+              <p v-if="manualLat != null" class="text-sm text-primary-700">
+                Position actuelle détectée :
+                <span class="font-mono">{{ manualLat.toFixed(4) }}, {{ manualLng?.toFixed(4) }}</span>
+              </p>
+              <p v-else class="text-sm text-primary-700">En attente de votre position…</p>
+            </div>
+
+            <p v-if="geoError" class="mt-3 text-sm text-error">{{ geoError }}</p>
+
+            <!-- Zone feedback -->
+            <div v-if="zoneResult" class="mt-4 rounded-xl p-3 flex items-start gap-2" :class="zoneResult.inZone ? 'bg-success/5 border border-success/20' : 'bg-error/5 border border-error/20'">
+              <svg v-if="zoneResult.inZone" class="w-5 h-5 text-success shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+              <svg v-else class="w-5 h-5 text-error shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+              </svg>
+              <div class="text-sm">
+                <p v-if="zoneResult.inZone" class="font-medium text-success">
+                  Livraison disponible — zone {{ zoneResult.zoneName }}
+                </p>
+                <div v-else>
+                  <p class="font-medium text-error">Service non disponible dans votre zone</p>
+                  <p class="text-text-muted">Nous couvrons actuellement Paris Centre et Paris Est.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CARD FORM -->
           <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
             <h2 class="font-semibold text-text-primary mb-5 flex items-center gap-2">
               <svg class="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
               </svg>
               Informations de carte
             </h2>
 
-            <!-- Nom sur la carte -->
             <div class="mb-4">
-              <label class="block text-sm font-medium text-text-secondary mb-1.5">
-                Nom sur la carte
-              </label>
+              <label class="block text-sm font-medium text-text-secondary mb-1.5">Nom sur la carte</label>
               <input
                 v-model="cardName"
                 type="text"
                 placeholder="Jean Dupont"
-                class="w-full rounded-xl border border-neutral-200 px-4 py-3 text-text-primary placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-              />
+                class="w-full rounded-xl border border-neutral-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
             </div>
 
-            <!-- Numéro de carte -->
             <div class="mb-4">
-              <label class="block text-sm font-medium text-text-secondary mb-1.5">
-                Numéro de carte
-              </label>
+              <label class="block text-sm font-medium text-text-secondary mb-1.5">Numéro de carte</label>
               <div class="relative">
                 <input
                   :value="cardNumber"
                   type="text"
                   placeholder="4242 4242 4242 4242"
                   maxlength="19"
-                  class="w-full rounded-xl border border-neutral-200 px-4 py-3 pr-16 text-text-primary font-mono placeholder:text-neutral-400 placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                  class="w-full rounded-xl border border-neutral-200 px-4 py-3 pr-16 font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
                   @input="onCardNumberInput"
-                />
+                >
                 <span
                   v-if="cardBrand"
                   class="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded"
@@ -164,68 +407,56 @@ const cardBrand = computed(() => {
               </div>
             </div>
 
-            <!-- Expiration + CVC -->
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm font-medium text-text-secondary mb-1.5">
-                  Date d'expiration
-                </label>
+                <label class="block text-sm font-medium text-text-secondary mb-1.5">Date d'expiration</label>
                 <input
                   :value="cardExpiry"
                   type="text"
                   placeholder="MM/AA"
                   maxlength="5"
-                  class="w-full rounded-xl border border-neutral-200 px-4 py-3 text-text-primary font-mono placeholder:text-neutral-400 placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                  class="w-full rounded-xl border border-neutral-200 px-4 py-3 font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
                   @input="onExpiryInput"
-                />
+                >
               </div>
               <div>
-                <label class="block text-sm font-medium text-text-secondary mb-1.5">
-                  CVC
-                </label>
-                <div class="relative">
-                  <input
-                    :value="cardCvc"
-                    type="text"
-                    placeholder="123"
-                    maxlength="3"
-                    class="w-full rounded-xl border border-neutral-200 px-4 py-3 pr-10 text-text-primary font-mono placeholder:text-neutral-400 placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
-                    @input="onCvcInput"
-                  />
-                  <svg class="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                </div>
+                <label class="block text-sm font-medium text-text-secondary mb-1.5">CVC</label>
+                <input
+                  :value="cardCvc"
+                  type="text"
+                  placeholder="123"
+                  maxlength="3"
+                  class="w-full rounded-xl border border-neutral-200 px-4 py-3 font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  @input="onCvcInput"
+                >
               </div>
             </div>
 
-            <!-- Message d'erreur -->
-            <Transition name="slide-down">
+            <Transition name="fade">
               <div
                 v-if="paymentState === 'error'"
                 class="mt-5 flex items-start gap-3 rounded-xl bg-error/5 border border-error/20 p-4"
               >
                 <svg class="w-5 h-5 text-error mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
                 </svg>
                 <div>
                   <p class="text-sm font-medium text-error">Paiement refusé</p>
                   <p class="text-sm text-text-muted mt-0.5">Votre carte a été refusée. Vérifiez les informations ou utilisez une autre carte.</p>
                   <button
-                    class="mt-2 text-sm font-medium text-primary-600 hover:text-primary-700 underline underline-offset-2"
+                    class="mt-2 text-sm font-medium text-primary-600 hover:text-primary-700 underline"
                     @click="retryPayment"
                   >
-                    Réessayer avec une autre carte
+                    Réessayer
                   </button>
                 </div>
               </div>
             </Transition>
 
-            <!-- Bouton payer -->
             <button
-              class="mt-6 w-full rounded-xl py-4 font-semibold text-white transition-all flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+              class="mt-6 w-full rounded-xl py-4 font-semibold text-white transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
               :class="paymentState === 'loading' ? 'bg-primary-400' : 'bg-primary-600 hover:bg-primary-700 active:scale-[.99]'"
-              :disabled="paymentState === 'loading'"
+              :disabled="!formComplete || paymentState === 'loading'"
               @click="submitPayment"
             >
               <svg
@@ -234,11 +465,8 @@ const cardBrand = computed(() => {
                 fill="none"
                 viewBox="0 0 24 24"
               >
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-              </svg>
-              <svg v-else class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
               {{ paymentState === 'loading' ? 'Traitement en cours…' : `Payer ${total.toFixed(2)} €` }}
             </button>
@@ -248,51 +476,37 @@ const cardBrand = computed(() => {
               <code class="bg-neutral-100 px-1 rounded">4242 4242 4242 0000</code> → échec
             </p>
           </div>
-
-          <!-- Logos sécurité -->
-          <div class="flex items-center justify-center gap-6 py-2">
-            <span class="text-xs text-neutral-400 flex items-center gap-1.5">
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
-              SSL 256-bit
-            </span>
-            <span class="text-xs text-neutral-400">Visa</span>
-            <span class="text-xs text-neutral-400">Mastercard</span>
-            <span class="text-xs text-neutral-400">Amex</span>
-          </div>
         </div>
 
-        <!-- Résumé commande (2/5) -->
+        <!-- Summary (2/5) -->
         <div class="lg:col-span-2">
           <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6 sticky top-6">
             <h2 class="font-semibold text-text-primary mb-5">Résumé de commande</h2>
 
-            <!-- Articles -->
             <div class="space-y-3 mb-5">
               <div
-                v-for="item in cartItems"
-                :key="item.name"
+                v-for="item in items"
+                :key="item.productId"
                 class="flex items-center gap-3"
               >
-                <span class="text-2xl">{{ item.image }}</span>
+                <div class="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+                  <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
+                  </svg>
+                </div>
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-medium text-text-primary truncate">{{ item.name }}</p>
-                  <p class="text-xs text-text-muted">Qté : {{ item.qty }}</p>
+                  <p class="text-xs text-text-muted">
+                    Qté {{ item.quantity }}
+                    <span v-if="item.pricingType === 'tiered'"> · {{ item.durationValue }} {{ item.durationUnit === 'hourly' ? 'h' : item.durationUnit === 'daily' ? 'jour(s)' : 'sem.' }}</span>
+                  </p>
                 </div>
                 <span class="text-sm font-semibold text-text-primary whitespace-nowrap">
-                  {{ (item.price * item.qty).toFixed(2) }} €
+                  {{ linePrice(item).toFixed(2) }} €
                 </span>
               </div>
             </div>
 
-            <!-- Durée de location -->
-            <div class="flex items-center gap-2 rounded-lg bg-primary-50 border border-primary-100 px-3 py-2 mb-5">
-              <svg class="w-4 h-4 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-              </svg>
-              <span class="text-sm text-primary-700 font-medium">Location {{ rentalDays }} jours</span>
-            </div>
-
-            <!-- Totaux -->
             <div class="space-y-2 pt-4 border-t border-neutral-100">
               <div class="flex justify-between text-sm text-text-secondary">
                 <span>Sous-total</span>
@@ -309,16 +523,12 @@ const cardBrand = computed(() => {
             </div>
           </div>
         </div>
-
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
-
-.slide-down-enter-active { transition: all 0.3s ease; }
-.slide-down-enter-from { opacity: 0; transform: translateY(-8px); }
 </style>
