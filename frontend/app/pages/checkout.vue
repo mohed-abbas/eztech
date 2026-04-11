@@ -287,23 +287,13 @@ function retryPayment() {
 
             <!-- Saved mode -->
             <div v-if="addressMode === 'saved'" class="space-y-2">
-              <label
+              <AddressCard
                 v-for="addr in savedAddresses"
                 :key="addr.id"
-                class="flex gap-3 p-3 rounded-xl border cursor-pointer transition-colors"
-                :class="selectedSavedId === addr.id ? 'border-primary-500 bg-primary-50' : 'border-neutral-200 hover:bg-neutral-50'"
-              >
-                <input
-                  v-model="selectedSavedId"
-                  type="radio"
-                  :value="addr.id"
-                  class="mt-1 accent-primary-600"
-                >
-                <div class="flex-1">
-                  <p class="font-medium text-text-primary text-sm">{{ addr.label }}</p>
-                  <p class="text-sm text-text-muted">{{ addr.street }}, {{ addr.zipCode }} {{ addr.city }}</p>
-                </div>
-              </label>
+                :address="addr"
+                :selected="selectedSavedId === addr.id"
+                @select="(id) => selectedSavedId = id"
+              />
               <p v-if="savedAddresses.length === 0" class="text-sm text-text-muted">
                 Aucune adresse enregistrée. Passez en saisie manuelle.
               </p>
@@ -353,22 +343,11 @@ function retryPayment() {
             <p v-if="geoError" class="mt-3 text-sm text-error">{{ geoError }}</p>
 
             <!-- Zone feedback -->
-            <div v-if="zoneResult" class="mt-4 rounded-xl p-3 flex items-start gap-2" :class="zoneResult.inZone ? 'bg-success/5 border border-success/20' : 'bg-error/5 border border-error/20'">
-              <svg v-if="zoneResult.inZone" class="w-5 h-5 text-success shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-              </svg>
-              <svg v-else class="w-5 h-5 text-error shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
-              </svg>
-              <div class="text-sm">
-                <p v-if="zoneResult.inZone" class="font-medium text-success">
-                  Livraison disponible — zone {{ zoneResult.zoneName }}
-                </p>
-                <div v-else>
-                  <p class="font-medium text-error">Service non disponible dans votre zone</p>
-                  <p class="text-text-muted">Nous couvrons actuellement Paris Centre et Paris Est.</p>
-                </div>
-              </div>
+            <div v-if="zoneResult" class="mt-4">
+              <ZoneBadge :in-zone="zoneResult.inZone" :zone-name="zoneResult.zoneName" />
+              <p v-if="!zoneResult.inZone" class="text-xs text-text-muted mt-2">
+                Nous couvrons actuellement Paris Centre et Paris Est.
+              </p>
             </div>
           </div>
 
@@ -484,47 +463,44 @@ function retryPayment() {
 
         <!-- Summary (2/5) -->
         <div class="lg:col-span-2">
-          <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6 sticky top-6">
-            <h2 class="font-semibold text-text-primary mb-5">Résumé de commande</h2>
-
-            <div class="space-y-3 mb-5">
-              <div
-                v-for="item in items"
-                :key="item.productId"
-                class="flex items-center gap-3"
-              >
-                <div class="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
-                  <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
-                  </svg>
+          <div class="sticky top-6 space-y-4">
+            <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
+              <h2 class="font-semibold text-text-primary mb-5">
+                Articles
+              </h2>
+              <div class="space-y-3">
+                <div
+                  v-for="item in items"
+                  :key="item.productId"
+                  class="flex items-center gap-3"
+                >
+                  <div class="w-10 h-10 rounded-lg bg-primary-50 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
+                    </svg>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-text-primary truncate">
+                      {{ item.name }}
+                    </p>
+                    <p class="text-xs text-text-muted">
+                      Qté {{ item.quantity }}
+                      <span v-if="item.pricingType === 'tiered'"> · {{ item.durationValue }} {{ item.durationUnit === 'hourly' ? 'h' : item.durationUnit === 'daily' ? 'jour(s)' : 'sem.' }}</span>
+                    </p>
+                  </div>
+                  <span class="text-sm font-semibold text-text-primary whitespace-nowrap">
+                    {{ linePrice(item).toFixed(2) }} €
+                  </span>
                 </div>
-                <div class="flex-1 min-w-0">
-                  <p class="text-sm font-medium text-text-primary truncate">{{ item.name }}</p>
-                  <p class="text-xs text-text-muted">
-                    Qté {{ item.quantity }}
-                    <span v-if="item.pricingType === 'tiered'"> · {{ item.durationValue }} {{ item.durationUnit === 'hourly' ? 'h' : item.durationUnit === 'daily' ? 'jour(s)' : 'sem.' }}</span>
-                  </p>
-                </div>
-                <span class="text-sm font-semibold text-text-primary whitespace-nowrap">
-                  {{ linePrice(item).toFixed(2) }} €
-                </span>
               </div>
             </div>
 
-            <div class="space-y-2 pt-4 border-t border-neutral-100">
-              <div class="flex justify-between text-sm text-text-secondary">
-                <span>Sous-total</span>
-                <span>{{ subtotal.toFixed(2) }} €</span>
-              </div>
-              <div class="flex justify-between text-sm text-text-secondary">
-                <span>Frais de livraison</span>
-                <span>{{ deliveryFee.toFixed(2) }} €</span>
-              </div>
-              <div class="flex justify-between font-bold text-text-primary pt-3 border-t border-neutral-100 text-base">
-                <span>Total</span>
-                <span>{{ total.toFixed(2) }} €</span>
-              </div>
-            </div>
+            <PriceSummary
+              title="Total"
+              :subtotal="subtotal"
+              :delivery-fee="deliveryFee"
+              :total="total"
+            />
           </div>
         </div>
       </div>

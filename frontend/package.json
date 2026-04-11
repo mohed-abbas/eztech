@@ -1,5 +1,6 @@
 {
   "name": "eztech",
+  "description": "EzTech — plateforme de location de matériel tech",
   "type": "module",
   "private": true,
   "scripts": {
