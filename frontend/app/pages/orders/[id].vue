@@ -6,7 +6,6 @@ const orderId = route.params.id as string
 
 definePageMeta({ layout: 'default' })
 
-// ─── Données mock commande ─────────────────────────────────────────
 const order = {
   id: orderId,
   date: '23 mars 2026 · 14:18',
@@ -17,7 +16,6 @@ const order = {
   ],
 }
 
-// ─── Timeline steps ────────────────────────────────────────────────
 const timelineSteps: TimelineStep[] = [
   { key: 'passee',            label: '', description: '', timestamp: '14:18' },
   { key: 'en_preparation',    label: '', description: '', timestamp: '14:26' },
@@ -27,10 +25,16 @@ const timelineSteps: TimelineStep[] = [
   { key: 'livree',            label: '', description: '' },
 ]
 
-// Étape courante (démarre à "en_route" = 4)
-const currentStep = ref(4)
+const currentStep = ref(1)
 
-// ─── Livreur ───────────────────────────────────────────────────────
+const leafletMap = ref<{ startAnimation: () => void } | null>(null)
+
+watch(currentStep, (step) => {
+  if (step === 4) {
+    nextTick(() => leafletMap.value?.startAnimation())
+  }
+})
+
 const rider = {
   name: 'Thomas Moreau',
   emoji: '🧑',
@@ -40,9 +44,8 @@ const rider = {
   phone: '+33 6 12 34 56 78',
 }
 
-// ─── Carte Leaflet ────────────────────────────────────────────────
-const WAREHOUSE: [number, number]  = [48.8447, 2.3799]  // Gare de Lyon
-const DESTINATION: [number, number] = [48.8584, 2.2945]  // Tour Eiffel
+const WAREHOUSE: [number, number]  = [48.8447, 2.3799]
+const DESTINATION: [number, number] = [48.8584, 2.2945]
 const ROUTE: [number, number][] = [
   [48.8447, 2.3799],
   [48.8461, 2.3712],
@@ -56,35 +59,37 @@ const ROUTE: [number, number][] = [
   [48.8584, 2.2945],
 ]
 const MAP_CENTER: [number, number] = [48.8515, 2.3372]
-const INITIAL_ETA = 18 * 60  // 18 minutes en secondes
+const INITIAL_ETA = 18 * 60
 
-// ETA affiché en minutes (déduit depuis le composant via le temps écoulé)
 const etaMinutes = ref(18)
 onMounted(() => {
+  ;[2, 3, 4].forEach((step, i) => {
+    setTimeout(() => { currentStep.value = step }, (i + 1) * 5_000)
+  })
+
   const iv = setInterval(() => {
     if (etaMinutes.value > 0) etaMinutes.value--
     else clearInterval(iv)
   }, 60_000)
 })
 
-// Réagir à la fin de la livraison
 function onDeliveryComplete() {
   currentStep.value = 5
   etaMinutes.value = 0
 }
 
-// ─── État appel livreur ────────────────────────────────────────────
 const calling = ref(false)
 function callRider() {
   calling.value = true
   setTimeout(() => { calling.value = false }, 2500)
 }
+
+const mapOpen = ref(true)
 </script>
 
 <template>
   <div class="min-h-screen bg-neutral-50">
 
-    <!-- ── Barre de navigation ───────────────────────────────── -->
     <header class="sticky top-0 z-30 flex items-center gap-3 border-b border-neutral-100 bg-white/90 backdrop-blur-md px-4 py-3">
       <NuxtLink
         to="/orders"
@@ -100,7 +105,6 @@ function callRider() {
         <p class="text-[11px] text-text-muted">{{ order.date }}</p>
       </div>
 
-      <!-- Badge statut live -->
       <div
         class="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
         :class="currentStep === 5
@@ -111,24 +115,26 @@ function callRider() {
           class="w-1.5 h-1.5 rounded-full"
           :class="currentStep === 5 ? 'bg-success' : 'bg-primary-500 animate-pulse'"
         />
-        {{ currentStep === 5 ? 'Livrée' : 'En route' }}
+        {{
+          currentStep === 5 ? 'Livrée' :
+          currentStep === 4 ? 'En route' :
+          currentStep === 3 ? 'Commande récupérée' :
+          currentStep === 2 ? 'Livreur assigné' :
+          'En préparation'
+        }}
       </div>
     </header>
 
-    <!-- ── Contenu principal ─────────────────────────────────── -->
     <div class="max-w-5xl mx-auto px-4 py-6 space-y-5">
 
-      <!-- ── ETA Hero ──────────────────────────────────────────── -->
       <div
         v-if="currentStep < 5"
         class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 p-5 text-white"
       >
-        <!-- Cercles décoratifs -->
         <div class="pointer-events-none absolute -top-8 -right-8 w-40 h-40 rounded-full bg-white/5" />
         <div class="pointer-events-none absolute -bottom-12 -right-4 w-56 h-56 rounded-full bg-white/5" />
 
         <div class="relative flex items-center gap-5">
-          <!-- Compteur ETA -->
           <div class="shrink-0 text-center">
             <p class="text-5xl font-black tabular-nums leading-none">{{ etaMinutes }}</p>
             <p class="text-xs font-medium text-white/60 uppercase tracking-widest mt-1">minutes</p>
@@ -136,7 +142,6 @@ function callRider() {
 
           <div class="w-px h-12 bg-white/20" />
 
-          <!-- Infos -->
           <div class="flex-1 min-w-0">
             <p class="text-xs font-semibold text-white/60 uppercase tracking-wider mb-1">Arrivée estimée</p>
             <p class="font-bold text-base leading-tight truncate">{{ order.address }}</p>
@@ -144,7 +149,6 @@ function callRider() {
         </div>
       </div>
 
-      <!-- ── Succès livraison ─────────────────────────────────── -->
       <div
         v-else
         class="flex items-center gap-4 rounded-2xl bg-success/10 border border-success/20 p-5"
@@ -160,10 +164,8 @@ function callRider() {
         </div>
       </div>
 
-      <!-- ── Layout : Timeline + Carte ───────────────────────── -->
       <div class="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
-        <!-- Timeline (2/5) -->
         <div class="lg:col-span-2">
           <div class="rounded-2xl bg-white border border-neutral-200 shadow-sm p-5">
             <div class="flex items-center justify-between mb-5">
@@ -179,7 +181,6 @@ function callRider() {
             />
           </div>
 
-          <!-- Récapitulatif commande -->
           <div class="mt-4 rounded-2xl bg-white border border-neutral-200 shadow-sm p-5">
             <h2 class="font-bold text-sm text-text-primary mb-3">Récapitulatif</h2>
             <div class="space-y-2.5">
@@ -201,42 +202,58 @@ function callRider() {
           </div>
         </div>
 
-        <!-- Carte + Livreur (3/5) -->
         <div class="lg:col-span-3 space-y-4">
 
-          <!-- Carte Leaflet -->
           <div class="rounded-2xl bg-white border border-neutral-200 shadow-sm overflow-hidden">
             <div class="flex items-center justify-between px-5 py-3.5 border-b border-neutral-100">
               <h2 class="font-bold text-sm text-text-primary">Localisation en direct</h2>
-              <div class="flex items-center gap-1.5 text-[11px] text-success font-medium">
-                <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                Temps réel
+              <div class="flex items-center gap-3">
+                <div class="flex items-center gap-1.5 text-[11px] text-success font-medium">
+                  <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+                  Temps réel
+                </div>
+                <button
+                  class="lg:hidden flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-50 px-2.5 py-1.5 text-[11px] font-semibold text-text-secondary hover:bg-neutral-100 transition-colors active:scale-95"
+                  @click="mapOpen = !mapOpen"
+                >
+                  <svg
+                    class="w-3.5 h-3.5 transition-transform duration-300"
+                    :class="mapOpen ? 'rotate-180' : 'rotate-0'"
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                  {{ mapOpen ? 'Replier' : 'Voir la carte' }}
+                </button>
               </div>
             </div>
 
-            <LeafletMap
-              :center="MAP_CENTER"
-              :zoom="13"
-              :route="ROUTE"
-              :warehouse-pos="WAREHOUSE"
-              :destination-pos="DESTINATION"
-              :animate-rider="true"
-              :auto-center="true"
-              :initial-eta="INITIAL_ETA"
-              height="380px"
-              @delivery-complete="onDeliveryComplete"
-            />
+            <div
+              class="overflow-hidden transition-all duration-500 ease-in-out"
+              :style="{ maxHeight: mapOpen ? '420px' : '0px' }"
+            >
+              <LeafletMap
+                ref="leafletMap"
+                :center="MAP_CENTER"
+                :zoom="13"
+                :route="ROUTE"
+                :warehouse-pos="WAREHOUSE"
+                :destination-pos="DESTINATION"
+                :animate-rider="true"
+                :auto-center="true"
+                :initial-eta="INITIAL_ETA"
+                height="380px"
+                @delivery-complete="onDeliveryComplete"
+              />
+            </div>
           </div>
 
-          <!-- Carte livreur -->
           <div class="rounded-2xl bg-white border border-neutral-200 shadow-sm p-4">
             <div class="flex items-center gap-4">
-              <!-- Avatar -->
               <div class="w-14 h-14 rounded-xl bg-primary-50 flex items-center justify-center text-3xl shrink-0">
                 {{ rider.emoji }}
               </div>
 
-              <!-- Infos -->
               <div class="flex-1 min-w-0">
                 <p class="font-bold text-text-primary">{{ rider.name }}</p>
                 <div class="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -250,7 +267,6 @@ function callRider() {
                 </div>
               </div>
 
-              <!-- Bouton appel -->
               <button
                 class="flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all active:scale-[.97]"
                 :class="calling

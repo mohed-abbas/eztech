@@ -218,56 +218,61 @@ async function initMap() {
       dashArray: '10, 6',
     }).addTo(mapInstance)
 
-    // Marqueur livreur au départ
+    // Marqueur livreur au départ (positionné mais immobile)
     riderMarker = L.marker(props.route[0], { icon: createRiderIcon(L) })
       .addTo(mapInstance)
       .bindPopup('<strong>Livreur EzTech</strong><br>En route vers vous ⚡')
-
-    // Animation du livreur
-    if (props.animateRider && props.route.length > 1) {
-      let stepIdx = 0
-
-      // ETA countdown
-      if (props.initialEta > 0) {
-        const perStep = Math.floor(props.initialEta / props.route.length)
-        etaInterval = setInterval(() => {
-          etaSeconds.value = Math.max(0, etaSeconds.value - perStep)
-        }, 2500)
-      }
-
-      animInterval = setInterval(() => {
-        stepIdx = (stepIdx + 1) % props.route.length
-        const newPos = props.route[stepIdx] as LatLngExpression
-
-        if (riderMarker) {
-          riderMarker.setLatLng(newPos)
-        }
-
-        if (mapInstance) {
-          if (props.autoCenter) {
-            // Centrage fluide sur le livreur
-            mapInstance.flyTo(newPos, mapInstance.getZoom(), {
-              animate: true,
-              duration: 0.8,
-            })
-          } else {
-            mapInstance.panTo(newPos, { animate: true, duration: 0.5 })
-          }
-        }
-
-        emit('rider-moved', props.route[stepIdx], stepIdx)
-
-        if (stepIdx === props.route.length - 1) {
-          emit('delivery-complete')
-          if (etaInterval) {
-            clearInterval(etaInterval)
-            etaSeconds.value = 0
-          }
-        }
-      }, 2500)
-    }
   }
 }
+
+// Démarre l'animation du livreur — appelé depuis le parent quand l'étape "En route" est atteinte
+function startAnimation() {
+  if (!props.animateRider || props.route.length < 2) return
+  if (animInterval) return // déjà en cours
+
+  let stepIdx = 0
+
+  // ETA countdown
+  if (props.initialEta > 0) {
+    const perStep = Math.floor(props.initialEta / props.route.length)
+    etaInterval = setInterval(() => {
+      etaSeconds.value = Math.max(0, etaSeconds.value - perStep)
+    }, 2500)
+  }
+
+  animInterval = setInterval(async () => {
+    stepIdx = (stepIdx + 1) % props.route.length
+    const newPos = props.route[stepIdx] as LatLngExpression
+
+    if (riderMarker) {
+      riderMarker.setLatLng(newPos)
+    }
+
+    if (mapInstance) {
+      if (props.autoCenter) {
+        mapInstance.flyTo(newPos, mapInstance.getZoom(), {
+          animate: true,
+          duration: 0.8,
+        })
+      } else {
+        mapInstance.panTo(newPos, { animate: true, duration: 0.5 })
+      }
+    }
+
+    emit('rider-moved', props.route[stepIdx], stepIdx)
+
+    if (stepIdx === props.route.length - 1) {
+      emit('delivery-complete')
+      if (animInterval) clearInterval(animInterval)
+      if (etaInterval) {
+        clearInterval(etaInterval)
+        etaSeconds.value = 0
+      }
+    }
+  }, 2500)
+}
+
+defineExpose({ startAnimation })
 
 onMounted(initMap)
 
