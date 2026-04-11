@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import type { RegisterCustomerPayload, RegisterRiderPayload } from '~/composables/useAuth'
+import type { RegisterCustomerPayload, RegisterRiderPayload } from '~/stores/auth'
 
 definePageMeta({
   layout: 'auth',
 })
 
-const { loading, register, isAuthenticated } = useAuth()
+const auth = useAuthStore()
+const { loading, isAuthenticated } = storeToRefs(auth)
+const { register } = auth
 
 // Redirect if already authenticated
 watch(isAuthenticated, (val) => {

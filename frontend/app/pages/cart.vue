@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import type { DurationUnit } from '~/composables/useCart'
+import type { DurationUnit } from '~/stores/cart'
 
 definePageMeta({ layout: 'default', middleware: 'auth' })
 
-const { items, subtotal, deliveryFee, total, isEmpty, addItem, removeItem, updateQuantity, updateDuration, linePrice } = useCart()
+const cart = useCartStore()
+cart.hydrate()
+const { items, subtotal, deliveryFee, total, isEmpty } = storeToRefs(cart)
+const { addItem, removeItem, updateQuantity, updateDuration, linePrice } = cart
 
 async function seedDemo() {
   const products = (await import('~/data/mock/products.json')).default as Array<{

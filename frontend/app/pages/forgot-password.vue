@@ -3,7 +3,9 @@ definePageMeta({
   layout: 'auth',
 })
 
-const { loading, forgotPassword } = useAuth()
+const auth = useAuthStore()
+const { loading } = storeToRefs(auth)
+const { forgotPassword } = auth
 
 const email = ref('')
 const emailError = ref('')

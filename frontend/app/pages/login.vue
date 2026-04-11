@@ -10,7 +10,9 @@ useHead({
   ],
 })
 
-const { user, login, logout, loading, isAuthenticated } = useAuth()
+const auth = useAuthStore()
+const { user, loading, isAuthenticated } = storeToRefs(auth)
+const { login, logout } = auth
 
 // Form state
 const email = ref('')

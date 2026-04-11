@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import type { Address } from '~/composables/useAuth'
+import type { Address } from '~/stores/auth'
 
 definePageMeta({ layout: 'default', middleware: 'auth' })
 
-const { items, subtotal, deliveryFee, total, isEmpty, clearCart, linePrice } = useCart()
-const { user } = useAuth()
+const cart = useCartStore()
+cart.hydrate()
+const { items, subtotal, deliveryFee, total, isEmpty } = storeToRefs(cart)
+const { clearCart, linePrice } = cart
+const auth = useAuthStore()
+const { user } = storeToRefs(auth)
 const { check: checkZone } = useServiceZone()
 const router = useRouter()
 

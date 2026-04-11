@@ -10,7 +10,9 @@ useHead({
   ],
 })
 
-const { user, isAuthenticated, logout } = useAuth()
+const auth = useAuthStore()
+const { user, isAuthenticated } = storeToRefs(auth)
+const { logout } = auth
 
 // Fullscreen menu state
 const menuOpen = ref(false)
