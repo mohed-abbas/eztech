@@ -20,7 +20,7 @@ useHead({
 })
 
 const auth = useAuthStore()
-const { user, loading } = storeToRefs(auth)
+const { user } = storeToRefs(auth)
 const { fadeUp, heroFadeUp } = useMotionPresets()
 
 const vehicleOptions = [
