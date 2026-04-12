@@ -74,13 +74,13 @@ function startEditingPersonal() {
   personalForm.name = user.value.name
   personalForm.email = user.value.email
   personalForm.phone = user.value.phone
-  Object.keys(personalErrors).forEach(k => delete personalErrors[k])
+  Object.keys(personalErrors).forEach(k => { personalErrors[k] = '' })
   editingPersonal.value = true
 }
 
 function cancelEditingPersonal() {
   editingPersonal.value = false
-  Object.keys(personalErrors).forEach(k => delete personalErrors[k])
+  Object.keys(personalErrors).forEach(k => { personalErrors[k] = '' })
 }
 
 async function savePersonal() {
@@ -114,7 +114,7 @@ async function savePersonal() {
 }
 
 function clearPersonalError(field: string) {
-  delete personalErrors[field]
+  personalErrors[field] = ''
 }
 
 // ── Addresses (customer) ──
@@ -128,7 +128,7 @@ function startAddAddress() {
   addressForm.street = ''
   addressForm.city = ''
   addressForm.zipCode = ''
-  Object.keys(addressErrors).forEach(k => delete addressErrors[k])
+  Object.keys(addressErrors).forEach(k => { addressErrors[k] = '' })
   editingAddress.value = 'new'
 }
 
@@ -139,13 +139,13 @@ function startEditAddress(id: string) {
   addressForm.street = addr.street
   addressForm.city = addr.city
   addressForm.zipCode = addr.zipCode
-  Object.keys(addressErrors).forEach(k => delete addressErrors[k])
+  Object.keys(addressErrors).forEach(k => { addressErrors[k] = '' })
   editingAddress.value = id
 }
 
 function cancelEditingAddress() {
   editingAddress.value = null
-  Object.keys(addressErrors).forEach(k => delete addressErrors[k])
+  Object.keys(addressErrors).forEach(k => { addressErrors[k] = '' })
 }
 
 async function saveAddress() {
@@ -202,7 +202,7 @@ function removeAddress(id: string) {
 }
 
 function clearAddressError(field: string) {
-  delete addressErrors[field]
+  addressErrors[field] = ''
 }
 
 // ── Vehicle Info (rider) ──
@@ -216,13 +216,13 @@ function startEditingVehicle() {
   vehicleForm.vehicleType = user.value.vehicleType ?? 'bicycle'
   vehicleForm.licenseNumber = user.value.licenseNumber ?? ''
   vehicleForm.insuranceNumber = user.value.insuranceNumber ?? ''
-  Object.keys(vehicleErrors).forEach(k => delete vehicleErrors[k])
+  Object.keys(vehicleErrors).forEach(k => { vehicleErrors[k] = '' })
   editingVehicle.value = true
 }
 
 function cancelEditingVehicle() {
   editingVehicle.value = false
-  Object.keys(vehicleErrors).forEach(k => delete vehicleErrors[k])
+  Object.keys(vehicleErrors).forEach(k => { vehicleErrors[k] = '' })
 }
 
 async function saveVehicle() {
@@ -260,7 +260,7 @@ async function saveVehicle() {
 }
 
 function clearVehicleError(field: string) {
-  delete vehicleErrors[field]
+  vehicleErrors[field] = ''
 }
 
 // ── Security ──
@@ -269,7 +269,7 @@ const securityErrors = reactive<Record<string, string>>({})
 const savingPassword = ref(false)
 
 async function changePassword() {
-  Object.keys(securityErrors).forEach(k => delete securityErrors[k])
+  Object.keys(securityErrors).forEach(k => { securityErrors[k] = '' })
   const result = profilePasswordSchema.safeParse(securityForm)
   if (!result.success) {
     const flat = zodErrorsToRecord(result.error)
@@ -286,7 +286,7 @@ async function changePassword() {
 }
 
 function clearSecurityError(field: string) {
-  delete securityErrors[field]
+  securityErrors[field] = ''
 }
 
 function vehicleIcon(type?: string) {
