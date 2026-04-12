@@ -92,14 +92,25 @@ async function savePersonal() {
   }
   if (!user.value) return
   savingPersonal.value = true
-  await new Promise(r => setTimeout(r, 400))
-  user.value.name = personalForm.name.trim()
-  user.value.email = personalForm.email.trim()
-  user.value.phone = personalForm.phone.trim()
-  auth.persist()
-  savingPersonal.value = false
-  editingPersonal.value = false
-  flashSuccess('Personal information updated.')
+  const snapshot = { name: user.value.name, email: user.value.email, phone: user.value.phone }
+  try {
+    await new Promise(r => setTimeout(r, 400))
+    user.value.name = personalForm.name.trim()
+    user.value.email = personalForm.email.trim()
+    user.value.phone = personalForm.phone.trim()
+    auth.persist()
+    editingPersonal.value = false
+    flashSuccess('Personal information updated.')
+  }
+  catch {
+    user.value.name = snapshot.name
+    user.value.email = snapshot.email
+    user.value.phone = snapshot.phone
+    flashSuccess('Failed to save personal information.')
+  }
+  finally {
+    savingPersonal.value = false
+  }
 }
 
 function clearPersonalError(field: string) {
@@ -146,32 +157,41 @@ async function saveAddress() {
   }
   if (!user.value) return
   savingAddress.value = true
-  await new Promise(r => setTimeout(r, 300))
-
-  if (editingAddress.value === 'new') {
-    user.value.addresses.push({
-      id: `addr_${Date.now()}`,
-      label: addressForm.label.trim(),
-      street: addressForm.street.trim(),
-      city: addressForm.city.trim(),
-      zipCode: addressForm.zipCode.trim(),
-    })
-  }
-  else {
-    const addr = user.value.addresses.find(a => a.id === editingAddress.value)
-    if (addr) {
-      addr.label = addressForm.label.trim()
-      addr.street = addressForm.street.trim()
-      addr.city = addressForm.city.trim()
-      addr.zipCode = addressForm.zipCode.trim()
-    }
-  }
-
+  const snapshotAddresses = user.value.addresses.map(a => ({ ...a }))
   const wasNew = editingAddress.value === 'new'
-  auth.persist()
-  savingAddress.value = false
-  editingAddress.value = null
-  flashSuccess(wasNew ? 'Address added.' : 'Address updated.')
+  try {
+    await new Promise(r => setTimeout(r, 300))
+
+    if (editingAddress.value === 'new') {
+      user.value.addresses.push({
+        id: `addr_${Date.now()}`,
+        label: addressForm.label.trim(),
+        street: addressForm.street.trim(),
+        city: addressForm.city.trim(),
+        zipCode: addressForm.zipCode.trim(),
+      })
+    }
+    else {
+      const addr = user.value.addresses.find(a => a.id === editingAddress.value)
+      if (addr) {
+        addr.label = addressForm.label.trim()
+        addr.street = addressForm.street.trim()
+        addr.city = addressForm.city.trim()
+        addr.zipCode = addressForm.zipCode.trim()
+      }
+    }
+
+    auth.persist()
+    editingAddress.value = null
+    flashSuccess(wasNew ? 'Address added.' : 'Address updated.')
+  }
+  catch {
+    user.value.addresses = snapshotAddresses
+    flashSuccess('Failed to save address.')
+  }
+  finally {
+    savingAddress.value = false
+  }
 }
 
 function removeAddress(id: string) {
@@ -214,14 +234,29 @@ async function saveVehicle() {
   }
   if (!user.value) return
   savingVehicle.value = true
-  await new Promise(r => setTimeout(r, 400))
-  user.value.vehicleType = vehicleForm.vehicleType
-  user.value.licenseNumber = vehicleForm.licenseNumber.trim()
-  user.value.insuranceNumber = vehicleForm.insuranceNumber.trim()
-  auth.persist()
-  savingVehicle.value = false
-  editingVehicle.value = false
-  flashSuccess('Vehicle information updated.')
+  const snapshot = {
+    vehicleType: user.value.vehicleType,
+    licenseNumber: user.value.licenseNumber,
+    insuranceNumber: user.value.insuranceNumber,
+  }
+  try {
+    await new Promise(r => setTimeout(r, 400))
+    user.value.vehicleType = vehicleForm.vehicleType
+    user.value.licenseNumber = vehicleForm.licenseNumber.trim()
+    user.value.insuranceNumber = vehicleForm.insuranceNumber.trim()
+    auth.persist()
+    editingVehicle.value = false
+    flashSuccess('Vehicle information updated.')
+  }
+  catch {
+    user.value.vehicleType = snapshot.vehicleType
+    user.value.licenseNumber = snapshot.licenseNumber
+    user.value.insuranceNumber = snapshot.insuranceNumber
+    flashSuccess('Failed to save vehicle information.')
+  }
+  finally {
+    savingVehicle.value = false
+  }
 }
 
 function clearVehicleError(field: string) {
