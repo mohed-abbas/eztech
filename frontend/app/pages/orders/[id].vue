@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { TimelineStep } from '~/components/DeliveryTimeline.vue'
+import { STEP_CONFIG } from '~/components/DeliveryTimeline.vue'
 
 const route = useRoute()
 const orderId = route.params.id as string
@@ -17,20 +18,24 @@ const order = {
 }
 
 const timelineSteps: TimelineStep[] = [
-  { key: 'passee',            label: '', description: '', timestamp: '14:18' },
-  { key: 'en_preparation',    label: '', description: '', timestamp: '14:26' },
-  { key: 'livreur_assigne',   label: '', description: '', timestamp: '14:41' },
-  { key: 'recuperee',         label: '', description: '', timestamp: '14:55' },
-  { key: 'en_route',          label: '', description: '', timestamp: '15:03' },
-  { key: 'livree',            label: '', description: '' },
+  { key: 'passee',          timestamp: '14:18' },
+  { key: 'en_preparation',  timestamp: '14:26' },
+  { key: 'livreur_assigne', timestamp: '14:41' },
+  { key: 'recuperee',       timestamp: '14:55' },
+  { key: 'en_route',        timestamp: '15:03' },
+  { key: 'livree' },
 ]
 
+const STEP_EN_ROUTE = 4
+const STEP_LIVREE   = 5
+
 const currentStep = ref(1)
+const currentStepLabel = computed(() => STEP_CONFIG[currentStep.value]?.label ?? '')
 
 const leafletMap = ref<{ startAnimation: () => void } | null>(null)
 
 watch(currentStep, (step) => {
-  if (step === 4) {
+  if (step === STEP_EN_ROUTE) {
     nextTick(() => leafletMap.value?.startAnimation())
   }
 })
@@ -44,7 +49,7 @@ const rider = {
   phone: '+33 6 12 34 56 78',
 }
 
-const WAREHOUSE: [number, number]  = [48.8447, 2.3799]
+const WAREHOUSE: [number, number] = [48.8447, 2.3799]
 const DESTINATION: [number, number] = [48.8584, 2.2945]
 const ROUTE: [number, number][] = [
   [48.8447, 2.3799],
@@ -62,9 +67,11 @@ const MAP_CENTER: [number, number] = [48.8515, 2.3372]
 const INITIAL_ETA = 18 * 60
 
 const etaMinutes = ref(18)
+const stepTimeoutIds: ReturnType<typeof setTimeout>[] = []
+
 onMounted(() => {
   ;[2, 3, 4].forEach((step, i) => {
-    setTimeout(() => { currentStep.value = step }, (i + 1) * 5_000)
+    stepTimeoutIds.push(setTimeout(() => { currentStep.value = step }, (i + 1) * 5_000))
   })
 
   const iv = setInterval(() => {
@@ -73,8 +80,12 @@ onMounted(() => {
   }, 60_000)
 })
 
+onUnmounted(() => {
+  stepTimeoutIds.forEach(clearTimeout)
+})
+
 function onDeliveryComplete() {
-  currentStep.value = 5
+  currentStep.value = STEP_LIVREE
   etaMinutes.value = 0
 }
 
@@ -107,28 +118,22 @@ const mapOpen = ref(true)
 
       <div
         class="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold"
-        :class="currentStep === 5
+        :class="currentStep === STEP_LIVREE
           ? 'bg-success/10 text-success'
           : 'bg-primary-50 text-primary-700'"
       >
         <span
           class="w-1.5 h-1.5 rounded-full"
-          :class="currentStep === 5 ? 'bg-success' : 'bg-primary-500 animate-pulse'"
+          :class="currentStep === STEP_LIVREE ? 'bg-success' : 'bg-primary-500 animate-pulse'"
         />
-        {{
-          currentStep === 5 ? 'Livrée' :
-          currentStep === 4 ? 'En route' :
-          currentStep === 3 ? 'Commande récupérée' :
-          currentStep === 2 ? 'Livreur assigné' :
-          'En préparation'
-        }}
+        {{ currentStepLabel }}
       </div>
     </header>
 
     <div class="max-w-5xl mx-auto px-4 py-6 space-y-5">
 
       <div
-        v-if="currentStep < 5"
+        v-if="currentStep < STEP_LIVREE"
         class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-600 to-primary-800 p-5 text-white"
       >
         <div class="pointer-events-none absolute -top-8 -right-8 w-40 h-40 rounded-full bg-white/5" />

@@ -78,12 +78,6 @@ function createRiderIcon(L: typeof import('leaflet')) {
           border-radius:50%;
         "></div>
       </div>
-      <style>
-        @keyframes riderPulse {
-          0%,100%{transform:scale(1);opacity:0.6}
-          50%{transform:scale(1.3);opacity:0.2}
-        }
-      </style>
     `,
     className: '',
     iconSize: [46, 46],
@@ -219,7 +213,7 @@ async function initMap() {
     }).addTo(mapInstance)
 
     // Marqueur livreur au départ (positionné mais immobile)
-    riderMarker = L.marker(props.route[0], { icon: createRiderIcon(L) })
+    riderMarker = L.marker(props.route[0]!, { icon: createRiderIcon(L) })
       .addTo(mapInstance)
       .bindPopup('<strong>Livreur EzTech</strong><br>En route vers vous ⚡')
   }
@@ -259,7 +253,7 @@ function startAnimation() {
       }
     }
 
-    emit('rider-moved', props.route[stepIdx], stepIdx)
+    emit('rider-moved', props.route[stepIdx]!, stepIdx)
 
     if (stepIdx === props.route.length - 1) {
       emit('delivery-complete')
@@ -315,3 +309,10 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
+
+<style>
+@keyframes riderPulse {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50%       { transform: scale(1.3); opacity: 0.2; }
+}
+</style>

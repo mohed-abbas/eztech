@@ -1,13 +1,11 @@
 <script setup lang="ts">
 export interface TimelineStep {
   key: string
-  label: string
-  description: string
   timestamp?: string
 }
 
 interface Props {
-  currentStep: number // 0 = passée … 5 = livrée
+  currentStep: number
   steps?: TimelineStep[]
 }
 
@@ -15,10 +13,9 @@ const props = withDefaults(defineProps<Props>(), {
   currentStep: 0,
 })
 
-// ─── Configuration visuelle de chaque étape ───────────────────────
-const STEP_CONFIG = [
+export const STEP_CONFIG = [
   {
-    color: '#10B981',      // emerald
+    color: '#10B981',
     bg: '#ECFDF5',
     ring: 'rgba(16,185,129,.25)',
     label: 'Commande passée',
@@ -27,7 +24,7 @@ const STEP_CONFIG = [
     number: '01',
   },
   {
-    color: '#F59E0B',      // amber
+    color: '#F59E0B',
     bg: '#FFFBEB',
     ring: 'rgba(245,158,11,.25)',
     label: 'En préparation',
@@ -36,7 +33,7 @@ const STEP_CONFIG = [
     number: '02',
   },
   {
-    color: '#6366F1',      // indigo
+    color: '#6366F1',
     bg: '#EEF2FF',
     ring: 'rgba(99,102,241,.25)',
     label: 'Livreur assigné',
@@ -45,7 +42,7 @@ const STEP_CONFIG = [
     number: '03',
   },
   {
-    color: '#3B82F6',      // blue
+    color: '#3B82F6',
     bg: '#EFF6FF',
     ring: 'rgba(59,130,246,.25)',
     label: 'Commande récupérée',
@@ -54,7 +51,7 @@ const STEP_CONFIG = [
     number: '04',
   },
   {
-    color: '#7C3AED',      // violet brand
+    color: '#7C3AED',
     bg: '#F5F3FF',
     ring: 'rgba(124,58,237,.35)',
     label: 'En route',
@@ -63,7 +60,7 @@ const STEP_CONFIG = [
     number: '05',
   },
   {
-    color: '#10B981',      // emerald
+    color: '#10B981',
     bg: '#ECFDF5',
     ring: 'rgba(16,185,129,.25)',
     label: 'Livrée',
@@ -81,15 +78,12 @@ function status(i: number): 'completed' | 'active' | 'pending' {
   return 'pending'
 }
 
-// Hauteur de la ligne de progression (rail)
 const railFill = computed(() => {
   if (props.currentStep === 0) return '0%'
   if (props.currentStep >= TOTAL - 1) return '100%'
-  // Position entre deux steps (icône centres à 20px du top de chaque row, rows ~88px)
   return `${(props.currentStep / (TOTAL - 1)) * 100}%`
 })
 
-// Steps résolus (props ou config par défaut)
 const resolvedSteps = computed(() =>
   STEP_CONFIG.map((cfg, i) => ({
     ...cfg,
