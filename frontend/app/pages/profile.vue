@@ -776,7 +776,7 @@ function vehicleIcon(type?: string) {
                 <p class="mb-4 text-body-sm text-text-muted">
                   Once you delete your account, all your data, orders, and rental history will be permanently removed. This action cannot be undone.
                 </p>
-                <Button variant="destructive" size="pill-sm">
+                <Button variant="destructive" size="pill-sm" disabled title="Account deletion coming in Phase 2">
                   <Icon name="ph:trash" class="size-4" />
                   Delete account
                 </Button>
