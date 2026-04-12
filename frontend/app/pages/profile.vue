@@ -29,14 +29,17 @@ const vehicleOptions = [
   { value: 'car', label: 'Car', icon: 'ph:car' },
 ] as const
 
-const initials = computed(() =>
-  user.value?.name
+const initials = computed(() => {
+  const name = user.value?.name?.trim()
+  if (!name) return '?'
+  return name
     .split(' ')
+    .filter(Boolean)
     .map(w => w[0])
     .join('')
     .slice(0, 2)
-    .toUpperCase() ?? '?',
-)
+    .toUpperCase()
+})
 
 const memberSince = computed(() => {
   if (!user.value?.createdAt) return ''
