@@ -6,12 +6,6 @@ const added = ref(false)
 const quantity = ref(1)
 const activeImageIndex = ref(0)
 
-watch(() => product.value?.stock, (stock) => {
-  if (stock !== undefined && stock < quantity.value) {
-    quantity.value = Math.max(1, stock)
-  }
-})
-
 type Product = {
   id: string
   slug?: string
@@ -29,6 +23,12 @@ type Product = {
 }
 
 const { data: product, status, error } = await useFetch<Product>(`/api/products/${productId}`)
+
+watch(() => product.value?.stock, (stock) => {
+  if (stock !== undefined && stock < quantity.value) {
+    quantity.value = Math.max(1, stock)
+  }
+})
 
 useHead({
   title: computed(() => product.value ? `${product.value.name} - EzTech` : 'Produit - EzTech'),
