@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { loginSchema, zodErrorsToRecord } from '~/lib/schemas'
+
 definePageMeta({
   layout: 'auth',
 })
@@ -10,8 +12,7 @@ useHead({
   ],
 })
 
-import { loginSchema, zodErrorsToRecord } from '~/lib/schemas'
-
+const route = useRoute()
 const auth = useAuthStore()
 const { user, loading, isAuthenticated } = storeToRefs(auth)
 const { login, logout } = auth
@@ -60,7 +61,8 @@ async function handleSubmit() {
 
   try {
     await login(email.value.trim(), password.value)
-    await navigateTo('/')
+    const redirect = route.query.redirect as string | undefined
+    await navigateTo(redirect || '/products')
   }
   catch (err: unknown) {
     if (err instanceof Error) {
@@ -90,17 +92,18 @@ function handleGoogleOAuth() {
       <p class="text-body-sm text-text-muted">{{ user?.email }} &middot; {{ user?.role }}</p>
       <div class="mt-6 flex flex-col gap-3">
         <NuxtLink to="/">
-          <span class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize">
+          <Button variant="gradient" size="pill" class="w-full">
             Go to Home
-          </span>
+          </Button>
         </NuxtLink>
-        <button
-          type="button"
-          class="w-full rounded-full border border-neutral-200 bg-white px-6 py-2.5 text-body-sm font-medium text-error hover:bg-error/5 transition-colors"
+        <Button
+          variant="outline"
+          size="pill-sm"
+          class="w-full text-error hover:bg-error/5"
           @click="logout()"
         >
           Log out
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -136,7 +139,7 @@ function handleGoogleOAuth() {
         <label for="login-email" class="text-body-sm font-medium text-neutral-800">
           Email
         </label>
-        <input
+        <Input
           id="login-email"
           v-model="email"
           type="email"
@@ -144,13 +147,9 @@ function handleGoogleOAuth() {
           autocomplete="email"
           :aria-invalid="!!errors.email || undefined"
           :aria-describedby="errors.email ? 'login-email-error' : undefined"
-          :class="[
-            'bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-            errors.email ? 'border-error focus:border-error focus:ring-error/20' : '',
-          ]"
           @input="clearFieldError('email')"
           @blur="validateEmail"
-        >
+        />
         <p
           v-if="errors.email"
           id="login-email-error"
@@ -174,7 +173,7 @@ function handleGoogleOAuth() {
             Forgot password?
           </NuxtLink>
         </div>
-        <input
+        <Input
           id="login-password"
           v-model="password"
           type="password"
@@ -182,13 +181,9 @@ function handleGoogleOAuth() {
           autocomplete="current-password"
           :aria-invalid="!!errors.password || undefined"
           :aria-describedby="errors.password ? 'login-password-error' : undefined"
-          :class="[
-            'bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-            errors.password ? 'border-error focus:border-error focus:ring-error/20' : '',
-          ]"
           @input="clearFieldError('password')"
           @blur="validatePassword"
-        >
+        />
         <p
           v-if="errors.password"
           id="login-password-error"
@@ -200,10 +195,12 @@ function handleGoogleOAuth() {
       </div>
 
       <!-- Submit button -->
-      <button
+      <Button
         type="submit"
+        variant="gradient"
+        size="pill"
+        class="w-full"
         :disabled="loading"
-        class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <svg
           v-if="loading"
@@ -217,7 +214,7 @@ function handleGoogleOAuth() {
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
         {{ loading ? 'Signing in...' : 'Sign in' }}
-      </button>
+      </Button>
     </form>
 
     <!-- Separator -->
@@ -228,9 +225,10 @@ function handleGoogleOAuth() {
     </div>
 
     <!-- Google OAuth button -->
-    <button
-      type="button"
-      class="btn-glass bg-white w-full flex items-center justify-center gap-3 rounded-full px-6 py-2.5 text-body-sm font-medium text-text-primary capitalize"
+    <Button
+      variant="glass"
+      size="pill-sm"
+      class="w-full gap-3"
       @click="handleGoogleOAuth"
     >
       <svg
@@ -245,7 +243,7 @@ function handleGoogleOAuth() {
         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
       </svg>
       Continue with Google
-    </button>
+    </Button>
 
     <!-- Footer link -->
     <p class="mt-8 text-center text-body-sm text-text-muted">
@@ -259,7 +257,7 @@ function handleGoogleOAuth() {
     </p>
 
     <!-- Dev credentials hint -->
-    <div class="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+    <Card class="mt-6 rounded-xl bg-neutral-50 p-4">
       <p class="text-caption font-semibold text-text-secondary mb-2">
         Test credentials
       </p>
@@ -268,7 +266,7 @@ function handleGoogleOAuth() {
         <p><span class="font-medium text-text-secondary">Rider:</span> lucas@example.com / password123</p>
         <p><span class="font-medium text-text-secondary">Admin:</span> admin@eztech.fr / admin123</p>
       </div>
-    </div>
+    </Card>
     </template>
   </div>
 </template>

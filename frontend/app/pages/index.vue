@@ -5,6 +5,12 @@
 // level so the navbar and the rest of the page don't fight over z-index.
 definePageMeta({ layout: false })
 
+const auth = useAuthStore()
+auth.hydrate()
+if (auth.isAuthenticated) {
+  navigateTo('/products', { replace: true })
+}
+
 useHead({
   title: 'EzTech — Rent Premium. Deliver Smart.',
   meta: [
