@@ -55,21 +55,19 @@ const rightCards = computed(() => featuredProducts.slice(2, 4))
           class="hero-composite relative mt-10 w-full h-[420px] sm:h-[500px] lg:h-[595px]"
         >
           <div class="hero-cards-left hidden md:flex items-start gap-[25px] absolute z-0">
-            <LandingProductCard
+            <LandingHeroProductCard
               v-for="(product, idx) in leftCards"
               :key="product.name"
               :product="product"
-              variant="hero"
               :class="idx === 0 ? 'hidden lg:flex' : ''"
             />
           </div>
 
           <div class="hero-cards-right hidden md:flex items-start gap-[25px] absolute z-0">
-            <LandingProductCard
+            <LandingHeroProductCard
               v-for="(product, idx) in rightCards"
               :key="product.name"
               :product="product"
-              variant="hero"
               :class="idx === 1 ? 'hidden lg:flex' : ''"
             />
           </div>

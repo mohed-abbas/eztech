@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Featured equipment grid. Reuses LandingProductCard with the "featured"
-// variant — same data source as the hero cards, different visual treatment.
+// Featured equipment grid. Uses the generic ProductCard so the same
+// component can be reused by the catalog, search, and cart views.
 const { featuredProducts } = useLandingContent()
 const { fadeUp } = useMotionPresets()
 </script>
@@ -27,12 +27,11 @@ const { fadeUp } = useMotionPresets()
       </div>
 
       <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <LandingProductCard
+        <ProductCard
           v-for="(product, idx) in featuredProducts"
           :key="product.name"
           v-motion="fadeUp(idx * 80)"
           :product="product"
-          variant="featured"
         />
       </div>
     </div>
