@@ -3,7 +3,7 @@
 // under app/components/landing/ — this file just stitches them together
 // in the right order and keeps the menu open/closed state at the top
 // level so the navbar and the rest of the page don't fight over z-index.
-definePageMeta({ layout: false })
+definePageMeta({ layout: false, middleware: 'guest' })
 
 useHead({
   title: 'EzTech — Rent Premium. Deliver Smart.',

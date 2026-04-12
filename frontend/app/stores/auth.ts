@@ -200,11 +200,6 @@ export const useAuthStore = defineStore('auth', {
 
         if (isMock.value) {
           await new Promise(r => setTimeout(r, 800))
-          const mockUsers = (await import('~/data/mock/users.json')).default
-          const exists = mockUsers.some((u: { email: string }) => u.email === email)
-          if (!exists) {
-            throw new Error('Aucun compte trouvé avec cet email.')
-          }
           return
         }
 
