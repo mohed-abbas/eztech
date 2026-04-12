@@ -231,6 +231,8 @@ watch(() => route.path, () => {
         <button
           class="md:hidden flex items-center justify-center size-10 rounded-lg text-neutral-500 hover:bg-neutral-50 transition-colors"
           aria-label="Toggle menu"
+          :aria-expanded="mobileOpen"
+          aria-controls="mobile-menu"
           @click="mobileOpen = !mobileOpen"
         >
           <div class="flex flex-col items-center justify-center gap-[5px] w-5">
@@ -258,6 +260,7 @@ watch(() => route.path, () => {
     >
       <div
         v-if="mobileOpen"
+        id="mobile-menu"
         class="md:hidden absolute top-full inset-x-0 bg-white/95 backdrop-blur-xl border-b border-neutral-200/60 shadow-lg"
       >
         <nav class="px-4 py-3 space-y-1">
