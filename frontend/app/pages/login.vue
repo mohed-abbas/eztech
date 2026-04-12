@@ -78,6 +78,9 @@ async function handleSubmit() {
 function handleGoogleOAuth() {
   alert('Google OAuth will be available in Phase 2.')
 }
+
+const { public: { useMock } } = useRuntimeConfig()
+const isDev = computed(() => useMock || import.meta.dev)
 </script>
 
 <template>
@@ -257,7 +260,7 @@ function handleGoogleOAuth() {
     </p>
 
     <!-- Dev credentials hint -->
-    <Card class="mt-6 rounded-xl bg-neutral-50 p-4">
+    <Card v-if="isDev" class="mt-6 rounded-xl bg-neutral-50 p-4">
       <p class="text-caption font-semibold text-text-secondary mb-2">
         Test credentials
       </p>
