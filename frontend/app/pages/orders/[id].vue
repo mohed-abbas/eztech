@@ -112,11 +112,17 @@ const MAP_CENTER: [number, number] = [48.8515, 2.3372]
 
 // ETA countdown mock (18 minutes)
 const etaMinutes = ref(18)
+let etaInterval: ReturnType<typeof setInterval> | null = null
+
 onMounted(() => {
-  const interval = setInterval(() => {
+  etaInterval = setInterval(() => {
     if (etaMinutes.value > 0) etaMinutes.value--
-    else clearInterval(interval)
+    else { clearInterval(etaInterval!); etaInterval = null }
   }, 60000)
+})
+
+onUnmounted(() => {
+  if (etaInterval !== null) clearInterval(etaInterval)
 })
 </script>
 
