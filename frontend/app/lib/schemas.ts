@@ -97,3 +97,35 @@ export function zodErrorsToRecord<T extends z.ZodType>(
 }
 
 export { registerBase }
+
+export const profilePersonalSchema = z.object({
+  name: z.string().trim().min(2, 'Name must be at least 2 characters.'),
+  email: emailField,
+  phone: phoneField,
+})
+export type ProfilePersonalInput = z.infer<typeof profilePersonalSchema>
+
+export const profilePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required.'),
+  newPassword: passwordField,
+  confirmNewPassword: z.string().min(1, 'Please confirm your new password.'),
+}).refine(data => data.newPassword === data.confirmNewPassword, {
+  message: 'Passwords do not match.',
+  path: ['confirmNewPassword'],
+})
+export type ProfilePasswordInput = z.infer<typeof profilePasswordSchema>
+
+export const profileAddressSchema = z.object({
+  label: z.string().trim().min(1, 'Label is required.'),
+  street: z.string().trim().min(1, 'Street is required.'),
+  city: z.string().trim().min(1, 'City is required.'),
+  zipCode: z.string().trim().min(1, 'Zip code is required.'),
+})
+export type ProfileAddressInput = z.infer<typeof profileAddressSchema>
+
+export const profileVehicleSchema = z.object({
+  vehicleType: z.enum(['bicycle', 'scooter', 'car']),
+  licenseNumber: z.string().trim().min(1, 'License number is required.'),
+  insuranceNumber: z.string().trim().min(1, 'Insurance number is required.'),
+})
+export type ProfileVehicleInput = z.infer<typeof profileVehicleSchema>

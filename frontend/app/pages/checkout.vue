@@ -246,7 +246,7 @@ function retryPayment() {
         <!-- Main column (3/5): address + card -->
         <div class="lg:col-span-3 space-y-5">
           <!-- ADDRESS CARD -->
-          <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
+          <Card class="p-6">
             <h2 class="font-semibold text-text-primary mb-4 flex items-center gap-2">
               <svg class="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0zM15 11a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -256,24 +256,25 @@ function retryPayment() {
 
             <!-- Mode tabs -->
             <div class="flex flex-wrap gap-2 mb-4">
-              <button
+              <Button
                 v-if="savedAddresses.length > 0"
-                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                :class="addressMode === 'saved' ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-text-secondary hover:bg-neutral-200'"
+                :variant="addressMode === 'saved' ? 'default' : 'secondary'"
+                size="sm"
                 @click="addressMode = 'saved'"
               >
                 Mes adresses
-              </button>
-              <button
-                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                :class="addressMode === 'manual' ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-text-secondary hover:bg-neutral-200'"
+              </Button>
+              <Button
+                :variant="addressMode === 'manual' ? 'default' : 'secondary'"
+                size="sm"
                 @click="addressMode = 'manual'"
               >
                 Saisir manuellement
-              </button>
-              <button
-                class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5"
-                :class="addressMode === 'geo' ? 'bg-primary-600 text-white' : 'bg-neutral-100 text-text-secondary hover:bg-neutral-200'"
+              </Button>
+              <Button
+                :variant="addressMode === 'geo' ? 'default' : 'secondary'"
+                size="sm"
+                class="flex items-center gap-1.5"
                 :disabled="geoLoading"
                 @click="useCurrentLocation"
               >
@@ -281,8 +282,8 @@ function retryPayment() {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11a3 3 0 100-6 3 3 0 000 6z" />
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2C8 2 4 5 4 9c0 5.5 8 13 8 13s8-7.5 8-13c0-4-4-7-8-7z" />
                 </svg>
-                {{ geoLoading ? 'Localisation…' : 'Ma position' }}
-              </button>
+                {{ geoLoading ? 'Localisation...' : 'Ma position' }}
+              </Button>
             </div>
 
             <!-- Saved mode -->
@@ -303,30 +304,16 @@ function retryPayment() {
             <div v-else-if="addressMode === 'manual'" class="space-y-3">
               <div>
                 <label class="block text-sm font-medium text-text-secondary mb-1.5">Rue</label>
-                <input
-                  v-model="manualStreet"
-                  type="text"
-                  placeholder="12 Rue de Rivoli"
-                  class="w-full rounded-xl border border-neutral-200 px-4 py-3 text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-500"
-                >
+                <Input v-model="manualStreet" type="text" placeholder="12 Rue de Rivoli" class="rounded-xl" />
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div>
                   <label class="block text-sm font-medium text-text-secondary mb-1.5">Code postal</label>
-                  <input
-                    v-model="manualZip"
-                    type="text"
-                    placeholder="75004"
-                    class="w-full rounded-xl border border-neutral-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
+                  <Input v-model="manualZip" type="text" placeholder="75004" class="rounded-xl" />
                 </div>
                 <div>
                   <label class="block text-sm font-medium text-text-secondary mb-1.5">Ville</label>
-                  <input
-                    v-model="manualCity"
-                    type="text"
-                    class="w-full rounded-xl border border-neutral-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                  >
+                  <Input v-model="manualCity" type="text" class="rounded-xl" />
                 </div>
               </div>
             </div>
@@ -349,10 +336,10 @@ function retryPayment() {
                 Nous couvrons actuellement Paris Centre et Paris Est.
               </p>
             </div>
-          </div>
+          </Card>
 
           <!-- CARD FORM -->
-          <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
+          <Card class="p-6">
             <h2 class="font-semibold text-text-primary mb-5 flex items-center gap-2">
               <svg class="w-5 h-5 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -362,12 +349,7 @@ function retryPayment() {
 
             <div class="mb-4">
               <label class="block text-sm font-medium text-text-secondary mb-1.5">Nom sur la carte</label>
-              <input
-                v-model="cardName"
-                type="text"
-                placeholder="Jean Dupont"
-                class="w-full rounded-xl border border-neutral-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              >
+              <Input v-model="cardName" type="text" placeholder="Jean Dupont" class="rounded-xl" />
             </div>
 
             <div class="mb-4">
@@ -436,9 +418,11 @@ function retryPayment() {
               </div>
             </Transition>
 
-            <button
-              class="mt-6 w-full rounded-xl py-4 font-semibold text-white transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
-              :class="paymentState === 'loading' ? 'bg-primary-400' : 'bg-primary-600 hover:bg-primary-700 active:scale-[.99]'"
+            <Button
+              variant="default"
+              size="lg"
+              class="mt-6 w-full rounded-xl py-4 font-semibold gap-3"
+              :class="paymentState === 'loading' ? '!bg-primary-400' : ''"
               :disabled="!formComplete || paymentState === 'loading'"
               @click="submitPayment"
             >
@@ -451,20 +435,20 @@ function retryPayment() {
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              {{ paymentState === 'loading' ? 'Traitement en cours…' : `Payer ${total.toFixed(2)} €` }}
-            </button>
+              {{ paymentState === 'loading' ? 'Traitement en cours...' : `Payer ${total.toFixed(2)} \u20AC` }}
+            </Button>
 
             <p class="text-center text-xs text-text-muted mt-3">
               Test : <code class="bg-neutral-100 px-1 rounded">4242 4242 4242 4242</code> → succès ·
               <code class="bg-neutral-100 px-1 rounded">4242 4242 4242 0000</code> → échec
             </p>
-          </div>
+          </Card>
         </div>
 
         <!-- Summary (2/5) -->
         <div class="lg:col-span-2">
           <div class="sticky top-6 space-y-4">
-            <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
+            <Card class="p-6">
               <h2 class="font-semibold text-text-primary mb-5">
                 Articles
               </h2>
@@ -493,7 +477,7 @@ function retryPayment() {
                   </span>
                 </div>
               </div>
-            </div>
+            </Card>
 
             <PriceSummary
               title="Total"

@@ -142,7 +142,7 @@ onMounted(() => {
       </div>
 
       <!-- Timeline statut (stepper) -->
-      <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 p-6">
+      <Card class="p-6">
         <h2 class="font-semibold text-text-primary mb-6">Statut de la livraison</h2>
 
         <div class="relative">
@@ -237,10 +237,10 @@ onMounted(() => {
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       <!-- Carte de localisation live -->
-      <div class="bg-white rounded-2xl shadow-sm border border-neutral-200 overflow-hidden">
+      <Card class="overflow-hidden">
         <div class="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
           <div>
             <h2 class="font-semibold text-text-primary">Localisation en direct</h2>
@@ -269,14 +269,14 @@ onMounted(() => {
             <p class="font-medium text-text-primary">{{ rider.name }}</p>
             <p class="text-sm text-text-muted">{{ rider.vehicle }} · ⭐ {{ rider.rating }} · {{ rider.deliveries }} livraisons</p>
           </div>
-          <button class="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-text-secondary hover:bg-neutral-50 transition-colors">
+          <Button variant="outline" size="sm">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
             </svg>
             Contacter
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
 
     </div>
   </div>

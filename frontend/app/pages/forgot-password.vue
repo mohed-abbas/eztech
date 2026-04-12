@@ -106,7 +106,7 @@ onMounted(() => {
         <form class="mt-8 space-y-5" novalidate @submit.prevent="handleSubmit">
           <div class="flex flex-col gap-1.5">
             <label for="email" class="text-body-sm font-medium text-neutral-800">Email address</label>
-            <input
+            <Input
               id="email"
               v-model="email"
               type="email"
@@ -114,12 +114,9 @@ onMounted(() => {
               autocomplete="email"
               :aria-invalid="!!emailError || undefined"
               :aria-describedby="emailError ? 'email-error' : undefined"
-              :class="[
-                'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                emailError ? 'border-error focus:border-error focus:ring-error/20' : '',
-              ]"
+              class="w-full"
               @input="emailError = ''"
-            >
+            />
             <p
               v-if="emailError"
               id="email-error"
@@ -130,10 +127,12 @@ onMounted(() => {
             </p>
           </div>
 
-          <button
+          <Button
             type="submit"
+            variant="gradient"
+            size="pill"
+            class="w-full"
             :disabled="loading"
-            class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Icon
               v-if="loading"
@@ -141,7 +140,7 @@ onMounted(() => {
               class="h-4 w-4 animate-spin mr-2"
             />
             {{ loading ? 'Sending...' : 'Send reset link' }}
-          </button>
+          </Button>
         </form>
 
         <!-- Footer -->
@@ -179,9 +178,9 @@ onMounted(() => {
 
         <!-- Back to login button -->
         <NuxtLink to="/login" class="mt-8 block">
-          <span class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize">
+          <Button variant="gradient" size="pill" class="w-full">
             Back to login
-          </span>
+          </Button>
         </NuxtLink>
 
         <!-- Resend -->

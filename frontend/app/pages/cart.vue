@@ -63,19 +63,10 @@ async function goToCheckout() {
           </svg>
         </template>
         <template #actions>
-          <NuxtLink
-            to="/products"
-            class="inline-flex items-center justify-center gap-2 rounded-xl bg-primary-600 hover:bg-primary-700 px-6 py-3 font-semibold text-white transition-colors"
-          >
-            Voir le catalogue
+          <NuxtLink to="/products">
+            <Button variant="default" class="font-semibold">Voir le catalogue</Button>
           </NuxtLink>
-          <button
-            type="button"
-            class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 hover:bg-neutral-50 px-6 py-3 font-medium text-text-secondary transition-colors"
-            @click="seedDemo"
-          >
-            Remplir avec des articles de démo
-          </button>
+          <Button variant="outline" @click="seedDemo">Remplir avec des articles de démo</Button>
         </template>
       </EmptyState>
 
@@ -96,15 +87,12 @@ async function goToCheckout() {
           <div class="sticky top-6">
             <PriceSummary :subtotal="subtotal" :delivery-fee="deliveryFee" :total="total">
               <template #actions>
-                <button
-                  class="w-full rounded-xl py-3.5 font-semibold text-white bg-primary-600 hover:bg-primary-700 active:scale-[.99] transition-all flex items-center justify-center gap-2"
-                  @click="goToCheckout"
-                >
+                <Button variant="default" class="w-full py-3.5 font-semibold gap-2" @click="goToCheckout">
                   Passer au paiement
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
                   </svg>
-                </button>
+                </Button>
               </template>
               <template #footer>
                 Paiement sécurisé · Annulation gratuite avant livraison
