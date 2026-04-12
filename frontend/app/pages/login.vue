@@ -10,7 +10,11 @@ useHead({
   ],
 })
 
-const { user, login, logout, loading, isAuthenticated } = useAuth()
+import { loginSchema, zodErrorsToRecord } from '~/lib/schemas'
+
+const auth = useAuthStore()
+const { user, loading, isAuthenticated } = storeToRefs(auth)
+const { login, logout } = auth
 
 // Form state
 const email = ref('')
@@ -23,47 +27,34 @@ const errors = reactive({
   general: '',
 })
 
-// Validation
-function validateEmail(): boolean {
-  if (!email.value.trim()) {
-    errors.email = 'Email is required.'
-    return false
-  }
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailPattern.test(email.value.trim())) {
-    errors.email = 'Please enter a valid email address.'
-    return false
-  }
-  errors.email = ''
-  return true
-}
-
-function validatePassword(): boolean {
-  if (!password.value) {
-    errors.password = 'Password is required.'
-    return false
-  }
-  if (password.value.length < 8) {
-    errors.password = 'Password must be at least 8 characters.'
-    return false
-  }
-  errors.password = ''
-  return true
-}
-
 function clearFieldError(field: 'email' | 'password') {
   errors[field] = ''
   errors.general = ''
 }
 
+function validate(): boolean {
+  const result = loginSchema.safeParse({
+    email: email.value,
+    password: password.value,
+  })
+  errors.email = ''
+  errors.password = ''
+  if (!result.success) {
+    const flat = zodErrorsToRecord(result.error)
+    errors.email = flat.email ?? ''
+    errors.password = flat.password ?? ''
+    return false
+  }
+  return true
+}
+
+// Back-compat names used by existing @blur handlers in the template
+const validateEmail = validate
+const validatePassword = validate
+
 // Form submission
 async function handleSubmit() {
-  const isEmailValid = validateEmail()
-  const isPasswordValid = validatePassword()
-
-  if (!isEmailValid || !isPasswordValid) {
-    return
-  }
+  if (!validate()) return
 
   errors.general = ''
 

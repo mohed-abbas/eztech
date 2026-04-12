@@ -2,7 +2,7 @@
 const route = useRoute()
 const orderId = route.params.id
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', middleware: 'auth' })
 
 type StepKey = 'passee' | 'en_preparation' | 'livreur_assigne' | 'recuperee' | 'en_route' | 'livree'
 

@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { forgotPasswordSchema, zodErrorsToRecord } from '~/lib/schemas'
+
 definePageMeta({
   layout: 'auth',
 })
 
-const { loading, forgotPassword } = useAuth()
+const auth = useAuthStore()
+const { loading } = storeToRefs(auth)
+const { forgotPassword } = auth
 
 const email = ref('')
 const emailError = ref('')
@@ -13,21 +17,13 @@ const submittedEmail = ref('')
 
 const successHeadingRef = ref<HTMLHeadingElement | null>(null)
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
 function validateEmail(): boolean {
   emailError.value = ''
-
-  if (!email.value.trim()) {
-    emailError.value = 'Email address is required.'
+  const result = forgotPasswordSchema.safeParse({ email: email.value })
+  if (!result.success) {
+    emailError.value = zodErrorsToRecord(result.error).email ?? 'Invalid email.'
     return false
   }
-
-  if (!EMAIL_REGEX.test(email.value.trim())) {
-    emailError.value = 'Please enter a valid email address.'
-    return false
-  }
-
   return true
 }
 
