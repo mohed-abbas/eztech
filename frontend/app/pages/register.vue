@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { RegisterCustomerPayload, RegisterRiderPayload } from '~/stores/auth'
+import { registerCustomerSchema, registerRiderSchema, zodErrorsToRecord } from '~/lib/schemas'
 
 definePageMeta({
   layout: 'auth',
@@ -81,96 +82,50 @@ function clearErrors() {
   apiError.value = ''
 }
 
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
-
-function isValidPhone(value: string): boolean {
-  const cleaned = value.replace(/\s/g, '')
-  return /^(\+33|0)[67]\d{8}$/.test(cleaned)
+function applyErrors(flat: Record<string, string>) {
+  const keys = Object.keys(errors) as (keyof FormErrors)[]
+  keys.forEach((k) => {
+    errors[k] = flat[k] ?? ''
+  })
 }
 
 function validate(): boolean {
   clearErrors()
-  let valid = true
 
-  // Common field validation
-  if (!name.value.trim()) {
-    errors.name = 'Name is required.'
-    valid = false
-  }
-  else if (name.value.trim().length < 2) {
-    errors.name = 'Name must be at least 2 characters.'
-    valid = false
-  }
-
-  if (!email.value.trim()) {
-    errors.email = 'Email is required.'
-    valid = false
-  }
-  else if (!isValidEmail(email.value.trim())) {
-    errors.email = 'Please enter a valid email address.'
-    valid = false
-  }
-
-  if (!password.value) {
-    errors.password = 'Password is required.'
-    valid = false
-  }
-  else if (password.value.length < 8) {
-    errors.password = 'Password must be at least 8 characters.'
-    valid = false
-  }
-
-  if (!confirmPassword.value) {
-    errors.confirmPassword = 'Please confirm your password.'
-    valid = false
-  }
-  else if (confirmPassword.value !== password.value) {
-    errors.confirmPassword = 'Passwords do not match.'
-    valid = false
-  }
-
-  if (!phone.value.trim()) {
-    errors.phone = 'Phone number is required.'
-    valid = false
-  }
-  else if (!isValidPhone(phone.value.trim())) {
-    errors.phone = 'Please enter a valid French mobile number (+33 6/7... or 06/07...).'
-    valid = false
-  }
-
-  // Tab-specific validation
   if (activeTab.value === 'customer') {
-    if (!addressLabel.value.trim()) {
-      errors.addressLabel = 'Address label is required.'
-      valid = false
+    const result = registerCustomerSchema.safeParse({
+      name: name.value,
+      email: email.value,
+      password: password.value,
+      confirmPassword: confirmPassword.value,
+      phone: phone.value,
+      addressLabel: addressLabel.value,
+      street: street.value,
+      city: city.value,
+      zipCode: zipCode.value,
+    })
+    if (!result.success) {
+      applyErrors(zodErrorsToRecord(result.error))
+      return false
     }
-    if (!street.value.trim()) {
-      errors.street = 'Street is required.'
-      valid = false
-    }
-    if (!city.value.trim()) {
-      errors.city = 'City is required.'
-      valid = false
-    }
-    if (!zipCode.value.trim()) {
-      errors.zipCode = 'Zip code is required.'
-      valid = false
-    }
-  }
-  else {
-    if (!licenseNumber.value.trim()) {
-      errors.licenseNumber = 'License number is required.'
-      valid = false
-    }
-    if (!insuranceNumber.value.trim()) {
-      errors.insuranceNumber = 'Insurance number is required.'
-      valid = false
-    }
+    return true
   }
 
-  return valid
+  const result = registerRiderSchema.safeParse({
+    name: name.value,
+    email: email.value,
+    password: password.value,
+    confirmPassword: confirmPassword.value,
+    phone: phone.value,
+    vehicleType: vehicleType.value,
+    licenseNumber: licenseNumber.value,
+    insuranceNumber: insuranceNumber.value,
+  })
+  if (!result.success) {
+    applyErrors(zodErrorsToRecord(result.error))
+    return false
+  }
+  return true
 }
 
 function scrollToFirstError() {
