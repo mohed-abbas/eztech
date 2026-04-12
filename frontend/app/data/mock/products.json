@@ -510,5 +510,37 @@
     "featured": false,
     "rating": 4.4,
     "reviewCount": 29
+  },
+  {
+    "id": "prod_033",
+    "name": "MacBook Pro 16\" M3 Max",
+    "slug": "macbook-pro-16-m3-max",
+    "description": "MacBook Pro 16 pouces avec puce M3 Max, 36 Go RAM, 1 To SSD. Puissance maximale pour le montage vidéo et le développement.",
+    "categoryId": "cat_laptops",
+    "image": "/assets/products/macbook-pro-16-m3-max.webp",
+    "pricingType": "tiered",
+    "price": { "hourly": 8, "daily": 35, "weekly": 150 },
+    "compatibilityTags": ["Apple", "M3 Max", "Thunderbolt 4"],
+    "stock": 0,
+    "warehouseIds": ["wh_001"],
+    "featured": false,
+    "rating": 4.9,
+    "reviewCount": 73
+  },
+  {
+    "id": "prod_034",
+    "name": "Samsung Odyssey G9 49\" Ultrawide",
+    "slug": "samsung-odyssey-g9-49",
+    "description": "Écran gaming ultra-large 49 pouces, résolution 5120x1440, 240Hz, HDR1000. Immersion totale.",
+    "categoryId": "cat_monitors",
+    "image": "/assets/products/samsung-odyssey-g9-49.webp",
+    "pricingType": "tiered",
+    "price": { "hourly": 6, "daily": 25, "weekly": 100 },
+    "compatibilityTags": ["Samsung", "HDMI 2.1", "DisplayPort"],
+    "stock": 0,
+    "warehouseIds": ["wh_002"],
+    "featured": false,
+    "rating": 4.7,
+    "reviewCount": 38
   }
 ]

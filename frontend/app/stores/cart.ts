@@ -75,6 +75,7 @@ export const useCartStore = defineStore('cart', {
       durationUnit?: DurationUnit
       durationValue?: number
     }) {
+      if (payload.stock <= 0) return
       const existing = this.items.find(i => i.productId === payload.productId)
       if (existing) {
         existing.quantity = Math.min(existing.quantity + (payload.quantity ?? 1), existing.stock)
