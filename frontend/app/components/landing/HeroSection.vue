@@ -19,12 +19,12 @@ const rightCards = computed(() => featuredProducts.slice(2, 4))
     >
 
     <div class="relative mx-auto max-w-[1240px] px-6">
-      <div class="flex flex-col items-center pt-[36px] pb-0">
+      <div class="flex flex-col items-center pt-[60px] lg:pt-[80px] pb-0">
         <h1
           v-motion="heroFadeUp(100)"
-          class="font-poppins font-semibold text-[clamp(2.5rem,5.5vw,76px)] leading-[1.2] capitalize text-[#1f2937] max-w-[605px] text-center"
+          class="font-poppins font-semibold text-[clamp(2.5rem,5.5vw,76px)] leading-[1.2] capitalize text-[#1f2937] text-center"
         >
-          Location premium. Livraison intelligente.
+          Location Premium.<br>Livraison Intelligente.
         </h1>
 
         <p
@@ -85,7 +85,6 @@ const rightCards = computed(() => featuredProducts.slice(2, 4))
       </div>
     </div>
 
-    <div class="h-[40px] lg:h-[60px]" />
   </section>
 </template>
 

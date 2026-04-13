@@ -78,8 +78,8 @@ function handleLogout() {
       <div v-if="menuOpen" class="fixed inset-0 z-[60] bg-primary-600 flex flex-col">
         <div class="h-[84px] shrink-0" />
 
-        <nav class="flex-1 flex flex-col justify-center px-8 sm:px-12 lg:px-20 overflow-y-auto">
-          <div class="max-w-5xl w-full">
+        <nav class="flex-1 flex flex-col justify-center overflow-y-auto">
+          <div class="mx-auto max-w-7xl w-full px-6 lg:px-8">
             <NuxtLink
               v-for="(link, idx) in menuLinks"
               :key="link.label"
@@ -110,7 +110,7 @@ function handleLogout() {
           </div>
         </nav>
 
-        <div class="px-8 sm:px-12 lg:px-20 py-8 text-primary-200/60 text-sm font-poppins">
+        <div class="mx-auto max-w-7xl w-full px-6 lg:px-8 py-8 text-primary-200/60 text-sm font-poppins">
           &copy; {{ new Date().getFullYear() }} EzTech. Tous droits réservés.
         </div>
       </div>
