@@ -2,11 +2,11 @@
 // Landing footer: brand block on the left, company/newsletter on the
 // right. Newsletter input is currently static (no backend handler yet).
 const companyLinks = [
-  { label: 'About Us', href: '#' },
-  { label: 'Careers', href: '#' },
-  { label: 'Terms of Service', href: '#' },
-  { label: 'Privacy Policy', href: '#' },
-  { label: 'Contact Us', href: '#' },
+  { label: 'À propos', href: '#' },
+  { label: 'Carrières', href: '#' },
+  { label: 'Conditions d\'utilisation', href: '#' },
+  { label: 'Politique de confidentialité', href: '#' },
+  { label: 'Nous contacter', href: '#' },
 ]
 
 const socials = [
@@ -30,7 +30,7 @@ const year = new Date().getFullYear()
             <span class="text-h3 font-semibold text-neutral-900">EzTech</span>
           </NuxtLink>
           <p class="text-body text-neutral-600 leading-body capitalize">
-            EzTech is a premium tech rental platform, making laptops, cameras, and equipment accessible with just a few taps.
+            EzTech est une plateforme de location tech haut de gamme, rendant ordinateurs, appareils photo et équipements accessibles en quelques clics.
           </p>
           <div class="flex items-center gap-3">
             <a
@@ -47,7 +47,7 @@ const year = new Date().getFullYear()
 
         <div class="flex flex-col sm:flex-row gap-12">
           <div class="flex flex-col gap-5">
-            <p class="text-h4 font-medium text-neutral-800">Company</p>
+            <p class="text-h4 font-medium text-neutral-800">Entreprise</p>
             <nav class="flex flex-col gap-4 text-body text-neutral-500 leading-body">
               <a
                 v-for="link in companyLinks"
@@ -61,11 +61,11 @@ const year = new Date().getFullYear()
           </div>
           <div class="flex flex-col gap-5 sm:w-80">
             <p class="text-h4 font-medium text-neutral-800">Newsletter</p>
-            <p class="text-body-sm text-neutral-500 leading-body">Stay updated with the latest products and offers.</p>
+            <p class="text-body-sm text-neutral-500 leading-body">Restez informé des derniers produits et offres.</p>
             <div class="bg-neutral-50 rounded-full flex items-center pl-4 pr-1.5 py-1.5">
               <input
                 type="email"
-                placeholder="Enter Your Email"
+                placeholder="Votre adresse e-mail"
                 class="bg-transparent text-body-sm text-neutral-500 outline-none flex-1 placeholder:text-neutral-400"
               >
               <button class="bg-neutral-800 hover:bg-neutral-900 rounded-full p-3 transition-colors">
@@ -77,10 +77,10 @@ const year = new Date().getFullYear()
       </div>
 
       <div class="mt-8 pt-6 border-t border-neutral-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p class="text-body-sm text-neutral-400">&copy; {{ year }} EzTech. All rights reserved.</p>
+        <p class="text-body-sm text-neutral-400">&copy; {{ year }} EzTech. Tous droits réservés.</p>
         <div class="flex items-center gap-6 text-body-sm text-neutral-400">
-          <a href="#" class="hover:text-neutral-600 transition-colors">Privacy</a>
-          <a href="#" class="hover:text-neutral-600 transition-colors">Terms</a>
+          <a href="#" class="hover:text-neutral-600 transition-colors">Confidentialité</a>
+          <a href="#" class="hover:text-neutral-600 transition-colors">Conditions</a>
           <a href="#" class="hover:text-neutral-600 transition-colors">Cookies</a>
         </div>
       </div>

@@ -69,9 +69,9 @@ const errors = reactive<FormErrors>({
 })
 
 const vehicleOptions = [
-  { value: 'bicycle' as const, label: 'Bicycle', icon: 'ph:bicycle' },
+  { value: 'bicycle' as const, label: 'Vélo', icon: 'ph:bicycle' },
   { value: 'scooter' as const, label: 'Scooter', icon: 'ph:motorcycle' },
-  { value: 'car' as const, label: 'Car', icon: 'ph:car' },
+  { value: 'car' as const, label: 'Voiture', icon: 'ph:car' },
 ]
 
 function clearErrors() {
@@ -183,7 +183,7 @@ async function handleSubmit() {
       apiError.value = err.message
     }
     else {
-      apiError.value = 'An unexpected error occurred. Please try again.'
+      apiError.value = 'Une erreur inattendue est survenue. Veuillez réessayer.'
     }
   }
 }
@@ -198,10 +198,10 @@ function handleGoogleOAuth() {
     <!-- Heading -->
     <div class="mb-8">
       <h1 class="text-h2 font-bold text-text-primary leading-heading">
-        Create your account
+        Créez votre compte
       </h1>
       <p class="mt-2 text-body text-text-muted leading-body">
-        Join EzTech today
+        Rejoignez EzTech dès maintenant
       </p>
     </div>
 
@@ -237,7 +237,7 @@ function handleGoogleOAuth() {
             ]"
             @click="activeTab = 'customer'; clearErrors()"
           >
-            Customer
+            Client
           </button>
           <button
             type="button"
@@ -251,42 +251,42 @@ function handleGoogleOAuth() {
             ]"
             @click="activeTab = 'rider'; clearErrors()"
           >
-            Rider
+            Livreur
           </button>
         </div>
 
         <!-- Common Fields -->
         <div class="mt-6 space-y-4">
           <!-- Name -->
-          <FormField id="register-name" label="Full name" :error="errors.name" :data-error="!!errors.name">
+          <FormField id="register-name" label="Nom complet" :error="errors.name" :data-error="!!errors.name">
             <template #default="{ id: fieldId }">
               <Input :id="fieldId" v-model="name" type="text" placeholder="John Doe" autocomplete="name" :aria-invalid="!!errors.name" :aria-describedby="errors.name ? 'register-name-error' : undefined" />
             </template>
           </FormField>
 
           <!-- Email -->
-          <FormField id="register-email" label="Email address" :error="errors.email" :data-error="!!errors.email">
+          <FormField id="register-email" label="Adresse e-mail" :error="errors.email" :data-error="!!errors.email">
             <template #default="{ id: fieldId }">
               <Input :id="fieldId" v-model="email" type="email" placeholder="john@example.com" autocomplete="email" :aria-invalid="!!errors.email" :aria-describedby="errors.email ? 'register-email-error' : undefined" />
             </template>
           </FormField>
 
           <!-- Password -->
-          <FormField id="register-password" label="Password" :error="errors.password" :data-error="!!errors.password">
+          <FormField id="register-password" label="Mot de passe" :error="errors.password" :data-error="!!errors.password">
             <template #default="{ id: fieldId }">
-              <Input :id="fieldId" v-model="password" type="password" placeholder="Min. 8 characters" autocomplete="new-password" :aria-invalid="!!errors.password" :aria-describedby="errors.password ? 'register-password-error' : undefined" />
+              <Input :id="fieldId" v-model="password" type="password" placeholder="Min. 8 caractères" autocomplete="new-password" :aria-invalid="!!errors.password" :aria-describedby="errors.password ? 'register-password-error' : undefined" />
             </template>
           </FormField>
 
           <!-- Confirm Password -->
-          <FormField id="register-confirm-password" label="Confirm password" :error="errors.confirmPassword" :data-error="!!errors.confirmPassword">
+          <FormField id="register-confirm-password" label="Confirmer le mot de passe" :error="errors.confirmPassword" :data-error="!!errors.confirmPassword">
             <template #default="{ id: fieldId }">
-              <Input :id="fieldId" v-model="confirmPassword" type="password" placeholder="Repeat your password" autocomplete="new-password" :aria-invalid="!!errors.confirmPassword" :aria-describedby="errors.confirmPassword ? 'register-confirm-password-error' : undefined" />
+              <Input :id="fieldId" v-model="confirmPassword" type="password" placeholder="Répétez votre mot de passe" autocomplete="new-password" :aria-invalid="!!errors.confirmPassword" :aria-describedby="errors.confirmPassword ? 'register-confirm-password-error' : undefined" />
             </template>
           </FormField>
 
           <!-- Phone -->
-          <FormField id="register-phone" label="Phone number" :error="errors.phone" :data-error="!!errors.phone">
+          <FormField id="register-phone" label="Numéro de téléphone" :error="errors.phone" :data-error="!!errors.phone">
             <template #default="{ id: fieldId }">
               <Input :id="fieldId" v-model="phone" type="tel" placeholder="+33 6 12 34 56 78" autocomplete="tel" :aria-invalid="!!errors.phone" :aria-describedby="errors.phone ? 'register-phone-error' : undefined" />
             </template>
@@ -297,18 +297,18 @@ function handleGoogleOAuth() {
         <div v-if="activeTab === 'customer'" class="mt-4">
           <fieldset class="space-y-4">
             <legend class="text-body-sm font-semibold text-text-primary mb-3">
-              Delivery address
+              Adresse de livraison
             </legend>
 
             <!-- Address Label -->
-            <FormField id="register-address-label" label="Address label" :error="errors.addressLabel" :data-error="!!errors.addressLabel">
+            <FormField id="register-address-label" label="Libellé" :error="errors.addressLabel" :data-error="!!errors.addressLabel">
               <template #default="{ id: fieldId }">
-                <Input :id="fieldId" v-model="addressLabel" type="text" placeholder="Home, Office..." :aria-invalid="!!errors.addressLabel" :aria-describedby="errors.addressLabel ? 'register-address-label-error' : undefined" />
+                <Input :id="fieldId" v-model="addressLabel" type="text" placeholder="Domicile, Bureau..." :aria-invalid="!!errors.addressLabel" :aria-describedby="errors.addressLabel ? 'register-address-label-error' : undefined" />
               </template>
             </FormField>
 
             <!-- Street -->
-            <FormField id="register-street" label="Street" :error="errors.street" :data-error="!!errors.street">
+            <FormField id="register-street" label="Rue" :error="errors.street" :data-error="!!errors.street">
               <template #default="{ id: fieldId }">
                 <Input :id="fieldId" v-model="street" type="text" placeholder="123 Rue de la Paix" autocomplete="street-address" :aria-invalid="!!errors.street" :aria-describedby="errors.street ? 'register-street-error' : undefined" />
               </template>
@@ -316,13 +316,13 @@ function handleGoogleOAuth() {
 
             <!-- City + Zip Code row -->
             <div class="grid grid-cols-2 gap-3">
-              <FormField id="register-city" label="City" :error="errors.city" :data-error="!!errors.city">
+              <FormField id="register-city" label="Ville" :error="errors.city" :data-error="!!errors.city">
                 <template #default="{ id: fieldId }">
                   <Input :id="fieldId" v-model="city" type="text" placeholder="Paris" autocomplete="address-level2" :aria-invalid="!!errors.city" :aria-describedby="errors.city ? 'register-city-error' : undefined" />
                 </template>
               </FormField>
 
-              <FormField id="register-zipcode" label="Zip code" :error="errors.zipCode" :data-error="!!errors.zipCode">
+              <FormField id="register-zipcode" label="Code postal" :error="errors.zipCode" :data-error="!!errors.zipCode">
                 <template #default="{ id: fieldId }">
                   <Input :id="fieldId" v-model="zipCode" type="text" placeholder="75001" autocomplete="postal-code" :aria-invalid="!!errors.zipCode" :aria-describedby="errors.zipCode ? 'register-zipcode-error' : undefined" />
                 </template>
@@ -335,13 +335,13 @@ function handleGoogleOAuth() {
         <div v-if="activeTab === 'rider'" class="mt-4">
           <fieldset class="space-y-4">
             <legend class="text-body-sm font-semibold text-text-primary mb-3">
-              Rider information
+              Informations livreur
             </legend>
 
             <!-- Vehicle Type -->
             <div :data-error="!!errors.vehicleType">
               <label class="text-body-sm font-medium text-neutral-800">
-                Vehicle type
+                Type de véhicule
               </label>
               <div
                 role="radiogroup"
@@ -406,14 +406,14 @@ function handleGoogleOAuth() {
             </div>
 
             <!-- License Number -->
-            <FormField id="register-license" label="License number" :error="errors.licenseNumber" :data-error="!!errors.licenseNumber">
+            <FormField id="register-license" label="Numéro de permis" :error="errors.licenseNumber" :data-error="!!errors.licenseNumber">
               <template #default="{ id: fieldId }">
                 <Input :id="fieldId" v-model="licenseNumber" type="text" placeholder="AB-123-CD" :aria-invalid="!!errors.licenseNumber" :aria-describedby="errors.licenseNumber ? 'register-license-error' : undefined" />
               </template>
             </FormField>
 
             <!-- Insurance Number -->
-            <FormField id="register-insurance" label="Insurance number" :error="errors.insuranceNumber" :data-error="!!errors.insuranceNumber">
+            <FormField id="register-insurance" label="Numéro d'assurance" :error="errors.insuranceNumber" :data-error="!!errors.insuranceNumber">
               <template #default="{ id: fieldId }">
                 <Input :id="fieldId" v-model="insuranceNumber" type="text" placeholder="INS-2024-XXXX" :aria-invalid="!!errors.insuranceNumber" :aria-describedby="errors.insuranceNumber ? 'register-insurance-error' : undefined" />
               </template>
@@ -435,14 +435,14 @@ function handleGoogleOAuth() {
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        {{ loading ? 'Creating account...' : 'Create account' }}
+        {{ loading ? 'Création du compte...' : 'Créer un compte' }}
       </Button>
     </form>
 
     <!-- Separator -->
     <div class="relative my-6 flex items-center">
       <div class="flex-1 h-px bg-neutral-200" />
-      <span class="px-3 text-caption text-text-muted">or</span>
+      <span class="px-3 text-caption text-text-muted">ou</span>
       <div class="flex-1 h-px bg-neutral-200" />
     </div>
 
@@ -466,17 +466,17 @@ function handleGoogleOAuth() {
           fill="#EA4335"
         />
       </svg>
-      Continue with Google
+      Continuer avec Google
     </Button>
 
     <!-- Footer link -->
     <p class="mt-8 text-center text-body-sm text-text-muted">
-      Already have an account?
+      Déjà un compte ?
       <NuxtLink
         to="/login"
         class="font-medium text-primary-600 transition-colors hover:text-primary-700"
       >
-        Sign in
+        Se connecter
       </NuxtLink>
     </p>
   </div>

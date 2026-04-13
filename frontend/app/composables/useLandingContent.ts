@@ -39,30 +39,30 @@ export interface StatCard {
 
 export function useLandingContent() {
   const featuredProducts: FeaturedProduct[] = [
-    { name: 'MacBook Pro M3', type: 'Laptop', price: '$25.00', icon1: 'ph:cpu', spec1: 'M3 Pro', icon2: 'ph:memory', spec2: '18GB', icon3: 'ph:hard-drive', spec3: '512GB', heroIcon: 'ph:laptop' },
-    { name: 'Sony A7 IV', type: 'Camera', price: '$18.00', icon1: 'ph:aperture', spec1: '33MP', icon2: 'ph:film-strip', spec2: '4K 60', icon3: 'ph:crosshair', spec3: '693 AF', heroIcon: 'ph:camera' },
-    { name: 'DJI Mavic 3', type: 'Drone', price: '$32.00', icon1: 'ph:timer', spec1: '46min', icon2: 'ph:video-camera', spec2: '5.1K', icon3: 'ph:wifi-high', spec3: '15km', heroIcon: 'ph:drone' },
-    { name: 'iPad Pro M2', type: 'Tablet', price: '$15.00', icon1: 'ph:cpu', spec1: 'M2', icon2: 'ph:monitor', spec2: '12.9"', icon3: 'ph:pencil-simple', spec3: 'Pencil', heroIcon: 'ph:device-tablet' },
+    { name: 'MacBook Pro M3', type: 'Ordinateur', price: '25,00 €', icon1: 'ph:cpu', spec1: 'M3 Pro', icon2: 'ph:memory', spec2: '18Go', icon3: 'ph:hard-drive', spec3: '512Go', heroIcon: 'ph:laptop' },
+    { name: 'Sony A7 IV', type: 'Appareil photo', price: '18,00 €', icon1: 'ph:aperture', spec1: '33MP', icon2: 'ph:film-strip', spec2: '4K 60', icon3: 'ph:crosshair', spec3: '693 AF', heroIcon: 'ph:camera' },
+    { name: 'DJI Mavic 3', type: 'Drone', price: '32,00 €', icon1: 'ph:timer', spec1: '46min', icon2: 'ph:video-camera', spec2: '5.1K', icon3: 'ph:wifi-high', spec3: '15km', heroIcon: 'ph:drone' },
+    { name: 'iPad Pro M2', type: 'Tablette', price: '15,00 €', icon1: 'ph:cpu', spec1: 'M2', icon2: 'ph:monitor', spec2: '12.9"', icon3: 'ph:pencil-simple', spec3: 'Pencil', heroIcon: 'ph:device-tablet' },
   ]
 
   const features: LandingFeature[] = [
-    { icon: 'ph:lightning', title: 'Instant Delivery', desc: 'Get your tech delivered within hours. Same-day shipping available in 40+ cities nationwide.', bg: 'bg-surface-purple', hoverBg: 'group-hover:bg-primary-100', iconColor: 'text-primary-500' },
-    { icon: 'ph:shield-check', title: 'Premium Protection', desc: 'Every rental includes full coverage insurance. No hidden fees, no surprises — just peace of mind.', bg: 'bg-surface-violet', hoverBg: 'group-hover:bg-accent-200', iconColor: 'text-accent-500' },
-    { icon: 'ph:devices', title: 'Wide Catalog', desc: '250+ premium devices from laptops and cameras to drones and tablets — always the latest models.', bg: 'bg-surface-lavender', hoverBg: 'group-hover:bg-primary-100', iconColor: 'text-primary-600' },
-    { icon: 'ph:arrows-clockwise', title: 'Flexible Returns', desc: 'Extend your rental or return early — no penalties. Schedule pickup at your convenience.', bg: 'bg-surface-lilac', hoverBg: 'group-hover:bg-primary-100', iconColor: 'text-primary-700' },
+    { icon: 'ph:lightning', title: 'Livraison express', desc: 'Recevez votre équipement en quelques heures. Livraison le jour même dans plus de 40 villes.', bg: 'bg-surface-purple', hoverBg: 'group-hover:bg-primary-100', iconColor: 'text-primary-500' },
+    { icon: 'ph:shield-check', title: 'Protection complète', desc: 'Chaque location inclut une assurance tous risques. Aucun frais caché, aucune surprise — juste la tranquillité.', bg: 'bg-surface-violet', hoverBg: 'group-hover:bg-accent-200', iconColor: 'text-accent-500' },
+    { icon: 'ph:devices', title: 'Catalogue étendu', desc: 'Plus de 250 appareils haut de gamme : ordinateurs, appareils photo, drones, tablettes — toujours les derniers modèles.', bg: 'bg-surface-lavender', hoverBg: 'group-hover:bg-primary-100', iconColor: 'text-primary-600' },
+    { icon: 'ph:arrows-clockwise', title: 'Retours flexibles', desc: 'Prolongez ou retournez votre location sans pénalité. Planifiez la récupération à votre convenance.', bg: 'bg-surface-lilac', hoverBg: 'group-hover:bg-primary-100', iconColor: 'text-primary-700' },
   ]
 
   const navLinks: NavLink[] = [
-    { label: 'Products', href: '/products' },
-    { label: 'How It Works', href: '#how-it-works' },
-    { label: 'Pricing', href: '#pricing' },
+    { label: 'Produits', href: '/products' },
+    { label: 'Comment ça marche', href: '#how-it-works' },
+    { label: 'Tarifs', href: '#pricing' },
   ]
 
   const statCards: StatCard[] = [
-    { value: '250+', title: 'Products', desc: 'Laptops, cameras, drones, and more.', bg: 'bg-surface-purple', corner: 'rounded-tl-feature' },
-    { value: '40+', title: 'Cities', desc: 'Same-day delivery across major cities.', bg: 'bg-surface-lilac', corner: 'rounded-tr-feature' },
-    { value: '10K+', title: 'Users', desc: 'Active renters on the platform.', bg: 'bg-surface-lavender', corner: 'rounded-bl-feature' },
-    { value: '4.9', title: 'Rating', desc: 'Average user satisfaction score.', bg: 'bg-surface-violet', corner: 'rounded-br-feature' },
+    { value: '250+', title: 'Produits', desc: 'Ordinateurs, appareils photo, drones et plus.', bg: 'bg-surface-purple', corner: 'rounded-tl-feature' },
+    { value: '40+', title: 'Villes', desc: 'Livraison le jour même dans les grandes villes.', bg: 'bg-surface-lilac', corner: 'rounded-tr-feature' },
+    { value: '10K+', title: 'Utilisateurs', desc: 'Locataires actifs sur la plateforme.', bg: 'bg-surface-lavender', corner: 'rounded-bl-feature' },
+    { value: '4.9', title: 'Note', desc: 'Score moyen de satisfaction client.', bg: 'bg-surface-violet', corner: 'rounded-br-feature' },
   ]
 
   return { featuredProducts, features, navLinks, statCards }

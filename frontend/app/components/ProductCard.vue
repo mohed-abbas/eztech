@@ -42,13 +42,13 @@ defineProps<{
     <div class="flex items-center justify-between mt-3">
       <div class="flex items-end leading-[1.4]">
         <span class="text-h3 font-semibold text-neutral-800">{{ product.price }}/</span>
-        <span class="text-caption font-medium text-neutral-500">Day</span>
+        <span class="text-caption font-medium text-neutral-500">Jour</span>
       </div>
       <NuxtLink
         :to="to ?? '/products'"
         class="bg-neutral-800 hover:bg-neutral-900 rounded-full text-white px-4 py-2 text-body-sm font-medium transition-colors"
       >
-        {{ ctaLabel ?? 'Rent Now' }}
+        {{ ctaLabel ?? 'Louer' }}
       </NuxtLink>
     </div>
   </div>

@@ -19,19 +19,19 @@ const rightCards = computed(() => featuredProducts.slice(2, 4))
     >
 
     <div class="relative mx-auto max-w-[1240px] px-6">
-      <div class="flex flex-col items-center pt-[36px] pb-0">
+      <div class="flex flex-col items-center pt-[60px] lg:pt-[80px] pb-0">
         <h1
           v-motion="heroFadeUp(100)"
-          class="font-poppins font-semibold text-[clamp(2.5rem,5.5vw,76px)] leading-[1.2] capitalize text-[#1f2937] max-w-[605px] text-center"
+          class="font-poppins font-semibold text-[clamp(2.5rem,5.5vw,76px)] leading-[1.2] capitalize text-[#1f2937] text-center"
         >
-          Rent Premium. Deliver Smart.
+          Location Premium.<br>Livraison Intelligente.
         </h1>
 
         <p
           v-motion="heroFadeUp(250)"
           class="mt-[22px] font-poppins font-normal text-[clamp(1rem,1.5vw,20px)] leading-[1.5] text-[rgba(68,69,78,0.7)] max-w-[749px] text-center"
         >
-          Experience tech at your fingertips. Browse, rent, and receive — all from your phone with EzTech's intelligent rental platform.
+          La tech à portée de main. Parcourez, louez et recevez — directement depuis votre téléphone grâce à la plateforme de location intelligente EzTech.
         </p>
 
         <div v-motion="heroFadeUp(400)" class="mt-7 flex items-center gap-2.5">
@@ -39,13 +39,13 @@ const rightCards = computed(() => featuredProducts.slice(2, 4))
             to="/products"
             class="hero-btn-primary relative overflow-hidden rounded-[37px] border border-white px-6 py-3 font-poppins font-medium text-sm leading-[22px] text-white capitalize transition-opacity hover:opacity-90"
           >
-            Get Started
+            Commencer
           </NuxtLink>
           <NuxtLink
             to="/register"
             class="bg-white rounded-[71px] px-6 py-2.5 font-poppins font-medium text-sm leading-[22px] text-[#262730] capitalize shadow-[0px_-0.5px_1px_0px_rgba(0,0,0,0.15),0px_1px_1px_0px_rgba(0,0,0,0.3)] transition-colors hover:bg-neutral-50"
           >
-            Explore Demo
+            Découvrir
           </NuxtLink>
         </div>
 
@@ -85,7 +85,6 @@ const rightCards = computed(() => featuredProducts.slice(2, 4))
       </div>
     </div>
 
-    <div class="h-[40px] lg:h-[60px]" />
   </section>
 </template>
 

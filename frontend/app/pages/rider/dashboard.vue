@@ -7,8 +7,8 @@ definePageMeta({
 <template>
   <div class="min-h-screen flex items-center justify-center">
     <div class="text-center">
-      <h1 class="text-3xl font-bold text-text-primary">Rider Dashboard</h1>
-      <p class="mt-2 text-text-muted">Coming soon</p>
+      <h1 class="text-3xl font-bold text-text-primary">Tableau de bord livreur</h1>
+      <p class="mt-2 text-text-muted">Bientôt disponible</p>
     </div>
   </div>
 </template>
