@@ -156,16 +156,16 @@ const formComplete = computed(() =>
   cardNumber.value && cardExpiry.value && cardCvc.value && cardName.value && canProceed.value,
 )
 
+const ordersStore = useOrdersStore()
+ordersStore.hydrate()
+
 function createMockOrder() {
-  const id = `ord_${Date.now().toString(36)}`
-  const addr = resolvedAddress.value!
-  const order = {
-    id,
-    userId: user.value?.id ?? 'guest',
+  const addr = resolvedAddress.value
+  if (!addr) return ''
+  const order = ordersStore.createOrder({
     items: items.value.map(i => ({
       productId: i.productId,
       name: i.name,
-      image: i.image,
       quantity: i.quantity,
       duration: { type: i.durationUnit, value: i.durationValue },
       unitPrice: i.pricingType === 'flat'
@@ -173,26 +173,17 @@ function createMockOrder() {
         : (i.price[i.durationUnit as 'hourly' | 'daily' | 'weekly'] ?? 0),
       total: linePrice(i),
     })),
-    status: 'preparing',
-    deliveryAddress: addr,
+    deliveryAddress: { ...addr, coordinates: addr.coordinates ?? undefined },
     subtotal: subtotal.value,
     deliveryFee: deliveryFee.value,
     total: total.value,
-    createdAt: new Date().toISOString(),
-    estimatedDelivery: new Date(Date.now() + 30 * 60_000).toISOString(),
-  }
+    userId: user.value?.id,
+  })
 
-  // Persist to localStorage so /orders/* can read it
-  const ORDERS_KEY = 'ez-orders'
-  try {
-    const existing = JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]')
-    existing.push(order)
-    localStorage.setItem(ORDERS_KEY, JSON.stringify(existing))
-  }
-  catch {
-    localStorage.setItem(ORDERS_KEY, JSON.stringify([order]))
-  }
-  return id
+  // Simulate the full delivery cycle (advances every 3s)
+  ordersStore.simulateDelivery(order.id)
+
+  return order.id
 }
 
 function submitPayment() {

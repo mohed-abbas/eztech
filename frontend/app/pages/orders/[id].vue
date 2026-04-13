@@ -1,73 +1,57 @@
 <script setup lang="ts">
+import { STATUS_CONFIG, ACTIVE_STATUSES, type OrderStatus } from '~/stores/orders'
+
 const route = useRoute()
-const orderId = route.params.id
 
 definePageMeta({ layout: 'default', middleware: 'auth' })
 
-type StepKey = 'passee' | 'en_preparation' | 'livreur_assigne' | 'recuperee' | 'en_route' | 'livree'
+const orderId = computed(() => {
+  const id = String(route.params.id)
+  if (!/^[\w-]{1,50}$/.test(id)) return 'invalide'
+  return id
+})
 
-interface Step {
-  key: StepKey
+useHead({ title: computed(() => `Commande #${orderId.value} - EzTech`) })
+
+const store = useOrdersStore()
+store.hydrate()
+
+const order = computed(() => store.getOrder(orderId.value))
+const rider = computed(() => order.value ? store.getRider(order.value.riderId) : undefined)
+
+const currentStepIndex = computed(() => {
+  if (!order.value) return 0
+  return store.getStepIndex(order.value.status)
+})
+
+const isActive = computed(() => {
+  if (!order.value) return false
+  return ACTIVE_STATUSES.includes(order.value.status)
+})
+
+// Show live map only when rider is physically carrying the order
+const TRANSIT_STATUSES: OrderStatus[] = ['picked_up', 'in_transit']
+const showMap = computed(() => {
+  if (!order.value) return false
+  return TRANSIT_STATUSES.includes(order.value.status)
+})
+
+interface StepDisplay {
+  key: OrderStatus
   label: string
   description: string
   icon: string
-  color: string
-  bgColor: string
 }
 
-const STEPS: Step[] = [
-  {
-    key: 'passee',
-    label: 'Commande passée',
-    description: 'Votre commande a été confirmée',
-    icon: 'M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z',
-    color: 'text-success',
-    bgColor: 'bg-success'
-  },
-  {
-    key: 'en_preparation',
-    label: 'En préparation',
-    description: 'Vos produits sont préparés dans l\'entrepôt',
-    icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
-    color: 'text-info',
-    bgColor: 'bg-info'
-  },
-  {
-    key: 'livreur_assigne',
-    label: 'Livreur assigné',
-    description: 'Un livreur a pris en charge votre commande',
-    icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z',
-    color: 'text-primary-500',
-    bgColor: 'bg-primary-500'
-  },
-  {
-    key: 'recuperee',
-    label: 'Récupérée',
-    description: 'Le livreur a récupéré votre commande',
-    icon: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4',
-    color: 'text-warning',
-    bgColor: 'bg-warning'
-  },
-  {
-    key: 'en_route',
-    label: 'En route',
-    description: 'Votre commande est en chemin vers vous',
-    icon: 'M13 10V3L4 14h7v7l9-11h-7z',
-    color: 'text-primary-600',
-    bgColor: 'bg-primary-600'
-  },
-  {
-    key: 'livree',
-    label: 'Livrée',
-    description: 'Commande livrée avec succès',
-    icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
-    color: 'text-success',
-    bgColor: 'bg-success'
-  }
+const STEPS: StepDisplay[] = [
+  { key: 'pending', label: 'Commande passée', description: 'Votre commande a été confirmée', icon: 'ph:seal-check' },
+  { key: 'confirmed', label: 'Confirmée', description: 'Commande validée et en attente de préparation', icon: 'ph:check-circle' },
+  { key: 'preparing', label: 'En préparation', description: 'Vos produits sont préparés dans l\'entrepôt', icon: 'ph:package' },
+  { key: 'rider_assigned', label: 'Livreur assigné', description: 'Un livreur a pris en charge votre commande', icon: 'ph:user-circle' },
+  { key: 'picked_up', label: 'Récupérée', description: 'Le livreur a récupéré votre commande', icon: 'ph:cube' },
+  { key: 'in_transit', label: 'En route', description: 'Votre commande est en chemin vers vous', icon: 'ph:motorcycle' },
+  { key: 'delivered', label: 'Livrée', description: 'Commande livrée avec succès', icon: 'ph:house' },
 ]
-
-// État mock : livreur en route (étape 5)
-const currentStepIndex = ref(4) // 'en_route'
 
 function getStepStatus(index: number): 'completed' | 'active' | 'pending' {
   if (index < currentStepIndex.value) return 'completed'
@@ -75,25 +59,13 @@ function getStepStatus(index: number): 'completed' | 'active' | 'pending' {
   return 'pending'
 }
 
-const timestamps: Record<StepKey, string> = {
-  passee: '14:23',
-  en_preparation: '14:31',
-  livreur_assigne: '14:45',
-  recuperee: '15:02',
-  en_route: '15:08',
-  livree: ''
+const vehicleLabels: Record<string, string> = {
+  bicycle: 'Vélo cargo',
+  scooter: 'Scooter',
+  car: 'Voiture',
 }
 
-// Infos livreur mock
-const rider = {
-  name: 'Thomas Moreau',
-  photo: '🧑',
-  vehicle: 'Vélo cargo',
-  rating: 4.8,
-  deliveries: 312
-}
-
-// Route de livraison mock Paris
+// Mock delivery route — coordinates must stay consistent with ROUTE endpoints
 const WAREHOUSE: [number, number] = [48.8447, 2.3799]
 const DESTINATION: [number, number] = [48.8584, 2.2945]
 const ROUTE: [number, number][] = [
@@ -114,176 +86,315 @@ const MAP_CENTER: [number, number] = [48.8515, 2.3372]
 const etaMinutes = ref(18)
 let etaInterval: ReturnType<typeof setInterval> | null = null
 
+function clearEtaInterval() {
+  if (etaInterval !== null) { clearInterval(etaInterval); etaInterval = null }
+}
+
 onMounted(() => {
   etaInterval = setInterval(() => {
     if (etaMinutes.value > 0) etaMinutes.value--
-    else { clearInterval(etaInterval!); etaInterval = null }
+    else clearEtaInterval()
   }, 60000)
 })
 
-onUnmounted(() => {
-  if (etaInterval !== null) clearInterval(etaInterval)
+watch(isActive, (val) => {
+  if (!val) clearEtaInterval()
+})
+
+onBeforeUnmount(() => {
+  clearEtaInterval()
 })
 </script>
 
 <template>
-  <div class="min-h-screen bg-bg-muted py-8 px-4">
-    <div class="max-w-4xl mx-auto space-y-6">
+  <div class="min-h-screen bg-background">
+    <!-- Hero Header -->
+    <div class="relative overflow-hidden bg-section-dark px-6 py-12 sm:px-10 sm:py-16">
+      <div class="pointer-events-none absolute -right-20 -top-20 size-80 rounded-full bg-primary-500/15 blur-3xl" />
+      <div class="pointer-events-none absolute -bottom-10 -left-10 size-64 rounded-full bg-primary-400/10 blur-2xl" />
 
-      <!-- Header -->
-      <div class="flex items-center gap-3">
-        <NuxtLink to="/orders" class="text-text-muted hover:text-text-primary transition-colors">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-          </svg>
+      <div class="relative mx-auto max-w-5xl">
+        <NuxtLink
+          to="/orders"
+          class="mb-4 inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-2 text-body-sm font-medium text-neutral-300 backdrop-blur-sm transition-colors hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50"
+        >
+          <Icon name="ph:arrow-left" class="size-4" />
+          Mes commandes
         </NuxtLink>
-        <div>
-          <h1 class="text-h3 font-bold text-text-primary">Suivi de commande</h1>
-          <p class="text-sm text-text-muted">Commande #{{ orderId }}</p>
-        </div>
-        <div class="ml-auto flex items-center gap-2 rounded-full bg-primary-50 border border-primary-100 px-4 py-2">
-          <span class="w-2 h-2 rounded-full bg-primary-500 animate-pulse" />
-          <span class="text-sm font-medium text-primary-700">En route · {{ etaMinutes }} min</span>
+
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 class="text-h1 font-semibold text-white">Suivi de commande</h1>
+            <p class="mt-2 text-body text-neutral-400">
+              Commande #{{ orderId }}
+            </p>
+          </div>
+
+          <!-- ETA Badge (only for active orders) -->
+          <div v-if="isActive" class="flex items-center gap-3 rounded-full bg-primary-500/20 border border-primary-400/30 px-5 py-2.5 backdrop-blur-sm">
+            <span class="size-2.5 rounded-full bg-primary-400 animate-pulse" />
+            <span class="text-body-sm font-semibold text-white">{{ order ? STATUS_CONFIG[order.status].label : '' }}</span>
+            <div class="h-4 w-px bg-white/20" />
+            <Icon name="ph:clock" class="size-4 text-primary-300" />
+            <span class="text-body-sm font-medium text-primary-200">{{ etaMinutes }} min</span>
+          </div>
+
+          <!-- Delivered / Cancelled badge -->
+          <div v-else-if="order" class="flex items-center gap-2 rounded-full px-5 py-2.5 backdrop-blur-sm" :class="STATUS_CONFIG[order.status].bg">
+            <Icon :name="STATUS_CONFIG[order.status].icon" class="size-4" :class="STATUS_CONFIG[order.status].color" />
+            <span class="text-body-sm font-semibold" :class="STATUS_CONFIG[order.status].color">{{ STATUS_CONFIG[order.status].label }}</span>
+          </div>
         </div>
       </div>
+    </div>
 
-      <!-- Timeline statut (stepper) -->
-      <Card class="p-6">
-        <h2 class="font-semibold text-text-primary mb-6">Statut de la livraison</h2>
+    <!-- Main Content -->
+    <div class="mx-auto max-w-5xl px-6 py-10 sm:px-10">
+      <!-- Loading -->
+      <div v-if="store.loading" class="py-20 text-center text-text-muted">
+        Chargement...
+      </div>
 
-        <div class="relative">
-          <!-- Ligne de progression -->
-          <div class="absolute left-5 top-5 bottom-5 w-0.5 bg-neutral-100" />
-          <div
-            class="absolute left-5 top-5 w-0.5 bg-primary-500 transition-all duration-700"
-            :style="{ height: `${(currentStepIndex / (STEPS.length - 1)) * 100}%` }"
-          />
+      <!-- Order not found -->
+      <EmptyState
+        v-else-if="!order"
+        title="Commande introuvable"
+        description="Cette commande n'existe pas ou vous n'y avez pas accès."
+      >
+        <template #icon>
+          <Icon name="ph:warning-circle" class="size-10 text-amber-500" />
+        </template>
+        <template #actions>
+          <NuxtLink to="/orders">
+            <Button variant="gradient" size="pill" class="font-semibold">
+              <Icon name="ph:arrow-left" class="size-4" />
+              Retour aux commandes
+            </Button>
+          </NuxtLink>
+        </template>
+      </EmptyState>
 
-          <div class="space-y-0">
-            <div
-              v-for="(step, index) in STEPS"
-              :key="step.key"
-              class="relative flex items-start gap-4 pb-6 last:pb-0"
-            >
-              <!-- Icône de statut -->
+      <div v-else class="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <!-- Left Column: Timeline -->
+        <div class="lg:col-span-5">
+          <Card class="p-6">
+            <div class="mb-6 flex items-center justify-between">
+              <h2 class="text-h4 font-semibold text-text-primary">Statut de la livraison</h2>
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1.5 text-caption font-medium text-primary-600">
+                <Icon name="ph:path" class="size-3.5" />
+                {{ currentStepIndex + 1 }}/{{ STEPS.length }}
+              </span>
+            </div>
+
+            <div class="relative">
+              <!-- Progress line background -->
+              <div class="absolute left-5 top-5 bottom-5 w-0.5 bg-neutral-100" />
+              <!-- Progress line filled -->
               <div
-                class="relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-2 transition-all duration-500"
-                :class="{
-                  'bg-success border-success': getStepStatus(index) === 'completed',
-                  'bg-primary-600 border-primary-600 shadow-lg shadow-primary-200': getStepStatus(index) === 'active',
-                  'bg-white border-neutral-200': getStepStatus(index) === 'pending'
-                }"
-              >
-                <!-- Checkmark si complété -->
-                <svg
-                  v-if="getStepStatus(index) === 'completed'"
-                  class="w-5 h-5 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-                </svg>
-                <!-- Pulse si actif -->
-                <div v-else-if="getStepStatus(index) === 'active'" class="w-3 h-3 rounded-full bg-white" />
-                <!-- Cercle vide si en attente -->
-                <div v-else class="w-3 h-3 rounded-full bg-neutral-200" />
-              </div>
+                class="absolute left-5 top-5 w-0.5 bg-primary-500 transition-all duration-700"
+                :style="{ height: `${(currentStepIndex / (STEPS.length - 1)) * 100}%` }"
+              />
 
-              <!-- Contenu de l'étape -->
-              <div class="flex-1 pt-1.5">
-                <div class="flex items-center gap-2 flex-wrap">
-                  <span
-                    class="font-medium transition-colors"
+              <div class="space-y-0">
+                <div
+                  v-for="(step, index) in STEPS"
+                  :key="step.key"
+                  class="relative flex items-start gap-4 pb-6 last:pb-0"
+                >
+                  <!-- Status icon -->
+                  <div
+                    class="relative z-10 flex size-10 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-500"
                     :class="{
-                      'text-text-primary': getStepStatus(index) !== 'pending',
-                      'text-text-muted': getStepStatus(index) === 'pending'
+                      'bg-success border-success': getStepStatus(index) === 'completed',
+                      'bg-primary-600 border-primary-600 shadow-lg shadow-primary-200': getStepStatus(index) === 'active',
+                      'bg-white border-neutral-200': getStepStatus(index) === 'pending',
                     }"
                   >
-                    {{ step.label }}
-                  </span>
+                    <Icon
+                      v-if="getStepStatus(index) === 'completed'"
+                      name="ph:check-bold"
+                      class="size-5 text-white"
+                    />
+                    <div
+                      v-else-if="getStepStatus(index) === 'active'"
+                      class="size-3 rounded-full bg-white"
+                    />
+                    <div v-else class="size-3 rounded-full bg-neutral-200" />
+                  </div>
 
-                  <!-- Badge actif -->
-                  <span
-                    v-if="getStepStatus(index) === 'active'"
-                    class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700"
-                  >
-                    <span class="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
-                    En cours
-                  </span>
+                  <!-- Step content -->
+                  <div class="flex-1 pt-1.5">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span
+                        class="font-medium transition-colors"
+                        :class="getStepStatus(index) !== 'pending' ? 'text-text-primary' : 'text-text-muted'"
+                      >
+                        {{ step.label }}
+                      </span>
 
-                  <!-- Horodatage -->
-                  <span
-                    v-if="timestamps[step.key]"
-                    class="ml-auto text-xs text-text-muted"
-                  >
-                    {{ timestamps[step.key] }}
-                  </span>
-                </div>
+                      <span
+                        v-if="getStepStatus(index) === 'active'"
+                        class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-caption font-medium text-primary-700"
+                      >
+                        <span class="size-1.5 rounded-full bg-primary-500 animate-pulse" />
+                        En cours
+                      </span>
+                    </div>
 
-                <p
-                  class="text-sm mt-0.5"
-                  :class="getStepStatus(index) === 'pending' ? 'text-neutral-300' : 'text-text-muted'"
-                >
-                  {{ step.description }}
-                </p>
+                    <p
+                      class="mt-0.5 text-body-sm"
+                      :class="getStepStatus(index) === 'pending' ? 'text-neutral-300' : 'text-text-muted'"
+                    >
+                      {{ step.description }}
+                    </p>
 
-                <!-- Infos livreur sous "Livreur assigné" -->
-                <div
-                  v-if="step.key === 'livreur_assigne' && getStepStatus(index) !== 'pending'"
-                  class="mt-2 flex items-center gap-2 rounded-lg bg-neutral-50 border border-neutral-100 px-3 py-2 w-fit"
-                >
-                  <span class="text-xl">{{ rider.photo }}</span>
-                  <div>
-                    <p class="text-sm font-medium text-text-primary">{{ rider.name }}</p>
-                    <p class="text-xs text-text-muted">{{ rider.vehicle }} · ⭐ {{ rider.rating }}</p>
+                    <!-- Rider info under "Livreur assigné" -->
+                    <div
+                      v-if="step.key === 'rider_assigned' && getStepStatus(index) !== 'pending' && rider"
+                      class="mt-2 flex items-center gap-2 rounded-lg bg-surface-purple border border-primary-100 px-3 py-2 w-fit"
+                    >
+                      <div class="flex size-8 items-center justify-center rounded-full bg-primary-100">
+                        <Icon name="ph:user" class="size-4 text-primary-600" />
+                      </div>
+                      <div>
+                        <p class="text-body-sm font-medium text-text-primary">{{ rider.name }}</p>
+                        <p class="text-caption text-text-muted">{{ vehicleLabels[rider.vehicleType] ?? rider.vehicleType }} · {{ rider.rating }} <Icon name="ph:star-fill" class="inline size-3 text-amber-400" /></p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </Card>
+          </Card>
 
-      <!-- Carte de localisation live -->
-      <Card class="overflow-hidden">
-        <div class="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
-          <div>
-            <h2 class="font-semibold text-text-primary">Localisation en direct</h2>
-            <p class="text-sm text-text-muted mt-0.5">Mise à jour en temps réel</p>
-          </div>
-          <div class="text-right">
-            <p class="text-sm font-semibold text-text-primary">ETA : {{ etaMinutes }} min</p>
-            <p class="text-xs text-text-muted">Arrivée estimée</p>
-          </div>
         </div>
 
-        <LeafletMap
-          :center="MAP_CENTER"
-          :zoom="13"
-          :route="ROUTE"
-          :warehouse-pos="WAREHOUSE"
-          :destination-pos="DESTINATION"
-          :animate-rider="true"
-          height="380px"
-        />
+        <!-- Right Column -->
+        <div class="lg:col-span-7 space-y-4">
+          <!-- Map Card (only when rider is physically in transit) -->
+          <Card v-if="showMap" class="overflow-hidden">
+            <div class="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
+              <div>
+                <h2 class="text-h4 font-semibold text-text-primary">Localisation en direct</h2>
+                <p class="mt-0.5 text-body-sm text-text-muted">Mise à jour en temps réel</p>
+              </div>
+              <div class="text-right">
+                <p class="text-body font-semibold text-text-primary">{{ etaMinutes }} min</p>
+                <p class="text-caption text-text-muted">Arrivée estimée</p>
+              </div>
+            </div>
 
-        <!-- Infos livreur sous la carte -->
-        <div class="px-6 py-4 bg-neutral-50 flex items-center gap-4">
-          <span class="text-3xl">{{ rider.photo }}</span>
-          <div class="flex-1">
-            <p class="font-medium text-text-primary">{{ rider.name }}</p>
-            <p class="text-sm text-text-muted">{{ rider.vehicle }} · ⭐ {{ rider.rating }} · {{ rider.deliveries }} livraisons</p>
+            <LeafletMap
+              :center="MAP_CENTER"
+              :zoom="13"
+              :route="ROUTE"
+              :warehouse-pos="WAREHOUSE"
+              :destination-pos="DESTINATION"
+              :animate-rider="true"
+              height="380px"
+            />
+
+            <!-- Rider bar under map -->
+            <div v-if="rider" class="flex items-center gap-4 border-t border-neutral-100 bg-neutral-50 px-6 py-4">
+              <div class="flex size-10 items-center justify-center rounded-full bg-primary-100">
+                <Icon name="ph:user" class="size-5 text-primary-600" />
+              </div>
+              <div class="flex-1">
+                <p class="text-body font-medium text-text-primary">{{ rider.name }}</p>
+                <p class="text-body-sm text-text-muted">
+                  {{ vehicleLabels[rider.vehicleType] ?? rider.vehicleType }} · {{ rider.rating }} <Icon name="ph:star-fill" class="inline size-3 text-amber-400" /> · {{ rider.totalDeliveries }} livraisons
+                </p>
+              </div>
+              <Button variant="outline" size="sm">
+                <Icon name="ph:phone" class="size-4" />
+                Contacter
+              </Button>
+            </div>
+          </Card>
+
+          <!-- Order Summary -->
+          <Card class="p-5">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="flex size-9 items-center justify-center rounded-full bg-primary-100">
+                <Icon name="ph:receipt" class="size-4.5 text-primary-600" />
+              </div>
+              <h3 class="text-body font-semibold text-text-primary">Résumé de la commande</h3>
+            </div>
+            <div class="space-y-2.5 text-body-sm">
+              <div v-for="item in order.items" :key="item.productId" class="flex items-center justify-between gap-4">
+                <span class="text-text-secondary">{{ store.getProductName(item.productId) }} <span v-if="item.quantity > 1" class="text-text-muted">×{{ item.quantity }}</span></span>
+                <span class="shrink-0 font-medium text-text-primary">{{ item.total.toFixed(2) }} &euro;</span>
+              </div>
+              <div class="border-t border-neutral-100 pt-3 mt-3 space-y-1.5">
+                <div class="flex justify-between text-text-muted">
+                  <span>Sous-total</span>
+                  <span>{{ order.subtotal.toFixed(2) }} &euro;</span>
+                </div>
+                <div class="flex justify-between text-text-muted">
+                  <span>Livraison</span>
+                  <span>{{ order.deliveryFee > 0 ? `${order.deliveryFee.toFixed(2)} €` : 'Gratuite' }}</span>
+                </div>
+                <div class="flex justify-between font-semibold text-text-primary pt-1.5 border-t border-neutral-100">
+                  <span>Total</span>
+                  <span class="text-h4">{{ order.total.toFixed(2) }} &euro;</span>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <!-- Delivery Address -->
+          <Card class="p-5">
+            <div class="flex items-center gap-3 mb-3">
+              <div class="flex size-9 items-center justify-center rounded-full bg-primary-100">
+                <Icon name="ph:map-pin" class="size-4.5 text-primary-600" />
+              </div>
+              <h3 class="text-body font-semibold text-text-primary">Adresse de livraison</h3>
+            </div>
+            <p class="text-body-sm text-text-secondary">{{ order.deliveryAddress.street }}</p>
+            <p class="text-body-sm text-text-muted">{{ order.deliveryAddress.zipCode }} {{ order.deliveryAddress.city }}</p>
+          </Card>
+
+          <!-- Info Cards -->
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div class="rounded-xl rounded-tl-feature bg-surface-purple border border-primary-100 p-4 flex items-center gap-3">
+              <div class="flex size-10 items-center justify-center rounded-full bg-primary-100">
+                <Icon name="ph:clock-countdown" class="size-5 text-primary-600" />
+              </div>
+              <div>
+                <p class="text-body-sm font-semibold text-text-primary">Livraison rapide</p>
+                <p class="text-caption text-text-muted">30 min ou moins</p>
+              </div>
+            </div>
+            <div class="rounded-xl rounded-tr-feature bg-surface-violet border border-accent-100 p-4 flex items-center gap-3">
+              <div class="flex size-10 items-center justify-center rounded-full bg-accent-100">
+                <Icon name="ph:shield-check" class="size-5 text-accent-600" />
+              </div>
+              <div>
+                <p class="text-body-sm font-semibold text-text-primary">Produits assurés</p>
+                <p class="text-caption text-text-muted">Couverture complète</p>
+              </div>
+            </div>
+            <div class="rounded-xl rounded-bl-feature bg-surface-lavender border border-primary-100 p-4 flex items-center gap-3">
+              <div class="flex size-10 items-center justify-center rounded-full bg-primary-100">
+                <Icon name="ph:arrows-clockwise" class="size-5 text-primary-600" />
+              </div>
+              <div>
+                <p class="text-body-sm font-semibold text-text-primary">Annulation gratuite</p>
+                <p class="text-caption text-text-muted">Avant la livraison</p>
+              </div>
+            </div>
+            <div class="rounded-xl rounded-br-feature bg-surface-lilac border border-primary-100 p-4 flex items-center gap-3">
+              <div class="flex size-10 items-center justify-center rounded-full bg-primary-100">
+                <Icon name="ph:headset" class="size-5 text-primary-600" />
+              </div>
+              <div>
+                <p class="text-body-sm font-semibold text-text-primary">Support 7j/7</p>
+                <p class="text-caption text-text-muted">Assistance dédiée</p>
+              </div>
+            </div>
           </div>
-          <Button variant="outline" size="sm">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
-            </svg>
-            Contacter
-          </Button>
         </div>
-      </Card>
-
+      </div>
     </div>
   </div>
 </template>
