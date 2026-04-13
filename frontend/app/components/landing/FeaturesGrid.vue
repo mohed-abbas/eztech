@@ -10,10 +10,10 @@ const { fadeUp } = useMotionPresets()
     <div class="mx-auto max-w-7xl px-6 lg:px-8">
       <div class="text-center mb-14">
         <h2 v-motion="fadeUp()" class="text-h1 font-medium leading-heading capitalize text-text-primary">
-          Why EzTech?
+          Pourquoi EzTech ?
         </h2>
         <p v-motion="fadeUp(100)" class="mt-4 text-body-lg text-neutral-500/70 leading-body max-w-2xl mx-auto">
-          Everything you need for a seamless tech rental experience — from instant delivery to premium protection.
+          Tout ce qu'il faut pour une expérience de location tech sans accroc — de la livraison express à la protection complète.
         </p>
       </div>
 

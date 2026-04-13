@@ -16,8 +16,8 @@ const { navLinks } = useLandingContent()
 const menuLinks = computed(() => [
   ...navLinks,
   ...(isAuthenticated.value
-    ? [{ label: 'Profile', href: '/profile' }]
-    : [{ label: 'Sign In', href: '/login' }, { label: 'Get Started', href: '/register' }]),
+    ? [{ label: 'Profil', href: '/profile' }]
+    : [{ label: 'Connexion', href: '/login' }, { label: 'Inscription', href: '/register' }]),
 ])
 
 const menuLinkMotion = (idx: number) => ({
@@ -104,14 +104,14 @@ function handleLogout() {
               @click="handleLogout"
             >
               <span class="font-poppins font-medium text-3xl sm:text-4xl lg:text-5xl text-red-200 group-hover:text-red-100 transition-all duration-300 group-hover:translate-x-2">
-                Log out
+                Déconnexion
               </span>
             </button>
           </div>
         </nav>
 
         <div class="px-8 sm:px-12 lg:px-20 py-8 text-primary-200/60 text-sm font-poppins">
-          &copy; {{ new Date().getFullYear() }} EzTech. All rights reserved.
+          &copy; {{ new Date().getFullYear() }} EzTech. Tous droits réservés.
         </div>
       </div>
     </Transition>

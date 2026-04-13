@@ -19,7 +19,7 @@ const avatars = [
     <div class="mx-auto max-w-7xl px-6 lg:px-8">
       <div class="relative flex flex-col items-center gap-12">
         <h2 v-motion="fadeUp()" class="text-h1 font-medium leading-heading capitalize text-text-primary text-center max-w-lg">
-          Trusted by Thousands of Users Worldwide
+          La confiance de milliers d'utilisateurs
         </h2>
 
         <div v-motion="fadeUp(150)" class="relative w-full">
@@ -49,14 +49,14 @@ const avatars = [
             <div class="flex items-start gap-4">
               <span class="text-h1 leading-none text-primary-300 font-serif shrink-0">&ldquo;</span>
               <blockquote class="text-h3 font-normal leading-body text-neutral-800 text-center">
-                Finding premium tech gear used to be a headache. Now with EzTech, I can rent exactly what I need — in minutes. It's fast, clean, and always reliable.
+                Trouver du matériel tech de qualité était un casse-tête. Avec EzTech, je loue exactement ce dont j'ai besoin — en quelques minutes. C'est rapide, simple et toujours fiable.
               </blockquote>
               <span class="text-h1 leading-none text-primary-300 font-serif shrink-0">&rdquo;</span>
             </div>
 
             <div class="text-center">
               <p class="text-h3 font-medium text-neutral-800 leading-heading">Cameron Williamson</p>
-              <p class="text-body text-neutral-500 leading-body">Business Professional, UAE</p>
+              <p class="text-body text-neutral-500 leading-body">Professionnel, Paris</p>
             </div>
           </div>
         </div>

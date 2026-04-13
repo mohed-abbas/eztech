@@ -6,11 +6,11 @@
 definePageMeta({ layout: false, middleware: 'guest' })
 
 useHead({
-  title: 'EzTech — Rent Premium. Deliver Smart.',
+  title: 'EzTech — Location premium. Livraison intelligente.',
   meta: [
     {
       name: 'description',
-      content: 'Premium tech rental delivered in minutes. Browse, rent, and receive laptops, cameras, drones, and more — all from your phone.',
+      content: 'Location de matériel tech haut de gamme livré en quelques minutes. Parcourez, louez et recevez ordinateurs, appareils photo, drones et plus — depuis votre téléphone.',
     },
   ],
 })

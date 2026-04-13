@@ -11,22 +11,22 @@ const dropdownRef = ref<HTMLDivElement | null>(null)
 
 const navItems = computed(() => {
   const items: { label: string, to: string, icon: string }[] = [
-    { label: 'Products', to: '/products', icon: 'ph:package' },
+    { label: 'Produits', to: '/products', icon: 'ph:package' },
   ]
 
   if (role.value === 'customer') {
-    items.push({ label: 'My Orders', to: '/orders', icon: 'ph:receipt' })
+    items.push({ label: 'Mes commandes', to: '/orders', icon: 'ph:receipt' })
   }
 
   if (role.value === 'rider') {
     items.push(
-      { label: 'Dashboard', to: '/rider/dashboard', icon: 'ph:gauge' },
-      { label: 'Deliveries', to: '/rider/deliveries', icon: 'ph:truck' },
+      { label: 'Tableau de bord', to: '/rider/dashboard', icon: 'ph:gauge' },
+      { label: 'Livraisons', to: '/rider/deliveries', icon: 'ph:truck' },
     )
   }
 
   if (role.value === 'admin') {
-    items.push({ label: 'Orders', to: '/orders', icon: 'ph:receipt' })
+    items.push({ label: 'Commandes', to: '/orders', icon: 'ph:receipt' })
   }
 
   return items
@@ -198,7 +198,7 @@ watch(() => route.path, () => {
                   @click="dropdownOpen = false"
                 >
                   <Icon name="ph:user-circle" class="size-4 text-neutral-400" />
-                  Profile
+                  Profil
                 </NuxtLink>
 
                 <NuxtLink
@@ -208,7 +208,7 @@ watch(() => route.path, () => {
                   @click="dropdownOpen = false"
                 >
                   <Icon name="ph:receipt" class="size-4 text-neutral-400" />
-                  My Orders
+                  Mes commandes
                 </NuxtLink>
               </div>
 
@@ -220,7 +220,7 @@ watch(() => route.path, () => {
                   @click="handleLogout"
                 >
                   <Icon name="ph:sign-out" class="size-4" />
-                  Log out
+                  Déconnexion
                 </button>
               </div>
             </div>
@@ -230,7 +230,7 @@ watch(() => route.path, () => {
         <!-- Mobile hamburger -->
         <button
           class="md:hidden flex items-center justify-center size-10 rounded-lg text-neutral-500 hover:bg-neutral-50 transition-colors"
-          aria-label="Toggle menu"
+          aria-label="Ouvrir le menu"
           :aria-expanded="mobileOpen"
           aria-controls="mobile-menu"
           @click="mobileOpen = !mobileOpen"
@@ -308,7 +308,7 @@ watch(() => route.path, () => {
               @click="closeMobile"
             >
               <Icon name="ph:user-circle" class="size-4 text-neutral-400" />
-              Profile
+              Profil
             </NuxtLink>
 
             <button
@@ -316,7 +316,7 @@ watch(() => route.path, () => {
               @click="handleLogout"
             >
               <Icon name="ph:sign-out" class="size-4" />
-              Log out
+              Déconnexion
             </button>
           </div>
         </div>

@@ -9,9 +9,9 @@ withDefaults(defineProps<{
   ctaLabel?: string
   ctaTo?: string
 }>(), {
-  title: "Let's get your tech — delivered in style.",
-  subtitle: 'Join thousands of users who trust EzTech for premium, hassle-free rentals.',
-  ctaLabel: 'Get Started Now',
+  title: "Votre tech — livrée avec style.",
+  subtitle: 'Rejoignez des milliers d\'utilisateurs qui font confiance à EzTech pour des locations haut de gamme, sans prise de tête.',
+  ctaLabel: 'Commencer maintenant',
   ctaTo: '/register',
 })
 </script>

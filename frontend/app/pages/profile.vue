@@ -13,9 +13,9 @@ definePageMeta({
 })
 
 useHead({
-  title: 'My Profile — EzTech',
+  title: 'Mon profil — EzTech',
   meta: [
-    { name: 'description', content: 'Manage your EzTech profile, addresses, and account settings.' },
+    { name: 'description', content: 'Gérez votre profil EzTech, vos adresses et paramètres de compte.' },
   ],
 })
 
@@ -24,9 +24,9 @@ const { user } = storeToRefs(auth)
 const { fadeUp, heroFadeUp } = useMotionPresets()
 
 const vehicleOptions = [
-  { value: 'bicycle', label: 'Bicycle', icon: 'ph:bicycle' },
+  { value: 'bicycle', label: 'Vélo', icon: 'ph:bicycle' },
   { value: 'scooter', label: 'Scooter', icon: 'ph:motorcycle' },
-  { value: 'car', label: 'Car', icon: 'ph:car' },
+  { value: 'car', label: 'Voiture', icon: 'ph:car' },
 ] as const
 
 const initials = computed(() => {
@@ -43,7 +43,7 @@ const initials = computed(() => {
 
 const memberSince = computed(() => {
   if (!user.value?.createdAt) return ''
-  return new Date(user.value.createdAt).toLocaleDateString('en-US', {
+  return new Date(user.value.createdAt).toLocaleDateString('fr-FR', {
     month: 'long',
     year: 'numeric',
   })
@@ -51,9 +51,9 @@ const memberSince = computed(() => {
 
 const roleBadge = computed(() => {
   const role = user.value?.role
-  if (role === 'rider') return { label: 'Rider', class: 'bg-accent-100 text-accent-700' }
+  if (role === 'rider') return { label: 'Livreur', class: 'bg-accent-100 text-accent-700' }
   if (role === 'admin') return { label: 'Admin', class: 'bg-neutral-800 text-white' }
-  return { label: 'Customer', class: 'bg-primary-100 text-primary-700' }
+  return { label: 'Client', class: 'bg-primary-100 text-primary-700' }
 })
 
 // ── Success feedback ──
@@ -100,13 +100,13 @@ async function savePersonal() {
     user.value.phone = personalForm.phone.trim()
     auth.persist()
     editingPersonal.value = false
-    flashSuccess('Personal information updated.')
+    flashSuccess('Informations personnelles mises à jour.')
   }
   catch {
     user.value.name = snapshot.name
     user.value.email = snapshot.email
     user.value.phone = snapshot.phone
-    flashSuccess('Failed to save personal information.')
+    flashSuccess('Échec de la sauvegarde.')
   }
   finally {
     savingPersonal.value = false
@@ -183,11 +183,11 @@ async function saveAddress() {
 
     auth.persist()
     editingAddress.value = null
-    flashSuccess(wasNew ? 'Address added.' : 'Address updated.')
+    flashSuccess(wasNew ? 'Adresse ajoutée.' : 'Adresse mise à jour.')
   }
   catch {
     user.value.addresses = snapshotAddresses
-    flashSuccess('Failed to save address.')
+    flashSuccess('Échec de la sauvegarde de l\'adresse.')
   }
   finally {
     savingAddress.value = false
@@ -198,7 +198,7 @@ function removeAddress(id: string) {
   if (!user.value) return
   user.value.addresses = user.value.addresses.filter(a => a.id !== id)
   auth.persist()
-  flashSuccess('Address removed.')
+  flashSuccess('Adresse supprimée.')
 }
 
 function clearAddressError(field: string) {
@@ -246,13 +246,13 @@ async function saveVehicle() {
     user.value.insuranceNumber = vehicleForm.insuranceNumber.trim()
     auth.persist()
     editingVehicle.value = false
-    flashSuccess('Vehicle information updated.')
+    flashSuccess('Informations véhicule mises à jour.')
   }
   catch {
     user.value.vehicleType = snapshot.vehicleType
     user.value.licenseNumber = snapshot.licenseNumber
     user.value.insuranceNumber = snapshot.insuranceNumber
-    flashSuccess('Failed to save vehicle information.')
+    flashSuccess('Échec de la sauvegarde du véhicule.')
   }
   finally {
     savingVehicle.value = false
@@ -282,7 +282,7 @@ async function changePassword() {
   securityForm.currentPassword = ''
   securityForm.newPassword = ''
   securityForm.confirmNewPassword = ''
-  flashSuccess('Password changed successfully.')
+  flashSuccess('Mot de passe modifié avec succès.')
 }
 
 function clearSecurityError(field: string) {
@@ -321,7 +321,7 @@ function vehicleIcon(type?: string) {
           </div>
           <button
             class="absolute bottom-0 right-0 flex size-8 items-center justify-center rounded-full bg-white shadow-md transition-transform hover:scale-110 sm:size-9"
-            aria-label="Change avatar"
+            aria-label="Changer l'avatar"
           >
             <Icon name="ph:camera" class="size-4 text-text-secondary sm:size-5" />
           </button>
@@ -338,7 +338,7 @@ function vehicleIcon(type?: string) {
           >
             {{ roleBadge.label }}
           </span>
-          <span class="text-caption text-neutral-500">Member since {{ memberSince }}</span>
+          <span class="text-caption text-neutral-500">Membre depuis {{ memberSince }}</span>
         </div>
       </div>
     </section>
@@ -362,19 +362,19 @@ function vehicleIcon(type?: string) {
         <TabsList class="mb-6 w-full rounded-xl bg-surface-lilac p-1">
           <TabsTrigger value="personal" class="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary-700 data-[state=active]:shadow-sm">
             <Icon name="ph:user" class="mr-1.5 size-4" />
-            Personal
+            Personnel
           </TabsTrigger>
           <TabsTrigger v-if="user.role === 'customer'" value="addresses" class="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary-700 data-[state=active]:shadow-sm">
             <Icon name="ph:map-pin" class="mr-1.5 size-4" />
-            Addresses
+            Adresses
           </TabsTrigger>
           <TabsTrigger v-if="user.role === 'rider'" value="vehicle" class="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary-700 data-[state=active]:shadow-sm">
             <Icon name="ph:motorcycle" class="mr-1.5 size-4" />
-            Vehicle
+            Véhicule
           </TabsTrigger>
           <TabsTrigger value="security" class="rounded-lg data-[state=active]:bg-white data-[state=active]:text-primary-700 data-[state=active]:shadow-sm">
             <Icon name="ph:shield-check" class="mr-1.5 size-4" />
-            Security
+            Sécurité
           </TabsTrigger>
         </TabsList>
 
@@ -383,8 +383,8 @@ function vehicleIcon(type?: string) {
           <Card v-motion="fadeUp(0)" class="overflow-hidden">
             <CardHeader class="flex flex-row items-center justify-between px-6 py-5">
               <div>
-                <CardTitle class="text-h4 font-semibold">Personal Information</CardTitle>
-                <CardDescription class="mt-1">Manage your account details</CardDescription>
+                <CardTitle class="text-h4 font-semibold">Informations personnelles</CardTitle>
+                <CardDescription class="mt-1">Gérez les détails de votre compte</CardDescription>
               </div>
               <Button
                 v-if="!editingPersonal"
@@ -393,7 +393,7 @@ function vehicleIcon(type?: string) {
                 @click="startEditingPersonal"
               >
                 <Icon name="ph:pencil-simple" class="size-4" />
-                Edit
+                Modifier
               </Button>
             </CardHeader>
 
@@ -405,7 +405,7 @@ function vehicleIcon(type?: string) {
                     <Icon name="ph:user" class="size-5 text-primary-600" />
                   </div>
                   <div>
-                    <p class="text-caption font-medium text-text-muted">Full name</p>
+                    <p class="text-caption font-medium text-text-muted">Nom complet</p>
                     <p class="text-body font-medium text-text-primary">{{ user.name }}</p>
                   </div>
                 </div>
@@ -414,7 +414,7 @@ function vehicleIcon(type?: string) {
                     <Icon name="ph:envelope" class="size-5 text-primary-600" />
                   </div>
                   <div>
-                    <p class="text-caption font-medium text-text-muted">Email</p>
+                    <p class="text-caption font-medium text-text-muted">E-mail</p>
                     <p class="text-body font-medium text-text-primary">{{ user.email }}</p>
                   </div>
                 </div>
@@ -423,7 +423,7 @@ function vehicleIcon(type?: string) {
                     <Icon name="ph:phone" class="size-5 text-primary-600" />
                   </div>
                   <div>
-                    <p class="text-caption font-medium text-text-muted">Phone</p>
+                    <p class="text-caption font-medium text-text-muted">Téléphone</p>
                     <p class="text-body font-medium text-text-primary">{{ user.phone }}</p>
                   </div>
                 </div>
@@ -431,19 +431,19 @@ function vehicleIcon(type?: string) {
 
               <!-- Edit mode -->
               <form v-else class="space-y-4" novalidate @submit.prevent="savePersonal">
-                <FormField id="profile-name" label="Full name" :error="personalErrors.name">
+                <FormField id="profile-name" label="Nom complet" :error="personalErrors.name">
                   <template #default="{ id: fieldId }">
                     <Input
                       :id="fieldId"
                       v-model="personalForm.name"
                       type="text"
-                      placeholder="Your full name"
+                      placeholder="Votre nom complet"
                       :aria-invalid="!!personalErrors.name || undefined"
                       @input="clearPersonalError('name')"
                     />
                   </template>
                 </FormField>
-                <FormField id="profile-email" label="Email" :error="personalErrors.email">
+                <FormField id="profile-email" label="E-mail" :error="personalErrors.email">
                   <template #default="{ id: fieldId }">
                     <Input
                       :id="fieldId"
@@ -455,7 +455,7 @@ function vehicleIcon(type?: string) {
                     />
                   </template>
                 </FormField>
-                <FormField id="profile-phone" label="Phone" :error="personalErrors.phone">
+                <FormField id="profile-phone" label="Téléphone" :error="personalErrors.phone">
                   <template #default="{ id: fieldId }">
                     <Input
                       :id="fieldId"
@@ -470,10 +470,10 @@ function vehicleIcon(type?: string) {
 
                 <div class="flex items-center gap-3 pt-2">
                   <Button type="submit" variant="gradient" size="pill-sm" :disabled="savingPersonal">
-                    {{ savingPersonal ? 'Saving...' : 'Save changes' }}
+                    {{ savingPersonal ? 'Sauvegarde...' : 'Enregistrer' }}
                   </Button>
                   <Button type="button" variant="ghost" size="pill-sm" @click="cancelEditingPersonal">
-                    Cancel
+                    Annuler
                   </Button>
                 </div>
               </form>
@@ -486,8 +486,8 @@ function vehicleIcon(type?: string) {
           <Card v-motion="fadeUp(0)" class="overflow-hidden">
             <CardHeader class="flex flex-row items-center justify-between px-6 py-5">
               <div>
-                <CardTitle class="text-h4 font-semibold">Delivery Addresses</CardTitle>
-                <CardDescription class="mt-1">Manage your delivery locations</CardDescription>
+                <CardTitle class="text-h4 font-semibold">Adresses de livraison</CardTitle>
+                <CardDescription class="mt-1">Gérez vos lieux de livraison</CardDescription>
               </div>
               <Button
                 v-if="editingAddress === null"
@@ -496,7 +496,7 @@ function vehicleIcon(type?: string) {
                 @click="startAddAddress"
               >
                 <Icon name="ph:plus" class="size-4" />
-                Add
+                Ajouter
               </Button>
             </CardHeader>
 
@@ -535,29 +535,29 @@ function vehicleIcon(type?: string) {
                 <div class="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-surface-purple">
                   <Icon name="ph:map-pin" class="size-7 text-primary-400" />
                 </div>
-                <p class="text-body-sm font-medium text-text-secondary">No addresses yet</p>
-                <p class="mt-1 text-caption text-text-muted">Add a delivery address to get started</p>
+                <p class="text-body-sm font-medium text-text-secondary">Aucune adresse enregistrée</p>
+                <p class="mt-1 text-caption text-text-muted">Ajoutez une adresse de livraison pour commencer</p>
               </div>
 
               <!-- Address form (add/edit) -->
               <form v-if="editingAddress !== null" class="space-y-4" novalidate @submit.prevent="saveAddress">
                 <div class="rounded-xl border border-primary-200 bg-surface-purple p-4">
                   <p class="mb-4 text-body-sm font-semibold text-text-primary">
-                    {{ editingAddress === 'new' ? 'New address' : 'Edit address' }}
+                    {{ editingAddress === 'new' ? 'Nouvelle adresse' : 'Modifier l\'adresse' }}
                   </p>
                   <div class="space-y-3">
-                    <FormField id="addr-label" label="Label" :error="addressErrors.label">
+                    <FormField id="addr-label" label="Libellé" :error="addressErrors.label">
                       <template #default="{ id: fieldId }">
                         <Input
                           :id="fieldId"
                           v-model="addressForm.label"
-                          placeholder="Home, Office..."
+                          placeholder="Domicile, Bureau..."
                           :aria-invalid="!!addressErrors.label || undefined"
                           @input="clearAddressError('label')"
                         />
                       </template>
                     </FormField>
-                    <FormField id="addr-street" label="Street" :error="addressErrors.street">
+                    <FormField id="addr-street" label="Rue" :error="addressErrors.street">
                       <template #default="{ id: fieldId }">
                         <Input
                           :id="fieldId"
@@ -569,7 +569,7 @@ function vehicleIcon(type?: string) {
                       </template>
                     </FormField>
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <FormField id="addr-city" label="City" :error="addressErrors.city">
+                      <FormField id="addr-city" label="Ville" :error="addressErrors.city">
                         <template #default="{ id: fieldId }">
                           <Input
                             :id="fieldId"
@@ -580,7 +580,7 @@ function vehicleIcon(type?: string) {
                           />
                         </template>
                       </FormField>
-                      <FormField id="addr-zip" label="Zip code" :error="addressErrors.zipCode">
+                      <FormField id="addr-zip" label="Code postal" :error="addressErrors.zipCode">
                         <template #default="{ id: fieldId }">
                           <Input
                             :id="fieldId"
@@ -596,10 +596,10 @@ function vehicleIcon(type?: string) {
                 </div>
                 <div class="flex items-center gap-3">
                   <Button type="submit" variant="gradient" size="pill-sm" :disabled="savingAddress">
-                    {{ savingAddress ? 'Saving...' : (editingAddress === 'new' ? 'Add address' : 'Save changes') }}
+                    {{ savingAddress ? 'Sauvegarde...' : (editingAddress === 'new' ? 'Ajouter l\'adresse' : 'Enregistrer') }}
                   </Button>
                   <Button type="button" variant="ghost" size="pill-sm" @click="cancelEditingAddress">
-                    Cancel
+                    Annuler
                   </Button>
                 </div>
               </form>
@@ -612,8 +612,8 @@ function vehicleIcon(type?: string) {
           <Card v-motion="fadeUp(0)" class="overflow-hidden">
             <CardHeader class="flex flex-row items-center justify-between px-6 py-5">
               <div>
-                <CardTitle class="text-h4 font-semibold">Vehicle Information</CardTitle>
-                <CardDescription class="mt-1">Your delivery vehicle details</CardDescription>
+                <CardTitle class="text-h4 font-semibold">Informations véhicule</CardTitle>
+                <CardDescription class="mt-1">Détails de votre véhicule de livraison</CardDescription>
               </div>
               <Button
                 v-if="!editingVehicle"
@@ -622,7 +622,7 @@ function vehicleIcon(type?: string) {
                 @click="startEditingVehicle"
               >
                 <Icon name="ph:pencil-simple" class="size-4" />
-                Edit
+                Modifier
               </Button>
             </CardHeader>
 
@@ -634,7 +634,7 @@ function vehicleIcon(type?: string) {
                     <Icon :name="vehicleIcon(user.vehicleType)" class="size-5 text-accent-600" />
                   </div>
                   <div>
-                    <p class="text-caption font-medium text-text-muted">Vehicle type</p>
+                    <p class="text-caption font-medium text-text-muted">Type de véhicule</p>
                     <p class="text-body font-medium capitalize text-text-primary">{{ user.vehicleType ?? '—' }}</p>
                   </div>
                 </div>
@@ -643,7 +643,7 @@ function vehicleIcon(type?: string) {
                     <Icon name="ph:identification-card" class="size-5 text-accent-600" />
                   </div>
                   <div>
-                    <p class="text-caption font-medium text-text-muted">License number</p>
+                    <p class="text-caption font-medium text-text-muted">Numéro de permis</p>
                     <p class="text-body font-medium text-text-primary">{{ user.licenseNumber ?? '—' }}</p>
                   </div>
                 </div>
@@ -652,7 +652,7 @@ function vehicleIcon(type?: string) {
                     <Icon name="ph:shield-check" class="size-5 text-accent-600" />
                   </div>
                   <div>
-                    <p class="text-caption font-medium text-text-muted">Insurance number</p>
+                    <p class="text-caption font-medium text-text-muted">Numéro d'assurance</p>
                     <p class="text-body font-medium text-text-primary">{{ user.insuranceNumber ?? '—' }}</p>
                   </div>
                 </div>
@@ -662,7 +662,7 @@ function vehicleIcon(type?: string) {
               <form v-else class="space-y-5" novalidate @submit.prevent="saveVehicle">
                 <!-- Vehicle type radio -->
                 <div>
-                  <label class="text-body-sm font-medium text-neutral-800">Vehicle type</label>
+                  <label class="text-body-sm font-medium text-neutral-800">Type de véhicule</label>
                   <div role="radiogroup" aria-label="Vehicle type" class="mt-2 grid grid-cols-3 gap-3">
                     <label
                       v-for="option in vehicleOptions"
@@ -707,7 +707,7 @@ function vehicleIcon(type?: string) {
                   </p>
                 </div>
 
-                <FormField id="profile-license" label="License number" :error="vehicleErrors.licenseNumber">
+                <FormField id="profile-license" label="Numéro de permis" :error="vehicleErrors.licenseNumber">
                   <template #default="{ id: fieldId }">
                     <Input
                       :id="fieldId"
@@ -718,7 +718,7 @@ function vehicleIcon(type?: string) {
                     />
                   </template>
                 </FormField>
-                <FormField id="profile-insurance" label="Insurance number" :error="vehicleErrors.insuranceNumber">
+                <FormField id="profile-insurance" label="Numéro d'assurance" :error="vehicleErrors.insuranceNumber">
                   <template #default="{ id: fieldId }">
                     <Input
                       :id="fieldId"
@@ -732,10 +732,10 @@ function vehicleIcon(type?: string) {
 
                 <div class="flex items-center gap-3 pt-2">
                   <Button type="submit" variant="gradient" size="pill-sm" :disabled="savingVehicle">
-                    {{ savingVehicle ? 'Saving...' : 'Save changes' }}
+                    {{ savingVehicle ? 'Sauvegarde...' : 'Enregistrer' }}
                   </Button>
                   <Button type="button" variant="ghost" size="pill-sm" @click="cancelEditingVehicle">
-                    Cancel
+                    Annuler
                   </Button>
                 </div>
               </form>
@@ -749,44 +749,44 @@ function vehicleIcon(type?: string) {
             <!-- Change password -->
             <Card v-motion="fadeUp(0)" class="overflow-hidden">
               <CardHeader class="px-6 py-5">
-                <CardTitle class="text-h4 font-semibold">Change Password</CardTitle>
-                <CardDescription class="mt-1">Update your account password</CardDescription>
+                <CardTitle class="text-h4 font-semibold">Changer le mot de passe</CardTitle>
+                <CardDescription class="mt-1">Mettez à jour le mot de passe de votre compte</CardDescription>
               </CardHeader>
               <CardContent class="px-6 pb-6">
                 <form class="space-y-4" novalidate @submit.prevent="changePassword">
-                  <FormField id="sec-current" label="Current password" :error="securityErrors.currentPassword">
+                  <FormField id="sec-current" label="Mot de passe actuel" :error="securityErrors.currentPassword">
                     <template #default="{ id: fieldId }">
                       <Input
                         :id="fieldId"
                         v-model="securityForm.currentPassword"
                         type="password"
-                        placeholder="Enter current password"
+                        placeholder="Saisissez le mot de passe actuel"
                         autocomplete="current-password"
                         :aria-invalid="!!securityErrors.currentPassword || undefined"
                         @input="clearSecurityError('currentPassword')"
                       />
                     </template>
                   </FormField>
-                  <FormField id="sec-new" label="New password" :error="securityErrors.newPassword">
+                  <FormField id="sec-new" label="Nouveau mot de passe" :error="securityErrors.newPassword">
                     <template #default="{ id: fieldId }">
                       <Input
                         :id="fieldId"
                         v-model="securityForm.newPassword"
                         type="password"
-                        placeholder="At least 8 characters"
+                        placeholder="Minimum 8 caractères"
                         autocomplete="new-password"
                         :aria-invalid="!!securityErrors.newPassword || undefined"
                         @input="clearSecurityError('newPassword')"
                       />
                     </template>
                   </FormField>
-                  <FormField id="sec-confirm" label="Confirm new password" :error="securityErrors.confirmNewPassword">
+                  <FormField id="sec-confirm" label="Confirmer le nouveau mot de passe" :error="securityErrors.confirmNewPassword">
                     <template #default="{ id: fieldId }">
                       <Input
                         :id="fieldId"
                         v-model="securityForm.confirmNewPassword"
                         type="password"
-                        placeholder="Repeat new password"
+                        placeholder="Répétez le nouveau mot de passe"
                         autocomplete="new-password"
                         :aria-invalid="!!securityErrors.confirmNewPassword || undefined"
                         @input="clearSecurityError('confirmNewPassword')"
@@ -795,7 +795,7 @@ function vehicleIcon(type?: string) {
                   </FormField>
                   <div class="pt-2">
                     <Button type="submit" variant="gradient" size="pill-sm" :disabled="savingPassword">
-                      {{ savingPassword ? 'Updating...' : 'Update password' }}
+                      {{ savingPassword ? 'Mise à jour...' : 'Mettre à jour' }}
                     </Button>
                   </div>
                 </form>
@@ -807,16 +807,16 @@ function vehicleIcon(type?: string) {
             <!-- Danger zone -->
             <Card v-motion="fadeUp(100)" class="overflow-hidden border-error/20">
               <CardHeader class="bg-error/5 px-6 py-5">
-                <CardTitle class="text-h4 font-semibold text-error">Danger Zone</CardTitle>
-                <CardDescription class="mt-1">Irreversible account actions</CardDescription>
+                <CardTitle class="text-h4 font-semibold text-error">Zone de danger</CardTitle>
+                <CardDescription class="mt-1">Actions irréversibles sur le compte</CardDescription>
               </CardHeader>
               <CardContent class="px-6 py-5">
                 <p class="mb-4 text-body-sm text-text-muted">
-                  Once you delete your account, all your data, orders, and rental history will be permanently removed. This action cannot be undone.
+                  Une fois votre compte supprimé, toutes vos données, commandes et historique de location seront définitivement effacés. Cette action est irréversible.
                 </p>
                 <Button variant="destructive" size="pill-sm" disabled title="Account deletion coming in Phase 2">
                   <Icon name="ph:trash" class="size-4" />
-                  Delete account
+                  Supprimer le compte
                 </Button>
               </CardContent>
             </Card>
