@@ -13,7 +13,23 @@ export function buildApp() {
   app.use(helmet());
   app.use(cors()); // tighten allowed origins in a later phase
   app.use(express.json({ limit: '1mb' }));
-  app.use(pinoHttp({ logger }));
+  app.use(
+    pinoHttp({
+      logger,
+      redact: {
+        paths: [
+          'req.body.password',
+          'req.body.currentPassword',
+          'req.body.newPassword',
+          'req.body.confirmPassword',
+          'req.body.confirmNewPassword',
+          'req.headers.authorization',
+          'req.body.refreshToken',
+        ],
+        censor: '[REDACTED]',
+      },
+    }),
+  );
 
   app.use('/api', apiRouter);
 
