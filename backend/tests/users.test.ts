@@ -101,4 +101,14 @@ describe('PATCH /api/users/:id', () => {
     expect(res.status).toBe(422);
     expect((res.body as ErrorResponse).error).toBe('validation_failed');
   });
+
+  it('returns 404 for unknown id', async () => {
+    const adminToken = await getAdminToken();
+    const res = await request(app)
+      .patch('/api/users/00000000-0000-0000-0000-000000000000')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'Ghost' });
+    expect(res.status).toBe(404);
+    expect((res.body as ErrorResponse).error).toBe('user_not_found');
+  });
 });

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
@@ -34,7 +35,10 @@ usersRouter.patch('/:id', requireAuth, requireRole('admin'), async (req, res, ne
   const user = await prisma.user.update({
     where: { id },
     data,
-  }).catch(() => null); // Prisma throws P2025 on not-found
+  }).catch((e: unknown) => {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2025') return null;
+    throw e; // propagate unexpected errors to errorHandler (→ 500)
+  });
 
   if (!user) return next(new HttpError(404, 'user_not_found'));
   res.json({ user: buildUserResponse(user) });
