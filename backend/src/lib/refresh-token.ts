@@ -32,19 +32,27 @@ export async function rotateRefreshToken(
   userId: string,
 ): Promise<string | null> {
   const tokenHash = hashToken(raw);
-  const existing = await prisma.refreshToken.findUnique({ where: { tokenHash } });
 
-  if (!existing) return null;
-  if (existing.revokedAt) return null;               // already revoked
-  if (existing.expiresAt < new Date()) return null;  // expired
-  if (existing.userId !== userId) return null;       // ownership mismatch
+  return prisma.$transaction(async (tx) => {
+    // atomic conditional revoke — returns 0 rows if already revoked/expired/wrong owner
+    const updated = await tx.refreshToken.updateMany({
+      where: {
+        tokenHash,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+        userId,
+      },
+      data: { revokedAt: new Date() },
+    });
 
-  // revoke old token atomically, issue new one
-  await prisma.refreshToken.update({
-    where: { id: existing.id },
-    data: { revokedAt: new Date() },
+    if (updated.count === 0) return null; // already revoked, expired, or not found
+
+    const newRaw = crypto.randomBytes(32).toString('hex');
+    const newHash = hashToken(newRaw);
+    const expiresAt = new Date(Date.now() + parseTtlMs(env.JWT_REFRESH_TTL));
+    await tx.refreshToken.create({ data: { userId, tokenHash: newHash, expiresAt } });
+    return newRaw;
   });
-  return generateRefreshToken(userId);
 }
 
 export async function revokeRefreshToken(raw: string): Promise<void> {
