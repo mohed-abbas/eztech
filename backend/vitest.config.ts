@@ -5,6 +5,10 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     setupFiles: ['tests/setup.ts'],
+    globalSetup: ['tests/globalSetup.ts'],
     globals: false,
+    // run test files sequentially to avoid concurrent DB state conflicts
+    pool: 'forks',
+    poolOptions: { forks: { singleFork: true } },
   },
 });

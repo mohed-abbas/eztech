@@ -7,7 +7,7 @@ const Env = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_ACCESS_TTL: z.string().regex(/^\d+[smhdwy]$/, 'invalid TTL format').default('15m'),
   JWT_REFRESH_TTL: z.string().regex(/^\d+[smhdwy]$/, 'invalid TTL format').default('30d'),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
 const parsed = Env.safeParse(process.env);
