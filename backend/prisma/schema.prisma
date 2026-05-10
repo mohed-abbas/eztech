@@ -1,5 +1,3 @@
-// Wilson designs the actual schema. This file exists so `prisma generate` runs cleanly.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,4 +7,31 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// no models yet
+enum Role {
+  customer
+  rider
+  warehouse_manager
+  admin
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String
+  phone         String         @default("")
+  passwordHash  String
+  role          Role           @default(customer)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  refreshTokens RefreshToken[]
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
