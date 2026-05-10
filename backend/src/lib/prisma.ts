@@ -3,7 +3,6 @@ import { env } from '../config/env.js';
 
 // reuse a single client across hot-reloads in dev; one per process in prod
 declare global {
-  // eslint-disable-next-line no-var
   var __prisma: PrismaClient | undefined;
 }
 

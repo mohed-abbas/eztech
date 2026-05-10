@@ -11,13 +11,15 @@ describe('GET /api/health', () => {
   it('returns 200 with status ok', async () => {
     const res = await request(app).get('/api/health');
     expect(res.status).toBe(200);
-    expect(res.body.status).toBe('ok');
-    expect(typeof res.body.uptime).toBe('number');
+    const body = res.body as { status: string; uptime: number; timestamp: string };
+    expect(body.status).toBe('ok');
+    expect(typeof body.uptime).toBe('number');
   });
 
   it('returns 404 for unknown routes', async () => {
     const res = await request(app).get('/api/does-not-exist');
     expect(res.status).toBe(404);
-    expect(res.body.error).toBe('not_found');
+    const body = res.body as { error: string };
+    expect(body.error).toBe('not_found');
   });
 });
