@@ -85,6 +85,7 @@ All routes are prefixed `/api/auth`.
 
 ```bash
 docker compose up -d    # Postgres must be running (single container, two databases)
+cp .env.test.example .env.test   # first time only — edit JWT_SECRET and ADMIN_PASSWORD
 npm test
 ```
 
