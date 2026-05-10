@@ -35,3 +35,12 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
     next(new HttpError(401, 'invalid_token'));
   }
 };
+
+export function requireRole(...roles: Role[]): RequestHandler {
+  return (req, _res, next) => {
+    // requireAuth must run first — it sets req.user
+    if (!req.user) return next(new HttpError(401, 'missing_token'));
+    if (!roles.includes(req.user.role)) return next(new HttpError(403, 'forbidden'));
+    next();
+  };
+}
