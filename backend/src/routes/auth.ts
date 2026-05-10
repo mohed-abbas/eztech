@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import type { User } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { signAccessToken, requireAuth } from '../middleware/auth.js';
@@ -51,7 +50,7 @@ authRouter.post('/login', async (req, res, next) => {
 
   if (!user) {
     // constant-time: equalize timing against a real bcrypt compare (D9)
-    await bcrypt.compare(password, DUMMY_HASH);
+    await verifyPassword(password, DUMMY_HASH);
     return next(new HttpError(401, 'invalid_credentials'));
   }
 
