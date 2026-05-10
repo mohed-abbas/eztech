@@ -1,14 +1,16 @@
 import type { RequestHandler } from 'express';
 import jwt, { type SignOptions } from 'jsonwebtoken';
+import { z } from 'zod';
 import { env } from '../config/env.js';
 import { HttpError } from './error.js';
 
-export type Role = 'customer' | 'rider' | 'warehouse_manager' | 'admin';
+const JwtPayloadSchema = z.object({
+  sub: z.string().min(1),
+  role: z.enum(['customer', 'rider', 'warehouse_manager', 'admin']),
+});
 
-export interface JwtPayload {
-  sub: string;
-  role: Role;
-}
+export type JwtPayload = z.infer<typeof JwtPayloadSchema>;
+export type Role = JwtPayload['role'];
 
 export function signAccessToken(payload: JwtPayload, opts?: SignOptions): string {
   return jwt.sign(payload, env.JWT_SECRET, {
@@ -18,7 +20,9 @@ export function signAccessToken(payload: JwtPayload, opts?: SignOptions): string
 }
 
 export function verifyAccessToken(token: string): JwtPayload {
-  return jwt.verify(token, env.JWT_SECRET) as JwtPayload;
+  const decoded = jwt.verify(token, env.JWT_SECRET);
+  // parse throws ZodError on invalid shape; requireAuth catches and converts to 401
+  return JwtPayloadSchema.parse(decoded);
 }
 
 export const requireAuth: RequestHandler = (req, _res, next) => {
