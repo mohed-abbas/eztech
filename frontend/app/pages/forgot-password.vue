@@ -1,9 +1,13 @@
 <script setup lang="ts">
+import { forgotPasswordSchema, zodErrorsToRecord } from '~/lib/schemas'
+
 definePageMeta({
   layout: 'auth',
 })
 
-const { loading, forgotPassword } = useAuth()
+const auth = useAuthStore()
+const { loading } = storeToRefs(auth)
+const { forgotPassword } = auth
 
 const email = ref('')
 const emailError = ref('')
@@ -13,21 +17,13 @@ const submittedEmail = ref('')
 
 const successHeadingRef = ref<HTMLHeadingElement | null>(null)
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
 function validateEmail(): boolean {
   emailError.value = ''
-
-  if (!email.value.trim()) {
-    emailError.value = 'Email address is required.'
+  const result = forgotPasswordSchema.safeParse({ email: email.value })
+  if (!result.success) {
+    emailError.value = zodErrorsToRecord(result.error).email ?? 'Invalid email.'
     return false
   }
-
-  if (!EMAIL_REGEX.test(email.value.trim())) {
-    emailError.value = 'Please enter a valid email address.'
-    return false
-  }
-
   return true
 }
 
@@ -45,7 +41,7 @@ async function handleSubmit() {
     successHeadingRef.value?.focus()
   }
   catch (err) {
-    apiError.value = err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.'
+    apiError.value = err instanceof Error ? err.message : 'Une erreur inattendue est survenue. Veuillez réessayer.'
   }
 }
 
@@ -86,15 +82,15 @@ onMounted(() => {
           class="inline-flex items-center gap-1.5 text-body-sm text-text-secondary hover:text-text-primary transition-colors mb-8"
         >
           <Icon name="ph:arrow-left" class="h-4 w-4" />
-          Back to login
+          Retour à la connexion
         </NuxtLink>
 
         <!-- Heading -->
         <h1 class="text-h2 font-bold text-text-primary">
-          Reset your password
+          Réinitialiser le mot de passe
         </h1>
         <p class="mt-2 text-body text-text-muted leading-body">
-          Enter your email address and we'll send you a link to reset your password.
+          Saisissez votre adresse e-mail et nous vous enverrons un lien pour réinitialiser votre mot de passe.
         </p>
 
         <!-- API error -->
@@ -109,8 +105,8 @@ onMounted(() => {
         <!-- Form -->
         <form class="mt-8 space-y-5" novalidate @submit.prevent="handleSubmit">
           <div class="flex flex-col gap-1.5">
-            <label for="email" class="text-body-sm font-medium text-neutral-800">Email address</label>
-            <input
+            <label for="email" class="text-body-sm font-medium text-neutral-800">Adresse e-mail</label>
+            <Input
               id="email"
               v-model="email"
               type="email"
@@ -118,12 +114,9 @@ onMounted(() => {
               autocomplete="email"
               :aria-invalid="!!emailError || undefined"
               :aria-describedby="emailError ? 'email-error' : undefined"
-              :class="[
-                'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                emailError ? 'border-error focus:border-error focus:ring-error/20' : '',
-              ]"
+              class="w-full"
               @input="emailError = ''"
-            >
+            />
             <p
               v-if="emailError"
               id="email-error"
@@ -134,28 +127,30 @@ onMounted(() => {
             </p>
           </div>
 
-          <button
+          <Button
             type="submit"
+            variant="gradient"
+            size="pill"
+            class="w-full"
             :disabled="loading"
-            class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Icon
               v-if="loading"
               name="ph:spinner"
               class="h-4 w-4 animate-spin mr-2"
             />
-            {{ loading ? 'Sending...' : 'Send reset link' }}
-          </button>
+            {{ loading ? 'Envoi...' : 'Envoyer le lien' }}
+          </Button>
         </form>
 
         <!-- Footer -->
         <p class="mt-8 text-center text-body-sm text-text-muted">
-          Remember your password?
+          Vous vous souvenez du mot de passe ?
           <NuxtLink
             to="/login"
             class="font-medium text-primary-600 hover:text-primary-700 transition-colors"
           >
-            Log in
+            Se connecter
           </NuxtLink>
         </p>
       </div>
@@ -173,30 +168,30 @@ onMounted(() => {
           tabindex="-1"
           class="mt-6 text-h2 font-bold text-text-primary outline-none"
         >
-          Check your email
+          Vérifiez vos e-mails
         </h1>
         <p class="mt-3 text-body text-text-muted leading-body">
-          We've sent a password reset link to
+          Un lien de réinitialisation a été envoyé à
           <span class="font-medium text-text-primary">{{ submittedEmail }}</span>.
-          Check your inbox and follow the instructions.
+          Consultez votre boîte de réception et suivez les instructions.
         </p>
 
         <!-- Back to login button -->
         <NuxtLink to="/login" class="mt-8 block">
-          <span class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize">
-            Back to login
-          </span>
+          <Button variant="gradient" size="pill" class="w-full">
+            Retour à la connexion
+          </Button>
         </NuxtLink>
 
         <!-- Resend -->
         <p class="mt-6 text-body-sm text-text-muted">
-          Didn't receive it?
+          Pas reçu ?
           <button
             type="button"
             class="font-medium text-primary-600 hover:text-primary-700 transition-colors cursor-pointer"
             @click="handleResend"
           >
-            Resend
+            Renvoyer
           </button>
         </p>
       </div>

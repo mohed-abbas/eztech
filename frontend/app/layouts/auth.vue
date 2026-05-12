@@ -20,34 +20,34 @@
       <!-- Tagline -->
       <div class="relative z-10 max-w-sm">
         <h2 class="text-h1 font-semibold leading-heading text-white">
-          Rent Premium.<br>Deliver Smart.
+          Location premium.<br>Livraison intelligente.
         </h2>
         <p class="mt-4 text-body-lg text-neutral-400 leading-body">
-          Tech rental made simple. Browse, rent, and receive premium equipment — all from your phone.
+          La location tech simplifiée. Parcourez, louez et recevez du matériel haut de gamme — depuis votre téléphone.
         </p>
 
         <!-- Stats row -->
         <div class="mt-8 flex items-center gap-8">
           <div>
             <p class="text-h2 font-medium text-white">250+</p>
-            <p class="text-body-sm text-neutral-500">Products</p>
+            <p class="text-body-sm text-neutral-500">Produits</p>
           </div>
           <div class="h-10 w-px bg-neutral-700" />
           <div>
             <p class="text-h2 font-medium text-white">40+</p>
-            <p class="text-body-sm text-neutral-500">Cities</p>
+            <p class="text-body-sm text-neutral-500">Villes</p>
           </div>
           <div class="h-10 w-px bg-neutral-700" />
           <div>
             <p class="text-h2 font-medium text-white">10K+</p>
-            <p class="text-body-sm text-neutral-500">Users</p>
+            <p class="text-body-sm text-neutral-500">Utilisateurs</p>
           </div>
         </div>
       </div>
 
       <!-- Footer -->
       <p class="relative z-10 text-caption text-neutral-600">
-        &copy; {{ new Date().getFullYear() }} EzTech. All rights reserved.
+        &copy; {{ new Date().getFullYear() }} EzTech. Tous droits réservés.
       </p>
     </div>
 

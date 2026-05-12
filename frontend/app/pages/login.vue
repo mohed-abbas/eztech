@@ -1,16 +1,21 @@
 <script setup lang="ts">
+import { loginSchema, zodErrorsToRecord } from '~/lib/schemas'
+
 definePageMeta({
   layout: 'auth',
 })
 
 useHead({
-  title: 'Sign In — EzTech',
+  title: 'Connexion — EzTech',
   meta: [
-    { name: 'description', content: 'Sign in to your EzTech account to browse, rent, and manage your tech equipment.' },
+    { name: 'description', content: 'Connectez-vous à votre compte EzTech pour parcourir, louer et gérer votre matériel tech.' },
   ],
 })
 
-const { user, login, logout, loading, isAuthenticated } = useAuth()
+const route = useRoute()
+const auth = useAuthStore()
+const { user, loading, isAuthenticated } = storeToRefs(auth)
+const { login, logout } = auth
 
 // Form state
 const email = ref('')
@@ -23,60 +28,48 @@ const errors = reactive({
   general: '',
 })
 
-// Validation
-function validateEmail(): boolean {
-  if (!email.value.trim()) {
-    errors.email = 'Email is required.'
-    return false
-  }
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailPattern.test(email.value.trim())) {
-    errors.email = 'Please enter a valid email address.'
-    return false
-  }
-  errors.email = ''
-  return true
-}
-
-function validatePassword(): boolean {
-  if (!password.value) {
-    errors.password = 'Password is required.'
-    return false
-  }
-  if (password.value.length < 8) {
-    errors.password = 'Password must be at least 8 characters.'
-    return false
-  }
-  errors.password = ''
-  return true
-}
-
 function clearFieldError(field: 'email' | 'password') {
   errors[field] = ''
   errors.general = ''
 }
 
+function validate(): boolean {
+  const result = loginSchema.safeParse({
+    email: email.value,
+    password: password.value,
+  })
+  errors.email = ''
+  errors.password = ''
+  if (!result.success) {
+    const flat = zodErrorsToRecord(result.error)
+    errors.email = flat.email ?? ''
+    errors.password = flat.password ?? ''
+    return false
+  }
+  return true
+}
+
+// Back-compat names used by existing @blur handlers in the template
+const validateEmail = validate
+const validatePassword = validate
+
 // Form submission
 async function handleSubmit() {
-  const isEmailValid = validateEmail()
-  const isPasswordValid = validatePassword()
-
-  if (!isEmailValid || !isPasswordValid) {
-    return
-  }
+  if (!validate()) return
 
   errors.general = ''
 
   try {
     await login(email.value.trim(), password.value)
-    await navigateTo('/')
+    const redirect = route.query.redirect as string | undefined
+    await navigateTo(redirect || '/products')
   }
   catch (err: unknown) {
     if (err instanceof Error) {
       errors.general = err.message
     }
     else {
-      errors.general = 'An unexpected error occurred. Please try again.'
+      errors.general = 'Une erreur inattendue est survenue. Veuillez réessayer.'
     }
   }
 }
@@ -85,6 +78,9 @@ async function handleSubmit() {
 function handleGoogleOAuth() {
   alert('Google OAuth will be available in Phase 2.')
 }
+
+const { public: { useMock } } = useRuntimeConfig()
+const isDev = computed(() => useMock || import.meta.dev)
 </script>
 
 <template>
@@ -94,22 +90,23 @@ function handleGoogleOAuth() {
       <div class="mx-auto flex size-16 items-center justify-center rounded-full bg-primary-100 mb-4">
         <Icon name="ph:user" class="size-8 text-primary-600" />
       </div>
-      <p class="text-body text-text-secondary mb-1">Logged in as</p>
+      <p class="text-body text-text-secondary mb-1">Connecté en tant que</p>
       <p class="text-h4 font-semibold text-text-primary">{{ user?.name }}</p>
       <p class="text-body-sm text-text-muted">{{ user?.email }} &middot; {{ user?.role }}</p>
       <div class="mt-6 flex flex-col gap-3">
         <NuxtLink to="/">
-          <span class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize">
-            Go to Home
-          </span>
+          <Button variant="gradient" size="pill" class="w-full">
+            Accueil
+          </Button>
         </NuxtLink>
-        <button
-          type="button"
-          class="w-full rounded-full border border-neutral-200 bg-white px-6 py-2.5 text-body-sm font-medium text-error hover:bg-error/5 transition-colors"
+        <Button
+          variant="outline"
+          size="pill-sm"
+          class="w-full text-error hover:bg-error/5"
           @click="logout()"
         >
-          Log out
-        </button>
+          Déconnexion
+        </Button>
       </div>
     </div>
 
@@ -118,10 +115,10 @@ function handleGoogleOAuth() {
     <!-- Heading -->
     <div class="mb-8">
       <h1 class="text-h2 font-bold text-text-primary leading-heading">
-        Welcome back
+        Bon retour
       </h1>
       <p class="mt-2 text-body text-text-muted leading-body">
-        Sign in to your EzTech account
+        Connectez-vous à votre compte EzTech
       </p>
     </div>
 
@@ -143,9 +140,9 @@ function handleGoogleOAuth() {
       <!-- Email field -->
       <div class="flex flex-col gap-1.5">
         <label for="login-email" class="text-body-sm font-medium text-neutral-800">
-          Email
+          E-mail
         </label>
-        <input
+        <Input
           id="login-email"
           v-model="email"
           type="email"
@@ -153,13 +150,9 @@ function handleGoogleOAuth() {
           autocomplete="email"
           :aria-invalid="!!errors.email || undefined"
           :aria-describedby="errors.email ? 'login-email-error' : undefined"
-          :class="[
-            'bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-            errors.email ? 'border-error focus:border-error focus:ring-error/20' : '',
-          ]"
           @input="clearFieldError('email')"
           @blur="validateEmail"
-        >
+        />
         <p
           v-if="errors.email"
           id="login-email-error"
@@ -174,30 +167,26 @@ function handleGoogleOAuth() {
       <div class="flex flex-col gap-1.5">
         <div class="flex items-center justify-between">
           <label for="login-password" class="text-body-sm font-medium text-neutral-800">
-            Password
+            Mot de passe
           </label>
           <NuxtLink
             to="/forgot-password"
             class="text-caption font-medium text-primary-600 hover:text-primary-700 transition-colors"
           >
-            Forgot password?
+            Mot de passe oublié ?
           </NuxtLink>
         </div>
-        <input
+        <Input
           id="login-password"
           v-model="password"
           type="password"
-          placeholder="Enter your password"
+          placeholder="Entrez votre mot de passe"
           autocomplete="current-password"
           :aria-invalid="!!errors.password || undefined"
           :aria-describedby="errors.password ? 'login-password-error' : undefined"
-          :class="[
-            'bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-            errors.password ? 'border-error focus:border-error focus:ring-error/20' : '',
-          ]"
           @input="clearFieldError('password')"
           @blur="validatePassword"
-        >
+        />
         <p
           v-if="errors.password"
           id="login-password-error"
@@ -209,10 +198,12 @@ function handleGoogleOAuth() {
       </div>
 
       <!-- Submit button -->
-      <button
+      <Button
         type="submit"
+        variant="gradient"
+        size="pill"
+        class="w-full"
         :disabled="loading"
-        class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <svg
           v-if="loading"
@@ -225,21 +216,22 @@ function handleGoogleOAuth() {
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        {{ loading ? 'Signing in...' : 'Sign in' }}
-      </button>
+        {{ loading ? 'Connexion...' : 'Se connecter' }}
+      </Button>
     </form>
 
     <!-- Separator -->
     <div class="relative my-6 flex items-center">
       <div class="flex-1 h-px bg-neutral-200" />
-      <span class="px-4 text-caption text-text-muted">or</span>
+      <span class="px-4 text-caption text-text-muted">ou</span>
       <div class="flex-1 h-px bg-neutral-200" />
     </div>
 
     <!-- Google OAuth button -->
-    <button
-      type="button"
-      class="btn-glass bg-white w-full flex items-center justify-center gap-3 rounded-full px-6 py-2.5 text-body-sm font-medium text-text-primary capitalize"
+    <Button
+      variant="glass"
+      size="pill-sm"
+      class="w-full gap-3"
       @click="handleGoogleOAuth"
     >
       <svg
@@ -253,31 +245,31 @@ function handleGoogleOAuth() {
         <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
         <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
       </svg>
-      Continue with Google
-    </button>
+      Continuer avec Google
+    </Button>
 
     <!-- Footer link -->
     <p class="mt-8 text-center text-body-sm text-text-muted">
-      Don't have an account?
+      Pas encore de compte ?
       <NuxtLink
         to="/register"
         class="font-semibold text-primary-600 hover:text-primary-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 rounded-sm"
       >
-        Sign up
+        S'inscrire
       </NuxtLink>
     </p>
 
     <!-- Dev credentials hint -->
-    <div class="mt-6 rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+    <Card v-if="isDev" class="mt-6 rounded-xl bg-neutral-50 p-4">
       <p class="text-caption font-semibold text-text-secondary mb-2">
-        Test credentials
+        Identifiants de test
       </p>
       <div class="space-y-1 text-caption text-text-muted">
         <p><span class="font-medium text-text-secondary">Customer:</span> marie@example.com / password123</p>
         <p><span class="font-medium text-text-secondary">Rider:</span> lucas@example.com / password123</p>
         <p><span class="font-medium text-text-secondary">Admin:</span> admin@eztech.fr / admin123</p>
       </div>
-    </div>
+    </Card>
     </template>
   </div>
 </template>

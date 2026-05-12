@@ -1,15 +1,18 @@
 <script setup lang="ts">
-import type { RegisterCustomerPayload, RegisterRiderPayload } from '~/composables/useAuth'
+import type { RegisterCustomerPayload, RegisterRiderPayload } from '~/stores/auth'
+import { registerCustomerSchema, registerRiderSchema, zodErrorsToRecord } from '~/lib/schemas'
 
 definePageMeta({
   layout: 'auth',
 })
 
-const { loading, register, isAuthenticated } = useAuth()
+const auth = useAuthStore()
+const { loading, isAuthenticated } = storeToRefs(auth)
+const { register } = auth
 
 // Redirect if already authenticated
 watch(isAuthenticated, (val) => {
-  if (val) navigateTo('/')
+  if (val) navigateTo('/products')
 }, { immediate: true })
 
 // Form state
@@ -66,9 +69,9 @@ const errors = reactive<FormErrors>({
 })
 
 const vehicleOptions = [
-  { value: 'bicycle' as const, label: 'Bicycle', icon: 'ph:bicycle' },
+  { value: 'bicycle' as const, label: 'Vélo', icon: 'ph:bicycle' },
   { value: 'scooter' as const, label: 'Scooter', icon: 'ph:motorcycle' },
-  { value: 'car' as const, label: 'Car', icon: 'ph:car' },
+  { value: 'car' as const, label: 'Voiture', icon: 'ph:car' },
 ]
 
 function clearErrors() {
@@ -79,96 +82,50 @@ function clearErrors() {
   apiError.value = ''
 }
 
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
-
-function isValidPhone(value: string): boolean {
-  const cleaned = value.replace(/\s/g, '')
-  return /^(\+33|0)[67]\d{8}$/.test(cleaned)
+function applyErrors(flat: Record<string, string>) {
+  const keys = Object.keys(errors) as (keyof FormErrors)[]
+  keys.forEach((k) => {
+    errors[k] = flat[k] ?? ''
+  })
 }
 
 function validate(): boolean {
   clearErrors()
-  let valid = true
 
-  // Common field validation
-  if (!name.value.trim()) {
-    errors.name = 'Name is required.'
-    valid = false
-  }
-  else if (name.value.trim().length < 2) {
-    errors.name = 'Name must be at least 2 characters.'
-    valid = false
-  }
-
-  if (!email.value.trim()) {
-    errors.email = 'Email is required.'
-    valid = false
-  }
-  else if (!isValidEmail(email.value.trim())) {
-    errors.email = 'Please enter a valid email address.'
-    valid = false
-  }
-
-  if (!password.value) {
-    errors.password = 'Password is required.'
-    valid = false
-  }
-  else if (password.value.length < 8) {
-    errors.password = 'Password must be at least 8 characters.'
-    valid = false
-  }
-
-  if (!confirmPassword.value) {
-    errors.confirmPassword = 'Please confirm your password.'
-    valid = false
-  }
-  else if (confirmPassword.value !== password.value) {
-    errors.confirmPassword = 'Passwords do not match.'
-    valid = false
-  }
-
-  if (!phone.value.trim()) {
-    errors.phone = 'Phone number is required.'
-    valid = false
-  }
-  else if (!isValidPhone(phone.value.trim())) {
-    errors.phone = 'Please enter a valid French mobile number (+33 6/7... or 06/07...).'
-    valid = false
-  }
-
-  // Tab-specific validation
   if (activeTab.value === 'customer') {
-    if (!addressLabel.value.trim()) {
-      errors.addressLabel = 'Address label is required.'
-      valid = false
+    const result = registerCustomerSchema.safeParse({
+      name: name.value,
+      email: email.value,
+      password: password.value,
+      confirmPassword: confirmPassword.value,
+      phone: phone.value,
+      addressLabel: addressLabel.value,
+      street: street.value,
+      city: city.value,
+      zipCode: zipCode.value,
+    })
+    if (!result.success) {
+      applyErrors(zodErrorsToRecord(result.error))
+      return false
     }
-    if (!street.value.trim()) {
-      errors.street = 'Street is required.'
-      valid = false
-    }
-    if (!city.value.trim()) {
-      errors.city = 'City is required.'
-      valid = false
-    }
-    if (!zipCode.value.trim()) {
-      errors.zipCode = 'Zip code is required.'
-      valid = false
-    }
-  }
-  else {
-    if (!licenseNumber.value.trim()) {
-      errors.licenseNumber = 'License number is required.'
-      valid = false
-    }
-    if (!insuranceNumber.value.trim()) {
-      errors.insuranceNumber = 'Insurance number is required.'
-      valid = false
-    }
+    return true
   }
 
-  return valid
+  const result = registerRiderSchema.safeParse({
+    name: name.value,
+    email: email.value,
+    password: password.value,
+    confirmPassword: confirmPassword.value,
+    phone: phone.value,
+    vehicleType: vehicleType.value,
+    licenseNumber: licenseNumber.value,
+    insuranceNumber: insuranceNumber.value,
+  })
+  if (!result.success) {
+    applyErrors(zodErrorsToRecord(result.error))
+    return false
+  }
+  return true
 }
 
 function scrollToFirstError() {
@@ -226,7 +183,7 @@ async function handleSubmit() {
       apiError.value = err.message
     }
     else {
-      apiError.value = 'An unexpected error occurred. Please try again.'
+      apiError.value = 'Une erreur inattendue est survenue. Veuillez réessayer.'
     }
   }
 }
@@ -241,10 +198,10 @@ function handleGoogleOAuth() {
     <!-- Heading -->
     <div class="mb-8">
       <h1 class="text-h2 font-bold text-text-primary leading-heading">
-        Create your account
+        Créez votre compte
       </h1>
       <p class="mt-2 text-body text-text-muted leading-body">
-        Join EzTech today
+        Rejoignez EzTech dès maintenant
       </p>
     </div>
 
@@ -280,7 +237,7 @@ function handleGoogleOAuth() {
             ]"
             @click="activeTab = 'customer'; clearErrors()"
           >
-            Customer
+            Client
           </button>
           <button
             type="button"
@@ -294,270 +251,82 @@ function handleGoogleOAuth() {
             ]"
             @click="activeTab = 'rider'; clearErrors()"
           >
-            Rider
+            Livreur
           </button>
         </div>
 
         <!-- Common Fields -->
         <div class="mt-6 space-y-4">
           <!-- Name -->
-          <div :data-error="!!errors.name">
-            <label for="register-name" class="text-body-sm font-medium text-neutral-800">
-              Full name
-            </label>
-            <input
-              id="register-name"
-              v-model="name"
-              type="text"
-              placeholder="John Doe"
-              autocomplete="name"
-              :aria-invalid="!!errors.name"
-              :aria-describedby="errors.name ? 'register-name-error' : undefined"
-              :class="[
-                'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                errors.name ? 'border-error focus:border-error focus:ring-error/20' : '',
-              ]"
-            >
-            <p
-              v-if="errors.name"
-              id="register-name-error"
-              role="alert"
-              class="mt-1 text-caption text-error"
-            >
-              {{ errors.name }}
-            </p>
-          </div>
+          <FormField id="register-name" label="Nom complet" :error="errors.name" :data-error="!!errors.name">
+            <template #default="{ id: fieldId }">
+              <Input :id="fieldId" v-model="name" type="text" placeholder="John Doe" autocomplete="name" :aria-invalid="!!errors.name" :aria-describedby="errors.name ? 'register-name-error' : undefined" />
+            </template>
+          </FormField>
 
           <!-- Email -->
-          <div :data-error="!!errors.email">
-            <label for="register-email" class="text-body-sm font-medium text-neutral-800">
-              Email address
-            </label>
-            <input
-              id="register-email"
-              v-model="email"
-              type="email"
-              placeholder="john@example.com"
-              autocomplete="email"
-              :aria-invalid="!!errors.email"
-              :aria-describedby="errors.email ? 'register-email-error' : undefined"
-              :class="[
-                'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                errors.email ? 'border-error focus:border-error focus:ring-error/20' : '',
-              ]"
-            >
-            <p
-              v-if="errors.email"
-              id="register-email-error"
-              role="alert"
-              class="mt-1 text-caption text-error"
-            >
-              {{ errors.email }}
-            </p>
-          </div>
+          <FormField id="register-email" label="Adresse e-mail" :error="errors.email" :data-error="!!errors.email">
+            <template #default="{ id: fieldId }">
+              <Input :id="fieldId" v-model="email" type="email" placeholder="john@example.com" autocomplete="email" :aria-invalid="!!errors.email" :aria-describedby="errors.email ? 'register-email-error' : undefined" />
+            </template>
+          </FormField>
 
           <!-- Password -->
-          <div :data-error="!!errors.password">
-            <label for="register-password" class="text-body-sm font-medium text-neutral-800">
-              Password
-            </label>
-            <input
-              id="register-password"
-              v-model="password"
-              type="password"
-              placeholder="Min. 8 characters"
-              autocomplete="new-password"
-              :aria-invalid="!!errors.password"
-              :aria-describedby="errors.password ? 'register-password-error' : undefined"
-              :class="[
-                'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                errors.password ? 'border-error focus:border-error focus:ring-error/20' : '',
-              ]"
-            >
-            <p
-              v-if="errors.password"
-              id="register-password-error"
-              role="alert"
-              class="mt-1 text-caption text-error"
-            >
-              {{ errors.password }}
-            </p>
-          </div>
+          <FormField id="register-password" label="Mot de passe" :error="errors.password" :data-error="!!errors.password">
+            <template #default="{ id: fieldId }">
+              <Input :id="fieldId" v-model="password" type="password" placeholder="Min. 8 caractères" autocomplete="new-password" :aria-invalid="!!errors.password" :aria-describedby="errors.password ? 'register-password-error' : undefined" />
+            </template>
+          </FormField>
 
           <!-- Confirm Password -->
-          <div :data-error="!!errors.confirmPassword">
-            <label for="register-confirm-password" class="text-body-sm font-medium text-neutral-800">
-              Confirm password
-            </label>
-            <input
-              id="register-confirm-password"
-              v-model="confirmPassword"
-              type="password"
-              placeholder="Repeat your password"
-              autocomplete="new-password"
-              :aria-invalid="!!errors.confirmPassword"
-              :aria-describedby="errors.confirmPassword ? 'register-confirm-password-error' : undefined"
-              :class="[
-                'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                errors.confirmPassword ? 'border-error focus:border-error focus:ring-error/20' : '',
-              ]"
-            >
-            <p
-              v-if="errors.confirmPassword"
-              id="register-confirm-password-error"
-              role="alert"
-              class="mt-1 text-caption text-error"
-            >
-              {{ errors.confirmPassword }}
-            </p>
-          </div>
+          <FormField id="register-confirm-password" label="Confirmer le mot de passe" :error="errors.confirmPassword" :data-error="!!errors.confirmPassword">
+            <template #default="{ id: fieldId }">
+              <Input :id="fieldId" v-model="confirmPassword" type="password" placeholder="Répétez votre mot de passe" autocomplete="new-password" :aria-invalid="!!errors.confirmPassword" :aria-describedby="errors.confirmPassword ? 'register-confirm-password-error' : undefined" />
+            </template>
+          </FormField>
 
           <!-- Phone -->
-          <div :data-error="!!errors.phone">
-            <label for="register-phone" class="text-body-sm font-medium text-neutral-800">
-              Phone number
-            </label>
-            <input
-              id="register-phone"
-              v-model="phone"
-              type="tel"
-              placeholder="+33 6 12 34 56 78"
-              autocomplete="tel"
-              :aria-invalid="!!errors.phone"
-              :aria-describedby="errors.phone ? 'register-phone-error' : undefined"
-              :class="[
-                'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                errors.phone ? 'border-error focus:border-error focus:ring-error/20' : '',
-              ]"
-            >
-            <p
-              v-if="errors.phone"
-              id="register-phone-error"
-              role="alert"
-              class="mt-1 text-caption text-error"
-            >
-              {{ errors.phone }}
-            </p>
-          </div>
+          <FormField id="register-phone" label="Numéro de téléphone" :error="errors.phone" :data-error="!!errors.phone">
+            <template #default="{ id: fieldId }">
+              <Input :id="fieldId" v-model="phone" type="tel" placeholder="+33 6 12 34 56 78" autocomplete="tel" :aria-invalid="!!errors.phone" :aria-describedby="errors.phone ? 'register-phone-error' : undefined" />
+            </template>
+          </FormField>
         </div>
 
         <!-- Customer-specific fields -->
         <div v-if="activeTab === 'customer'" class="mt-4">
           <fieldset class="space-y-4">
             <legend class="text-body-sm font-semibold text-text-primary mb-3">
-              Delivery address
+              Adresse de livraison
             </legend>
 
             <!-- Address Label -->
-            <div :data-error="!!errors.addressLabel">
-              <label for="register-address-label" class="text-body-sm font-medium text-neutral-800">
-                Address label
-              </label>
-              <input
-                id="register-address-label"
-                v-model="addressLabel"
-                type="text"
-                placeholder="Home, Office..."
-                :aria-invalid="!!errors.addressLabel"
-                :aria-describedby="errors.addressLabel ? 'register-address-label-error' : undefined"
-                :class="[
-                  'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                  errors.addressLabel ? 'border-error focus:border-error focus:ring-error/20' : '',
-                ]"
-              >
-              <p
-                v-if="errors.addressLabel"
-                id="register-address-label-error"
-                role="alert"
-                class="mt-1 text-caption text-error"
-              >
-                {{ errors.addressLabel }}
-              </p>
-            </div>
+            <FormField id="register-address-label" label="Libellé" :error="errors.addressLabel" :data-error="!!errors.addressLabel">
+              <template #default="{ id: fieldId }">
+                <Input :id="fieldId" v-model="addressLabel" type="text" placeholder="Domicile, Bureau..." :aria-invalid="!!errors.addressLabel" :aria-describedby="errors.addressLabel ? 'register-address-label-error' : undefined" />
+              </template>
+            </FormField>
 
             <!-- Street -->
-            <div :data-error="!!errors.street">
-              <label for="register-street" class="text-body-sm font-medium text-neutral-800">
-                Street
-              </label>
-              <input
-                id="register-street"
-                v-model="street"
-                type="text"
-                placeholder="123 Rue de la Paix"
-                autocomplete="street-address"
-                :aria-invalid="!!errors.street"
-                :aria-describedby="errors.street ? 'register-street-error' : undefined"
-                :class="[
-                  'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                  errors.street ? 'border-error focus:border-error focus:ring-error/20' : '',
-                ]"
-              >
-              <p
-                v-if="errors.street"
-                id="register-street-error"
-                role="alert"
-                class="mt-1 text-caption text-error"
-              >
-                {{ errors.street }}
-              </p>
-            </div>
+            <FormField id="register-street" label="Rue" :error="errors.street" :data-error="!!errors.street">
+              <template #default="{ id: fieldId }">
+                <Input :id="fieldId" v-model="street" type="text" placeholder="123 Rue de la Paix" autocomplete="street-address" :aria-invalid="!!errors.street" :aria-describedby="errors.street ? 'register-street-error' : undefined" />
+              </template>
+            </FormField>
 
             <!-- City + Zip Code row -->
             <div class="grid grid-cols-2 gap-3">
-              <div :data-error="!!errors.city">
-                <label for="register-city" class="text-body-sm font-medium text-neutral-800">
-                  City
-                </label>
-                <input
-                  id="register-city"
-                  v-model="city"
-                  type="text"
-                  placeholder="Paris"
-                  autocomplete="address-level2"
-                  :aria-invalid="!!errors.city"
-                  :aria-describedby="errors.city ? 'register-city-error' : undefined"
-                  :class="[
-                    'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                    errors.city ? 'border-error focus:border-error focus:ring-error/20' : '',
-                  ]"
-                >
-                <p
-                  v-if="errors.city"
-                  id="register-city-error"
-                  role="alert"
-                  class="mt-1 text-caption text-error"
-                >
-                  {{ errors.city }}
-                </p>
-              </div>
+              <FormField id="register-city" label="Ville" :error="errors.city" :data-error="!!errors.city">
+                <template #default="{ id: fieldId }">
+                  <Input :id="fieldId" v-model="city" type="text" placeholder="Paris" autocomplete="address-level2" :aria-invalid="!!errors.city" :aria-describedby="errors.city ? 'register-city-error' : undefined" />
+                </template>
+              </FormField>
 
-              <div :data-error="!!errors.zipCode">
-                <label for="register-zipcode" class="text-body-sm font-medium text-neutral-800">
-                  Zip code
-                </label>
-                <input
-                  id="register-zipcode"
-                  v-model="zipCode"
-                  type="text"
-                  placeholder="75001"
-                  autocomplete="postal-code"
-                  :aria-invalid="!!errors.zipCode"
-                  :aria-describedby="errors.zipCode ? 'register-zipcode-error' : undefined"
-                  :class="[
-                    'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                    errors.zipCode ? 'border-error focus:border-error focus:ring-error/20' : '',
-                  ]"
-                >
-                <p
-                  v-if="errors.zipCode"
-                  id="register-zipcode-error"
-                  role="alert"
-                  class="mt-1 text-caption text-error"
-                >
-                  {{ errors.zipCode }}
-                </p>
-              </div>
+              <FormField id="register-zipcode" label="Code postal" :error="errors.zipCode" :data-error="!!errors.zipCode">
+                <template #default="{ id: fieldId }">
+                  <Input :id="fieldId" v-model="zipCode" type="text" placeholder="75001" autocomplete="postal-code" :aria-invalid="!!errors.zipCode" :aria-describedby="errors.zipCode ? 'register-zipcode-error' : undefined" />
+                </template>
+              </FormField>
             </div>
           </fieldset>
         </div>
@@ -566,13 +335,13 @@ function handleGoogleOAuth() {
         <div v-if="activeTab === 'rider'" class="mt-4">
           <fieldset class="space-y-4">
             <legend class="text-body-sm font-semibold text-text-primary mb-3">
-              Rider information
+              Informations livreur
             </legend>
 
             <!-- Vehicle Type -->
             <div :data-error="!!errors.vehicleType">
               <label class="text-body-sm font-medium text-neutral-800">
-                Vehicle type
+                Type de véhicule
               </label>
               <div
                 role="radiogroup"
@@ -637,68 +406,24 @@ function handleGoogleOAuth() {
             </div>
 
             <!-- License Number -->
-            <div :data-error="!!errors.licenseNumber">
-              <label for="register-license" class="text-body-sm font-medium text-neutral-800">
-                License number
-              </label>
-              <input
-                id="register-license"
-                v-model="licenseNumber"
-                type="text"
-                placeholder="AB-123-CD"
-                :aria-invalid="!!errors.licenseNumber"
-                :aria-describedby="errors.licenseNumber ? 'register-license-error' : undefined"
-                :class="[
-                  'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                  errors.licenseNumber ? 'border-error focus:border-error focus:ring-error/20' : '',
-                ]"
-              >
-              <p
-                v-if="errors.licenseNumber"
-                id="register-license-error"
-                role="alert"
-                class="mt-1 text-caption text-error"
-              >
-                {{ errors.licenseNumber }}
-              </p>
-            </div>
+            <FormField id="register-license" label="Numéro de permis" :error="errors.licenseNumber" :data-error="!!errors.licenseNumber">
+              <template #default="{ id: fieldId }">
+                <Input :id="fieldId" v-model="licenseNumber" type="text" placeholder="AB-123-CD" :aria-invalid="!!errors.licenseNumber" :aria-describedby="errors.licenseNumber ? 'register-license-error' : undefined" />
+              </template>
+            </FormField>
 
             <!-- Insurance Number -->
-            <div :data-error="!!errors.insuranceNumber">
-              <label for="register-insurance" class="text-body-sm font-medium text-neutral-800">
-                Insurance number
-              </label>
-              <input
-                id="register-insurance"
-                v-model="insuranceNumber"
-                type="text"
-                placeholder="INS-2024-XXXX"
-                :aria-invalid="!!errors.insuranceNumber"
-                :aria-describedby="errors.insuranceNumber ? 'register-insurance-error' : undefined"
-                :class="[
-                  'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition',
-                  errors.insuranceNumber ? 'border-error focus:border-error focus:ring-error/20' : '',
-                ]"
-              >
-              <p
-                v-if="errors.insuranceNumber"
-                id="register-insurance-error"
-                role="alert"
-                class="mt-1 text-caption text-error"
-              >
-                {{ errors.insuranceNumber }}
-              </p>
-            </div>
+            <FormField id="register-insurance" label="Numéro d'assurance" :error="errors.insuranceNumber" :data-error="!!errors.insuranceNumber">
+              <template #default="{ id: fieldId }">
+                <Input :id="fieldId" v-model="insuranceNumber" type="text" placeholder="INS-2024-XXXX" :aria-invalid="!!errors.insuranceNumber" :aria-describedby="errors.insuranceNumber ? 'register-insurance-error' : undefined" />
+              </template>
+            </FormField>
           </fieldset>
         </div>
       </div>
 
       <!-- Submit Button -->
-      <button
-        type="submit"
-        :disabled="loading"
-        class="btn-gradient-primary w-full flex items-center justify-center rounded-full border border-white/10 px-6 py-3 text-body-sm font-medium text-white capitalize transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-      >
+      <Button type="submit" variant="gradient" size="pill" class="w-full" :disabled="loading">
         <svg
           v-if="loading"
           class="mr-2 size-4 animate-spin"
@@ -710,23 +435,19 @@ function handleGoogleOAuth() {
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        {{ loading ? 'Creating account...' : 'Create account' }}
-      </button>
+        {{ loading ? 'Création du compte...' : 'Créer un compte' }}
+      </Button>
     </form>
 
     <!-- Separator -->
     <div class="relative my-6 flex items-center">
       <div class="flex-1 h-px bg-neutral-200" />
-      <span class="px-3 text-caption text-text-muted">or</span>
+      <span class="px-3 text-caption text-text-muted">ou</span>
       <div class="flex-1 h-px bg-neutral-200" />
     </div>
 
     <!-- Google OAuth -->
-    <button
-      type="button"
-      class="btn-glass bg-white w-full flex items-center justify-center gap-3 rounded-full px-6 py-2.5 text-body-sm font-medium text-text-primary capitalize"
-      @click="handleGoogleOAuth"
-    >
+    <Button variant="glass" size="pill-sm" class="w-full gap-3" @click="handleGoogleOAuth">
       <svg class="size-5" viewBox="0 0 24 24" aria-hidden="true">
         <path
           d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -745,17 +466,17 @@ function handleGoogleOAuth() {
           fill="#EA4335"
         />
       </svg>
-      Continue with Google
-    </button>
+      Continuer avec Google
+    </Button>
 
     <!-- Footer link -->
     <p class="mt-8 text-center text-body-sm text-text-muted">
-      Already have an account?
+      Déjà un compte ?
       <NuxtLink
         to="/login"
         class="font-medium text-primary-600 transition-colors hover:text-primary-700"
       >
-        Sign in
+        Se connecter
       </NuxtLink>
     </p>
   </div>

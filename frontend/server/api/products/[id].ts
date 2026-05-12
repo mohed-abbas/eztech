@@ -41,5 +41,6 @@ export default defineEventHandler((event) => {
       ?? found.price.hourly
       ?? found.price.weekly
       ?? 0,
+    stock: (found as Product & { stock?: number }).stock ?? 0,
   }
 })

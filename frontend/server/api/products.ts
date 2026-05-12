@@ -28,7 +28,7 @@ export default defineEventHandler(() => {
     'cat_adapters',
   ])
 
-  return (products as Product[])
+  return (products as (Product & { stock?: number })[])
     .filter((product) => highTechCategoryIds.has(product.categoryId))
     .map((product) => ({
       ...product,
@@ -38,5 +38,6 @@ export default defineEventHandler(() => {
         ?? product.price.hourly
         ?? product.price.weekly
         ?? 0,
+      stock: product.stock ?? 0,
     }))
 })
