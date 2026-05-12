@@ -13,4 +13,15 @@ export async function truncateAuthTables() {
   await prisma.$executeRaw`DELETE FROM "User" WHERE role != 'admin'`;
 }
 
+// auth tables + everything the rider/order/return/notification flows touch
+export async function truncateRiderTables() {
+  await prisma.$executeRaw`DELETE FROM "OrderDecline"`;
+  await prisma.$executeRaw`DELETE FROM "OrderEvent"`;
+  await prisma.$executeRaw`DELETE FROM "RiderDocument"`;
+  await prisma.$executeRaw`DELETE FROM "Notification"`;
+  await prisma.$executeRaw`DELETE FROM "Return"`;
+  await prisma.$executeRaw`DELETE FROM "Order"`;
+  await truncateAuthTables();
+}
+
 export { prisma as testPrisma };

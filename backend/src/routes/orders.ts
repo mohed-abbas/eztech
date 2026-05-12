@@ -1,0 +1,100 @@
+import { Router } from 'express';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../lib/prisma.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
+import { HttpError } from '../middleware/error.js';
+import { CreateOrderSchema, UpdateOrderStatusSchema } from '../schemas/order.js';
+import { generateOrderReference, canRiderTransition } from '../lib/orders.js';
+import { notify, notifyOnlineRiders } from '../lib/notifications.js';
+
+export const ordersRouter = Router();
+
+// POST /api/orders — create a delivery job (customer or admin); lands in the rider available pool
+ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req, res, next) => {
+  const result = CreateOrderSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  try {
+    const { customerId, riderFee, ...rest } = result.data;
+    const data = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as {
+      pickupAddress: string;
+      dropoffAddress: string;
+      pickupLat?: number;
+      pickupLng?: number;
+      dropoffLat?: number;
+      dropoffLng?: number;
+    };
+    const order = await prisma.order.create({
+      data: {
+        ...data,
+        reference: generateOrderReference(),
+        customerId: customerId ?? (req.user!.role === 'customer' ? req.user!.sub : null),
+        ...(riderFee !== undefined ? { riderFee: new Prisma.Decimal(riderFee) } : {}),
+        events: { create: { status: 'pending_assignment', note: 'order created' } },
+      },
+      include: { events: true },
+    });
+    await notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`);
+    res.status(201).json({ order });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/orders/:id — visible to the owning customer, the assigned rider, or an admin
+ordersRouter.get('/:id', requireAuth, async (req, res, next) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: String(req.params['id']) },
+      include: { events: { orderBy: { createdAt: 'asc' } } },
+    });
+    if (!order) return next(new HttpError(404, 'order_not_found'));
+
+    const { sub, role } = req.user!;
+    const allowed = role === 'admin' || order.customerId === sub || order.riderId === sub;
+    if (!allowed) return next(new HttpError(403, 'forbidden'));
+
+    res.json({ order });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/orders/:id/status — the assigned rider advances the delivery lifecycle
+// murx's realtime layer listens for the resulting OrderEvent and pushes it to the customer
+ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req, res, next) => {
+  const result = UpdateOrderStatusSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  const { status: next_, note } = result.data;
+  const orderId = String(req.params['id']);
+  const riderId = req.user!.sub;
+
+  try {
+    const order = await prisma.$transaction(async (tx) => {
+      const current = await tx.order.findUnique({ where: { id: orderId } });
+      if (!current) throw new HttpError(404, 'order_not_found');
+      if (current.riderId !== riderId) throw new HttpError(403, 'not_your_delivery');
+      if (!canRiderTransition(current.status, next_)) {
+        throw new HttpError(409, 'invalid_transition', { from: current.status, to: next_ });
+      }
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: next_,
+          ...(next_ === 'delivered' ? { deliveredAt: new Date() } : {}),
+        },
+      });
+      await tx.orderEvent.create({
+        data: { orderId, status: next_, ...(note !== undefined ? { note } : {}) },
+      });
+      return updated;
+    });
+    if (order.status === 'delivered') {
+      await notify(riderId, 'earning_credited', 'Livraison complétée', `Commande ${order.reference} : ${Number(order.riderFee).toFixed(2)} € crédités`);
+    }
+    res.json({ order });
+  } catch (err) {
+    next(err);
+  }
+});

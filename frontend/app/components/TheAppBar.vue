@@ -22,6 +22,10 @@ const navItems = computed(() => {
     items.push(
       { label: 'Tableau de bord', to: '/rider/dashboard', icon: 'ph:gauge' },
       { label: 'Livraisons', to: '/rider/deliveries', icon: 'ph:truck' },
+      { label: 'Retours', to: '/rider/returns', icon: 'ph:arrow-u-down-left' },
+      { label: 'Notifications', to: '/rider/notifications', icon: 'ph:bell' },
+      { label: 'Gains', to: '/rider/earnings', icon: 'ph:currency-eur' },
+      { label: 'Mon compte', to: '/rider/account', icon: 'ph:identification-card' },
     )
   }
 

@@ -25,14 +25,31 @@ authRouter.post('/register', async (req, res, next) => {
   const result = RegisterSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
-  const { email, password, name, phone } = result.data;
+  const { email, password, name, phone, vehicleType, licenseNumber, insuranceNumber } = result.data;
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) return next(new HttpError(409, 'email_taken'));
 
+  // presence of vehicleType means this is a rider sign-up; licence + insurance are then required
+  if (vehicleType !== undefined && (!licenseNumber || !insuranceNumber)) {
+    return next(new HttpError(422, 'validation_failed', { issues: [{ message: 'licenseNumber and insuranceNumber are required for riders' }] }));
+  }
+
   const passwordHash = await hashPassword(password);
-  // vehicleType/licenseNumber/insuranceNumber accepted but not persisted until Wilson's schema PR
   const user = await prisma.user.create({
-    data: { email, passwordHash, name, phone: phone ?? '', role: 'customer' },
+    data:
+      vehicleType !== undefined && licenseNumber && insuranceNumber
+        ? {
+            email,
+            passwordHash,
+            name,
+            phone: phone ?? '',
+            role: 'rider',
+            vehicleType,
+            licenseNumber,
+            insuranceNumber,
+            riderApplicationStatus: 'pending',
+          }
+        : { email, passwordHash, name, phone: phone ?? '', role: 'customer' },
   });
 
   const token = signAccessToken({ sub: user.id, role: user.role });

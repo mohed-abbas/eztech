@@ -54,10 +54,14 @@ function isRiderPayload(p: RegisterPayload): p is RegisterRiderPayload {
   return 'vehicleType' in p
 }
 
+// dedupes concurrent token refreshes (several requests can 401 at once)
+let refreshInFlight: Promise<boolean> | null = null
+
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     user: null as User | null,
     token: null as string | null,
+    refreshToken: null as string | null,
     loading: false,
     hydrated: false,
   }),
@@ -75,9 +79,16 @@ export const useAuthStore = defineStore('auth', {
       if (!stored) return
       try {
         const parsed = JSON.parse(stored)
+        const { isMock } = useMock()
+        // a mock token (from a previous VITE_USE_MOCK=true session) is worthless against the real API — drop it
+        if (parsed.token && !isMock.value && String(parsed.token).startsWith('mock-jwt-')) {
+          localStorage.removeItem(AUTH_STORAGE_KEY)
+          return
+        }
         if (parsed.user && parsed.token) {
           this.user = parsed.user
           this.token = parsed.token
+          this.refreshToken = parsed.refreshToken ?? null
         }
       }
       catch {
@@ -91,11 +102,36 @@ export const useAuthStore = defineStore('auth', {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
           user: this.user,
           token: this.token,
+          refreshToken: this.refreshToken,
         }))
       }
       else {
         localStorage.removeItem(AUTH_STORAGE_KEY)
       }
+    },
+
+    // exchanges the stored refresh token for a fresh access token; returns false if it can't
+    async refresh(): Promise<boolean> {
+      if (refreshInFlight) return refreshInFlight
+      refreshInFlight = (async () => {
+        const { isMock } = useMock()
+        if (isMock.value || !this.refreshToken) return false
+        try {
+          const config = useRuntimeConfig()
+          const res = await $fetch<{ token: string, refreshToken: string }>(`${config.public.apiUrl}/auth/refresh`, {
+            method: 'POST',
+            body: { refreshToken: this.refreshToken },
+          })
+          this.token = res.token
+          this.refreshToken = res.refreshToken
+          this.persist()
+          return true
+        }
+        catch {
+          return false
+        }
+      })().finally(() => { refreshInFlight = null })
+      return refreshInFlight
     },
 
     async login(email: string, password: string): Promise<User> {
@@ -123,12 +159,13 @@ export const useAuthStore = defineStore('auth', {
         }
 
         const config = useRuntimeConfig()
-        const response = await $fetch<{ user: User, token: string }>(`${config.public.apiUrl}/auth/login`, {
+        const response = await $fetch<{ user: User, token: string, refreshToken?: string }>(`${config.public.apiUrl}/auth/login`, {
           method: 'POST',
           body: { email, password },
         })
         this.user = response.user
         this.token = response.token
+        this.refreshToken = response.refreshToken ?? null
         this.persist()
         return this.user!
       }
@@ -179,12 +216,13 @@ export const useAuthStore = defineStore('auth', {
         }
 
         const config = useRuntimeConfig()
-        const response = await $fetch<{ user: User, token: string }>(`${config.public.apiUrl}/auth/register`, {
+        const response = await $fetch<{ user: User, token: string, refreshToken?: string }>(`${config.public.apiUrl}/auth/register`, {
           method: 'POST',
           body: payload,
         })
         this.user = response.user
         this.token = response.token
+        this.refreshToken = response.refreshToken ?? null
         this.persist()
         return this.user!
       }
@@ -215,8 +253,15 @@ export const useAuthStore = defineStore('auth', {
     },
 
     logout() {
+      const { isMock } = useMock()
+      // best-effort server-side revoke (don't block the UI on it)
+      if (!isMock.value && this.refreshToken) {
+        const config = useRuntimeConfig()
+        void $fetch(`${config.public.apiUrl}/auth/logout`, { method: 'POST', body: { refreshToken: this.refreshToken } }).catch(() => {})
+      }
       this.user = null
       this.token = null
+      this.refreshToken = null
       this.persist()
       navigateTo('/login')
     },
