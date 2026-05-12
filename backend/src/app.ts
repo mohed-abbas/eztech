@@ -1,3 +1,4 @@
+import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -10,9 +11,13 @@ import { notFoundHandler } from './middleware/notFound.js';
 export function buildApp() {
   const app = express();
 
-  app.use(helmet());
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(cors()); // tighten allowed origins in a later phase
-  app.use(express.json({ limit: '1mb' }));
+  // larger limit than the default 1mb so base64-encoded rider documents fit
+  app.use(express.json({ limit: '8mb' }));
+
+  // uploaded rider documents (licence / insurance proof)
+  app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
   app.use(
     pinoHttp({
       logger,
