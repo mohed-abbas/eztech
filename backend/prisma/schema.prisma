@@ -113,6 +113,8 @@ model RiderDocument {
   uploadedAt DateTime            @default(now())
   rider      User                @relation(fields: [riderId], references: [id], onDelete: Cascade)
 
+  // a rider keeps only one document per type — supersede via upsert, not deleteMany+create
+  @@unique([riderId, type])
   @@index([riderId])
 }
 

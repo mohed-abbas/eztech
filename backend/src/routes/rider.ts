@@ -168,20 +168,19 @@ riderRouter.post('/documents', async (req, res, next) => {
     const storedName = `${crypto.randomUUID()}-${cleanedName}`;
     await fs.writeFile(path.join(dir, storedName), buffer);
 
-    // upserting a new doc of the same type supersedes the previous one — we keep only the latest
-    const doc = await prisma.$transaction(async (tx) => {
-      await tx.riderDocument.deleteMany({ where: { riderId, type } });
-      return tx.riderDocument.create({
-        data: {
-          riderId,
-          type,
-          fileName: cleanedName,
-          mimeType,
-          sizeBytes: buffer.length,
-          url: `/uploads/rider-documents/${riderId}/${storedName}`,
-        },
-      });
+    // upsert against the unique (riderId, type) constraint — atomic supersede under any isolation
+    const url = `/uploads/rider-documents/${riderId}/${storedName}`;
+    const previous = await prisma.riderDocument.findUnique({ where: { riderId_type: { riderId, type } }, select: { url: true } });
+    const doc = await prisma.riderDocument.upsert({
+      where: { riderId_type: { riderId, type } },
+      update: { fileName: cleanedName, mimeType, sizeBytes: buffer.length, url, status: 'pending', uploadedAt: new Date() },
+      create: { riderId, type, fileName: cleanedName, mimeType, sizeBytes: buffer.length, url },
     });
+    // best-effort: clean up the prior file from disk so PII does not accumulate
+    if (previous && previous.url !== url) {
+      const prevName = path.basename(previous.url);
+      fs.unlink(path.join(UPLOAD_ROOT, riderId, prevName)).catch(() => {});
+    }
     res.status(201).json({ document: doc });
   } catch (err) {
     next(err);
@@ -289,8 +288,9 @@ riderRouter.post('/orders/:id/accept', async (req, res, next) => {
     if (!order) return next(new HttpError(409, 'order_unavailable'));
     res.json({ order });
   } catch (err) {
-    // partial unique index collision (defense-in-depth) — map to 409
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    // P2034: serializable conflict (SSI aborts one of two concurrent transactions);
+    // P2002: partial unique index violation (the database-level fallback). Both map to 409.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === 'P2002' || err.code === 'P2034')) {
       return next(new HttpError(409, 'already_on_delivery'));
     }
     next(err);

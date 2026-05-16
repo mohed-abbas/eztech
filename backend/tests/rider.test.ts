@@ -144,6 +144,17 @@ describe('rider documents', () => {
     expect(list.body.documents).toHaveLength(1);
     expect(list.body.documents[0].fileName).toBe('b.png');
   });
+
+  it('concurrent uploads of the same type collapse to a single document', async () => {
+    const { token } = await registerRider();
+    const post = () => request(app).post('/api/rider/documents').set(bearer(token)).send({
+      type: 'license', fileName: 'p.png', mimeType: 'image/png', contentBase64: TINY_PNG.toString('base64'),
+    });
+    const [a, b] = await Promise.all([post(), post()]);
+    expect([a.status, b.status]).toContain(201);
+    const list = await request(app).get('/api/rider/documents').set(bearer(token));
+    expect(list.body.documents).toHaveLength(1);
+  });
 });
 
 describe('rider order flow', () => {
@@ -205,6 +216,23 @@ describe('rider order flow', () => {
     const history = await request(app).get('/api/rider/earnings/history').set(bearer(rider.token));
     expect(history.body.history).toHaveLength(1);
     expect(history.body.history[0].riderFee).toBeCloseTo(7.5);
+  });
+
+  it('concurrent accepts from the same rider on two orders never produce two active deliveries', async () => {
+    const customer = await registerCustomer();
+    const rider = await registerRider();
+    await request(app).patch('/api/rider/status').set(bearer(rider.token)).send({ online: true });
+
+    const o1 = await request(app).post('/api/orders').set(bearer(customer.token)).send({ pickupAddress: 'W', dropoffAddress: 'A', riderFee: 5 });
+    const o2 = await request(app).post('/api/orders').set(bearer(customer.token)).send({ pickupAddress: 'W', dropoffAddress: 'B', riderFee: 5 });
+
+    const accept = (id: string) => request(app).post(`/api/rider/orders/${id}/accept`).set(bearer(rider.token));
+    const results = await Promise.all([accept(o1.body.order.id), accept(o2.body.order.id)]);
+    const successes = results.filter(r => r.status === 200);
+    const conflicts = results.filter(r => r.status === 409);
+    // exactly one accept must succeed; the other must be cleanly rejected with 409 (never 500)
+    expect(successes).toHaveLength(1);
+    expect(conflicts).toHaveLength(1);
   });
 
   it('decline hides an order from that rider', async () => {

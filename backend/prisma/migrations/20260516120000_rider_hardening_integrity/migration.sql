@@ -12,6 +12,10 @@ ALTER TABLE "Return"
 
 CREATE INDEX IF NOT EXISTS "Return_orderId_idx" ON "Return" ("orderId");
 
+-- only one document per (rider, type) — supersede atomically via upsert
+CREATE UNIQUE INDEX IF NOT EXISTS "RiderDocument_riderId_type_key"
+  ON "RiderDocument" ("riderId", "type");
+
 -- persist customer addresses so the register payload is not silently dropped
 CREATE TABLE IF NOT EXISTS "Address" (
   "id"        TEXT NOT NULL,
