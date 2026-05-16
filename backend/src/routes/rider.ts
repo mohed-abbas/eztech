@@ -42,7 +42,8 @@ function buildRiderProfile(user: User, totalDeliveries: number) {
 
 async function getRiderOr401(riderId: string): Promise<User> {
   const user = await prisma.user.findUnique({ where: { id: riderId } });
-  if (!user || user.role !== 'rider') throw new HttpError(401, 'user_not_found');
+  // distinct reason so the frontend can clear the session without attempting refresh
+  if (!user || user.role !== 'rider') throw new HttpError(401, 'user_revoked');
   return user;
 }
 
@@ -115,6 +116,23 @@ riderRouter.patch('/status', async (req, res, next) => {
 // Documents
 // ---------------------------------------------------------------------------
 
+// detect the real file type from magic bytes; returns null when nothing matches
+function sniffDocMime(buf: Buffer): string | null {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47 &&
+    buf[4] === 0x0d && buf[5] === 0x0a && buf[6] === 0x1a && buf[7] === 0x0a
+  ) return 'image/png';
+  if (
+    buf.length >= 12 &&
+    buf.slice(0, 4).toString('ascii') === 'RIFF' &&
+    buf.slice(8, 12).toString('ascii') === 'WEBP'
+  ) return 'image/webp';
+  if (buf.length >= 5 && buf.slice(0, 5).toString('ascii') === '%PDF-') return 'application/pdf';
+  return null;
+}
+
 // POST /api/rider/documents — upload license / insurance proof (base64 body)
 riderRouter.post('/documents', async (req, res, next) => {
   const result = UploadRiderDocumentSchema.safeParse(req.body);
@@ -122,33 +140,47 @@ riderRouter.post('/documents', async (req, res, next) => {
 
   const { type, fileName, mimeType, contentBase64 } = result.data;
 
-  let buffer: Buffer;
-  try {
-    buffer = Buffer.from(contentBase64, 'base64');
-  } catch {
+  // Buffer.from(b64) silently ignores invalid characters rather than throwing — explicitly reject
+  // strings that aren't valid base64 to surface client mistakes.
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(contentBase64)) {
     return next(new HttpError(422, 'invalid_base64'));
   }
+  const buffer = Buffer.from(contentBase64, 'base64');
   if (buffer.length === 0) return next(new HttpError(422, 'empty_file'));
   if (buffer.length > MAX_DOC_BYTES) return next(new HttpError(413, 'file_too_large'));
+
+  // never trust the client-supplied mimeType: verify the actual bytes match
+  const sniffed = sniffDocMime(buffer);
+  if (sniffed === null || sniffed !== mimeType) {
+    return next(new HttpError(422, 'unsupported_file_type'));
+  }
 
   try {
     const riderId = req.user!.sub;
     const dir = path.join(UPLOAD_ROOT, riderId);
     await fs.mkdir(dir, { recursive: true });
 
-    const safeName = path.basename(fileName).replace(/[^\w.-]+/g, '_');
-    const storedName = `${crypto.randomUUID()}-${safeName}`;
+    const cleanedName = path.basename(fileName).replace(/[^\w.-]+/g, '_');
+    // a name that sanitizes to nothing useful is rejected outright
+    if (cleanedName === '' || /^_+$/.test(cleanedName)) {
+      return next(new HttpError(422, 'invalid_file_name'));
+    }
+    const storedName = `${crypto.randomUUID()}-${cleanedName}`;
     await fs.writeFile(path.join(dir, storedName), buffer);
 
-    const doc = await prisma.riderDocument.create({
-      data: {
-        riderId,
-        type,
-        fileName: safeName,
-        mimeType,
-        sizeBytes: buffer.length,
-        url: `/uploads/rider-documents/${riderId}/${storedName}`,
-      },
+    // upserting a new doc of the same type supersedes the previous one — we keep only the latest
+    const doc = await prisma.$transaction(async (tx) => {
+      await tx.riderDocument.deleteMany({ where: { riderId, type } });
+      return tx.riderDocument.create({
+        data: {
+          riderId,
+          type,
+          fileName: cleanedName,
+          mimeType,
+          sizeBytes: buffer.length,
+          url: `/uploads/rider-documents/${riderId}/${storedName}`,
+        },
+      });
     });
     res.status(201).json({ document: doc });
   } catch (err) {
@@ -193,6 +225,7 @@ riderRouter.get('/orders/available', async (req, res, next) => {
         ...(declinedIds.length > 0 ? { id: { notIn: declinedIds } } : {}),
       },
       orderBy: { createdAt: 'asc' },
+      take: 50,
     });
     res.json({ orders });
   } catch (err) {
@@ -308,9 +341,9 @@ riderRouter.get('/returns', async (req, res, next) => {
     const rider = await getRiderOr401(riderId);
     const [available, mine] = await Promise.all([
       rider.riderApplicationStatus === 'approved' && rider.riderOnline
-        ? prisma.return.findMany({ where: { status: 'scheduled', riderId: null }, orderBy: { createdAt: 'asc' }, select: RETURN_SELECT })
+        ? prisma.return.findMany({ where: { status: 'scheduled', riderId: null }, orderBy: { createdAt: 'asc' }, select: RETURN_SELECT, take: 50 })
         : Promise.resolve([]),
-      prisma.return.findMany({ where: { riderId, status: { in: ['accepted', 'completed'] } }, orderBy: { updatedAt: 'desc' }, select: RETURN_SELECT }),
+      prisma.return.findMany({ where: { riderId, status: { in: ['accepted', 'completed'] } }, orderBy: { updatedAt: 'desc' }, select: RETURN_SELECT, take: 50 }),
     ]);
     res.json({ available: available.map(serializeReturn), mine: mine.map(serializeReturn) });
   } catch (err) {
@@ -347,6 +380,10 @@ riderRouter.patch('/returns/:id/complete', async (req, res, next) => {
     const riderId = req.user!.sub;
     const returnId = String(req.params['id']);
 
+    // a rider whose application was revoked mid-flight cannot keep crediting themselves
+    const rider = await getRiderOr401(riderId);
+    assertApproved(rider);
+
     const ret = await prisma.$transaction(async (tx) => {
       const current = await tx.return.findUnique({ where: { id: returnId } });
       if (!current) throw new HttpError(404, 'return_not_found');
@@ -354,7 +391,8 @@ riderRouter.patch('/returns/:id/complete', async (req, res, next) => {
       if (current.status !== 'accepted') throw new HttpError(409, 'invalid_return_status', { status: current.status });
       return tx.return.update({ where: { id: returnId }, data: { status: 'completed', completedAt: new Date() }, select: RETURN_SELECT });
     });
-    await notify(riderId, 'earning_credited', 'Retour complété', `Retour ${ret.reference} : ${Number(ret.riderFee).toFixed(2)} € crédités`);
+    // best-effort: a notification-system blip should not roll back a committed completion
+    notify(riderId, 'earning_credited', 'Retour complété', `Retour ${ret.reference} : ${Number(ret.riderFee).toFixed(2)} € crédités`).catch(() => {});
     res.json({ return: serializeReturn(ret) });
   } catch (err) {
     next(err);
@@ -402,8 +440,8 @@ riderRouter.patch('/notifications/:id/read', async (req, res, next) => {
 // POST /api/rider/notifications/read-all — mark every unread notification read
 riderRouter.post('/notifications/read-all', async (req, res, next) => {
   try {
-    const res2 = await prisma.notification.updateMany({ where: { userId: req.user!.sub, read: false }, data: { read: true } });
-    res.json({ updated: res2.count });
+    const result = await prisma.notification.updateMany({ where: { userId: req.user!.sub, read: false }, data: { read: true } });
+    res.json({ updated: result.count });
   } catch (err) {
     next(err);
   }
@@ -467,11 +505,13 @@ riderRouter.get('/earnings/history', async (req, res, next) => {
         where: { riderId, status: 'delivered' },
         orderBy: { deliveredAt: 'desc' },
         select: { id: true, reference: true, pickupAddress: true, dropoffAddress: true, riderFee: true, deliveredAt: true },
+        take: 100,
       }),
       prisma.return.findMany({
         where: { riderId, status: 'completed' },
         orderBy: { completedAt: 'desc' },
         select: { id: true, reference: true, pickupAddress: true, riderFee: true, completedAt: true },
+        take: 100,
       }),
     ]);
     const history = [

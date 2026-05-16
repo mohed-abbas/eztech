@@ -195,7 +195,12 @@ export const useRiderStore = defineStore('rider', {
       catch (e) {
         const status = (e as { statusCode?: number, response?: { status?: number } })?.statusCode
           ?? (e as { response?: { status?: number } })?.response?.status
+        const code = (e as { data?: { error?: string }, response?: { _data?: { error?: string } } })?.data?.error
+          ?? (e as { response?: { _data?: { error?: string } } })?.response?._data?.error
         if (status === 401) {
+          // when the backend signals the account was deleted/role-changed, refreshing won't help —
+          // skip straight to logout to avoid an infinite refresh-retry loop
+          if (code === 'user_revoked') { auth.logout(); throw e }
           // access token missing/expired — try a refresh, otherwise drop the (stale) session
           if (await auth.refresh()) return await call()
           auth.logout()
@@ -419,16 +424,42 @@ export const useRiderStore = defineStore('rider', {
 
     async markNotificationRead(id: string) {
       const n = this.notifications.find(x => x.id === id)
-      if (n && !n.read) { n.read = true; this.unreadCount = Math.max(0, this.unreadCount - 1) }
+      // if it's already read, nothing to do — avoids redundant network calls
+      if (!n || n.read) return
+      const prevRead = n.read
+      const prevCount = this.unreadCount
+      n.read = true
+      this.unreadCount = Math.max(0, this.unreadCount - 1)
       const { isMock } = useMock()
-      if (!isMock.value) await this._api(`/rider/notifications/${id}/read`, { method: 'PATCH' })
+      if (isMock.value) return
+      try {
+        await this._api(`/rider/notifications/${id}/read`, { method: 'PATCH' })
+      }
+      catch (e) {
+        // rollback so the UI stays in sync with the server
+        n.read = prevRead
+        this.unreadCount = prevCount
+        throw e
+      }
     },
 
     async markAllNotificationsRead() {
+      const prev = this.notifications.map(n => ({ id: n.id, read: n.read }))
+      const prevCount = this.unreadCount
       this.notifications.forEach((n) => { n.read = true })
       this.unreadCount = 0
       const { isMock } = useMock()
-      if (!isMock.value) await this._api('/rider/notifications/read-all', { method: 'POST' })
+      if (isMock.value) return
+      try {
+        await this._api('/rider/notifications/read-all', { method: 'POST' })
+      }
+      catch (e) {
+        // rollback every entry's prior state on failure
+        const snap = new Map(prev.map(p => [p.id, p.read]))
+        this.notifications.forEach((n) => { const r = snap.get(n.id); if (r !== undefined) n.read = r })
+        this.unreadCount = prevCount
+        throw e
+      }
     },
   },
 })

@@ -24,17 +24,34 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
       dropoffLat?: number;
       dropoffLng?: number;
     };
+
+    // resolve and validate the effective customerId — admins may target any customer, but the
+    // target must exist with role=customer; customers may only create orders for themselves.
+    let effectiveCustomerId: string | null = null;
+    if (req.user!.role === 'admin') {
+      if (customerId !== undefined) {
+        const target = await prisma.user.findUnique({ where: { id: customerId }, select: { id: true, role: true } });
+        if (!target || target.role !== 'customer') return next(new HttpError(422, 'invalid_customer'));
+        effectiveCustomerId = target.id;
+      }
+    }
+    else {
+      // customers may not spoof another customerId — always anchor to the authenticated user
+      effectiveCustomerId = req.user!.sub;
+    }
+
     const order = await prisma.order.create({
       data: {
         ...data,
         reference: generateOrderReference(),
-        customerId: customerId ?? (req.user!.role === 'customer' ? req.user!.sub : null),
+        customerId: effectiveCustomerId,
         ...(riderFee !== undefined ? { riderFee: new Prisma.Decimal(riderFee) } : {}),
         events: { create: { status: 'pending_assignment', note: 'order created' } },
       },
       include: { events: true },
     });
-    await notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`);
+    // best-effort fan-out — a transient notification failure should not roll back the commit
+    notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`).catch(() => {});
     res.status(201).json({ order });
   } catch (err) {
     next(err);
@@ -66,32 +83,40 @@ ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req,
   const result = UpdateOrderStatusSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
-  const { status: next_, note } = result.data;
+  const { status: nextStatus, note } = result.data;
   const orderId = String(req.params['id']);
   const riderId = req.user!.sub;
 
   try {
+    // revoked riders cannot continue advancing in-flight jobs (matches accept gating)
+    const rider = await prisma.user.findUnique({ where: { id: riderId }, select: { role: true, riderApplicationStatus: true } });
+    if (!rider || rider.role !== 'rider') return next(new HttpError(401, 'user_revoked'));
+    if (rider.riderApplicationStatus !== 'approved') {
+      return next(new HttpError(403, 'application_not_approved', { applicationStatus: rider.riderApplicationStatus }));
+    }
+
     const order = await prisma.$transaction(async (tx) => {
       const current = await tx.order.findUnique({ where: { id: orderId } });
       if (!current) throw new HttpError(404, 'order_not_found');
       if (current.riderId !== riderId) throw new HttpError(403, 'not_your_delivery');
-      if (!canRiderTransition(current.status, next_)) {
-        throw new HttpError(409, 'invalid_transition', { from: current.status, to: next_ });
+      if (!canRiderTransition(current.status, nextStatus)) {
+        throw new HttpError(409, 'invalid_transition', { from: current.status, to: nextStatus });
       }
       const updated = await tx.order.update({
         where: { id: orderId },
         data: {
-          status: next_,
-          ...(next_ === 'delivered' ? { deliveredAt: new Date() } : {}),
+          status: nextStatus,
+          ...(nextStatus === 'delivered' ? { deliveredAt: new Date() } : {}),
         },
       });
       await tx.orderEvent.create({
-        data: { orderId, status: next_, ...(note !== undefined ? { note } : {}) },
+        data: { orderId, status: nextStatus, ...(note !== undefined ? { note } : {}) },
       });
       return updated;
     });
     if (order.status === 'delivered') {
-      await notify(riderId, 'earning_credited', 'Livraison complétée', `Commande ${order.reference} : ${Number(order.riderFee).toFixed(2)} € crédités`);
+      // best-effort: a delivered order should remain delivered even if the notification fails
+      notify(riderId, 'earning_credited', 'Livraison complétée', `Commande ${order.reference} : ${Number(order.riderFee).toFixed(2)} € crédités`).catch(() => {});
     }
     res.json({ order });
   } catch (err) {
