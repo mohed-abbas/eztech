@@ -91,6 +91,15 @@ describe('rider auth & profile', () => {
   });
 });
 
+// minimal 1x1 PNG, used to satisfy the upload route's magic-byte check
+const TINY_PNG = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+  0x89, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+  0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+  0x42, 0x60, 0x82,
+]);
+
 describe('rider documents', () => {
   beforeEach(truncateRiderTables);
 
@@ -100,7 +109,7 @@ describe('rider documents', () => {
       type: 'license',
       fileName: 'permis.png',
       mimeType: 'image/png',
-      contentBase64: Buffer.from('fake-image-bytes').toString('base64'),
+      contentBase64: TINY_PNG.toString('base64'),
     });
     expect(upload.status).toBe(201);
     expect(upload.body.document).toMatchObject({ type: 'license', status: 'pending' });
@@ -108,6 +117,32 @@ describe('rider documents', () => {
     const list = await request(app).get('/api/rider/documents').set(bearer(token));
     expect(list.status).toBe(200);
     expect(list.body.documents).toHaveLength(1);
+  });
+
+  it('rejects an upload whose bytes do not match the claimed mime type', async () => {
+    const { token } = await registerRider();
+    const res = await request(app).post('/api/rider/documents').set(bearer(token)).send({
+      type: 'license',
+      fileName: 'permis.png',
+      mimeType: 'image/png',
+      // valid base64 but the bytes are not a PNG — sniffer should reject it
+      contentBase64: Buffer.from('not-a-real-image').toString('base64'),
+    });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('unsupported_file_type');
+  });
+
+  it('supersedes the previous document of the same type', async () => {
+    const { token } = await registerRider();
+    await request(app).post('/api/rider/documents').set(bearer(token)).send({
+      type: 'license', fileName: 'a.png', mimeType: 'image/png', contentBase64: TINY_PNG.toString('base64'),
+    });
+    await request(app).post('/api/rider/documents').set(bearer(token)).send({
+      type: 'license', fileName: 'b.png', mimeType: 'image/png', contentBase64: TINY_PNG.toString('base64'),
+    });
+    const list = await request(app).get('/api/rider/documents').set(bearer(token));
+    expect(list.body.documents).toHaveLength(1);
+    expect(list.body.documents[0].fileName).toBe('b.png');
   });
 });
 

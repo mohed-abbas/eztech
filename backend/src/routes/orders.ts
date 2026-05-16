@@ -50,8 +50,9 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
       },
       include: { events: true },
     });
-    // best-effort fan-out — a transient notification failure should not roll back the commit
-    notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`).catch(() => {});
+    // notify online riders; a transient failure should not roll back the commit, so we swallow
+    // errors after awaiting — tests and callers can rely on notifications being durable at response
+    await notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`).catch(() => {});
     res.status(201).json({ order });
   } catch (err) {
     next(err);
@@ -115,8 +116,8 @@ ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req,
       return updated;
     });
     if (order.status === 'delivered') {
-      // best-effort: a delivered order should remain delivered even if the notification fails
-      notify(riderId, 'earning_credited', 'Livraison complétée', `Commande ${order.reference} : ${Number(order.riderFee).toFixed(2)} € crédités`).catch(() => {});
+      // awaited so the notification is durable by the time we respond, but errors are swallowed
+      await notify(riderId, 'earning_credited', 'Livraison complétée', `Commande ${order.reference} : ${Number(order.riderFee).toFixed(2)} € crédités`).catch(() => {});
     }
     res.json({ order });
   } catch (err) {

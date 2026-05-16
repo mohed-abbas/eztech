@@ -142,9 +142,11 @@ export const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
   cancelled: 'Annulé',
 }
 
-// coerce Prisma Decimal (serialized as string) into a number
+// coerce Prisma Decimal (serialized as string) into a number; non-finite values fall back to 0
+// so the UI never renders "€NaN" from a malformed backend payload
 function num(v: unknown): number {
-  return typeof v === 'number' ? v : Number(v ?? 0)
+  const n = typeof v === 'number' ? v : Number(v ?? 0)
+  return Number.isFinite(n) ? n : 0
 }
 function normalizeOrder(o: DeliveryOrder): DeliveryOrder {
   return { ...o, riderFee: num(o.riderFee) }

@@ -1,9 +1,6 @@
 import crypto from 'node:crypto';
 import type { OrderStatus } from '@prisma/client';
 
-// how long a rider has to accept an offered order before it expires back to the pool
-export const ASSIGNMENT_TTL_MS = 60_000;
-
 export function generateOrderReference(): string {
   return `EZ-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 }
@@ -22,9 +19,4 @@ const RIDER_STATUS_FLOW: Record<string, OrderStatus[]> = {
 
 export function canRiderTransition(from: OrderStatus, to: OrderStatus): boolean {
   return RIDER_STATUS_FLOW[from]?.includes(to) ?? false;
-}
-
-// true when the order is offered to a rider but the acceptance window has elapsed
-export function isAssignmentExpired(assignmentExpiresAt: Date | null): boolean {
-  return assignmentExpiresAt !== null && assignmentExpiresAt.getTime() < Date.now();
 }

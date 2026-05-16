@@ -54,7 +54,7 @@ returnsRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (re
         ...(riderFee !== undefined ? { riderFee: new Prisma.Decimal(riderFee) } : { riderFee: new Prisma.Decimal(4) }),
       },
     });
-    notifyOnlineRiders('return_scheduled', 'Nouveau retour à récupérer', `Retour ${ret.reference} planifié`).catch(() => {});
+    await notifyOnlineRiders('return_scheduled', 'Nouveau retour à récupérer', `Retour ${ret.reference} planifié`).catch(() => {});
     res.status(201).json({ return: { ...ret, riderFee: Number(ret.riderFee) } });
   } catch (err) {
     next(err);

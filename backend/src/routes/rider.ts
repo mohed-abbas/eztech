@@ -391,8 +391,9 @@ riderRouter.patch('/returns/:id/complete', async (req, res, next) => {
       if (current.status !== 'accepted') throw new HttpError(409, 'invalid_return_status', { status: current.status });
       return tx.return.update({ where: { id: returnId }, data: { status: 'completed', completedAt: new Date() }, select: RETURN_SELECT });
     });
-    // best-effort: a notification-system blip should not roll back a committed completion
-    notify(riderId, 'earning_credited', 'Retour complété', `Retour ${ret.reference} : ${Number(ret.riderFee).toFixed(2)} € crédités`).catch(() => {});
+    // awaited so the notification is durable at response time, but errors are swallowed —
+    // a notification-system blip should not roll back a committed completion
+    await notify(riderId, 'earning_credited', 'Retour complété', `Retour ${ret.reference} : ${Number(ret.riderFee).toFixed(2)} € crédités`).catch(() => {});
     res.json({ return: serializeReturn(ret) });
   } catch (err) {
     next(err);
