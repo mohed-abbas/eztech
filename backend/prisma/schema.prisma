@@ -124,6 +124,7 @@ model Order {
   rider    User?          @relation("RiderOrders", fields: [riderId], references: [id])
   events   OrderEvent[]
   declines OrderDecline[]
+  returns  Return[]       @relation("OrderReturns")
 
   @@index([status])
   @@index([riderId])
@@ -176,11 +177,13 @@ model Return {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  customer User? @relation("CustomerReturns", fields: [customerId], references: [id])
-  rider    User? @relation("RiderReturns", fields: [riderId], references: [id])
+  customer User?  @relation("CustomerReturns", fields: [customerId], references: [id])
+  rider    User?  @relation("RiderReturns", fields: [riderId], references: [id])
+  order    Order? @relation("OrderReturns", fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([riderId])
+  @@index([orderId])
 }
 
 enum NotificationType {

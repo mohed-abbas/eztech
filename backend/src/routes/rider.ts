@@ -217,6 +217,8 @@ riderRouter.get('/orders/active', async (req, res, next) => {
   }
 });
 
+const ACTIVE_ORDER_STATUSES = ['rider_assigned', 'at_warehouse', 'picked_up', 'in_transit'] as const;
+
 // POST /api/rider/orders/:id/accept
 riderRouter.post('/orders/:id/accept', async (req, res, next) => {
   try {
@@ -227,27 +229,37 @@ riderRouter.post('/orders/:id/accept', async (req, res, next) => {
     assertApproved(rider);
     if (!rider.riderOnline) return next(new HttpError(409, 'rider_offline'));
 
-    // a rider may only hold one active delivery at a time
-    const busy = await prisma.order.findFirst({
-      where: { riderId, status: { in: ['rider_assigned', 'at_warehouse', 'picked_up', 'in_transit'] } },
-      select: { id: true },
-    });
-    if (busy) return next(new HttpError(409, 'already_on_delivery'));
+    // both the busy check and the claim must run in the same serializable transaction;
+    // a partial unique index on Order(riderId) WHERE status IN active_set is a defense-in-depth.
+    const order = await prisma.$transaction(
+      async (tx) => {
+        const busy = await tx.order.findFirst({
+          where: { riderId, status: { in: [...ACTIVE_ORDER_STATUSES] } },
+          select: { id: true },
+        });
+        if (busy) throw new HttpError(409, 'already_on_delivery');
 
-    const order = await prisma.$transaction(async (tx) => {
-      // atomic claim — only succeeds if still unassigned
-      const claimed = await tx.order.updateMany({
-        where: { id: orderId, status: 'pending_assignment', riderId: null },
-        data: { riderId, status: 'rider_assigned', assignmentExpiresAt: null },
-      });
-      if (claimed.count === 0) return null;
-      await tx.orderEvent.create({ data: { orderId, status: 'rider_assigned', note: 'rider accepted' } });
-      return tx.order.findUnique({ where: { id: orderId }, include: { events: { orderBy: { createdAt: 'asc' } } } });
-    });
+        const claimed = await tx.order.updateMany({
+          where: { id: orderId, status: 'pending_assignment', riderId: null },
+          data: { riderId, status: 'rider_assigned', assignmentExpiresAt: null },
+        });
+        if (claimed.count === 0) throw new HttpError(409, 'order_unavailable');
+        await tx.orderEvent.create({ data: { orderId, status: 'rider_assigned', note: 'rider accepted' } });
+        return tx.order.findUnique({
+          where: { id: orderId },
+          include: { events: { orderBy: { createdAt: 'asc' } } },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     if (!order) return next(new HttpError(409, 'order_unavailable'));
     res.json({ order });
   } catch (err) {
+    // partial unique index collision (defense-in-depth) — map to 409
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      return next(new HttpError(409, 'already_on_delivery'));
+    }
     next(err);
   }
 });
