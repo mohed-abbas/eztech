@@ -17,7 +17,6 @@ const rightCards = computed(() => featuredProducts.slice(2, 4))
       aria-hidden="true"
       class="absolute left-0 top-0 w-full h-[1182px] object-cover pointer-events-none select-none"
     >
-
     <div class="relative mx-auto max-w-[1240px] px-6">
       <div class="flex flex-col items-center pt-[60px] lg:pt-[80px] pb-0">
         <h1
