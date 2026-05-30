@@ -74,6 +74,21 @@ model User {
   assignedReturns Return[]        @relation("RiderReturns")
   customerReturns Return[]        @relation("CustomerReturns")
   notifications   Notification[]
+  addresses       Address[]
+}
+
+// a customer's saved delivery address — captured at registration, editable later
+model Address {
+  id        String   @id @default(uuid())
+  userId    String
+  label     String
+  street    String
+  city      String
+  zipCode   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model RefreshToken {
@@ -98,6 +113,8 @@ model RiderDocument {
   uploadedAt DateTime            @default(now())
   rider      User                @relation(fields: [riderId], references: [id], onDelete: Cascade)
 
+  // a rider keeps only one document per type — supersede via upsert, not deleteMany+create
+  @@unique([riderId, type])
   @@index([riderId])
 }
 
@@ -124,6 +141,7 @@ model Order {
   rider    User?          @relation("RiderOrders", fields: [riderId], references: [id])
   events   OrderEvent[]
   declines OrderDecline[]
+  returns  Return[]       @relation("OrderReturns")
 
   @@index([status])
   @@index([riderId])
@@ -176,11 +194,13 @@ model Return {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  customer User? @relation("CustomerReturns", fields: [customerId], references: [id])
-  rider    User? @relation("RiderReturns", fields: [riderId], references: [id])
+  customer User?  @relation("CustomerReturns", fields: [customerId], references: [id])
+  rider    User?  @relation("RiderReturns", fields: [riderId], references: [id])
+  order    Order? @relation("OrderReturns", fields: [orderId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([riderId])
+  @@index([orderId])
 }
 
 enum NotificationType {

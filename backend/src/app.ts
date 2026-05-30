@@ -1,10 +1,10 @@
-import path from 'node:path';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import { pinoHttp } from 'pino-http';
 import { logger } from './lib/logger.js';
 import { apiRouter } from './routes/index.js';
+import { uploadsRouter } from './routes/uploads.js';
 import { errorHandler } from './middleware/error.js';
 import { notFoundHandler } from './middleware/notFound.js';
 
@@ -12,12 +12,21 @@ export function buildApp() {
   const app = express();
 
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-  app.use(cors()); // tighten allowed origins in a later phase
+  const corsOrigins = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.use(
+    cors({
+      origin: corsOrigins,
+      credentials: true,
+    }),
+  );
   // larger limit than the default 1mb so base64-encoded rider documents fit
   app.use(express.json({ limit: '8mb' }));
 
-  // uploaded rider documents (licence / insurance proof)
-  app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
+  // rider documents are PII — never served from a public static mount
+  app.use('/uploads', uploadsRouter);
   app.use(
     pinoHttp({
       logger,

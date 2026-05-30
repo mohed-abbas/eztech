@@ -1,13 +1,14 @@
 import { z } from 'zod';
 
 // PUT /api/rider/profile — riders may edit these fields only
+// bounds mirror RegisterSchema so the same DoS/log-bloat guard applies on update
 export const UpdateRiderProfileSchema = z
   .object({
-    name: z.string().min(1).optional(),
-    phone: z.string().optional(),
+    name: z.string().min(1).max(120).optional(),
+    phone: z.string().max(40).optional(),
     vehicleType: z.enum(['bicycle', 'scooter', 'car']).optional(),
-    licenseNumber: z.string().min(1).optional(),
-    insuranceNumber: z.string().min(1).optional(),
+    licenseNumber: z.string().min(1).max(40).optional(),
+    insuranceNumber: z.string().min(1).max(40).optional(),
   })
   .refine((d) => Object.values(d).some((v) => v !== undefined), {
     message: 'at least one field is required',

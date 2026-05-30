@@ -80,8 +80,9 @@ export const useAuthStore = defineStore('auth', {
       try {
         const parsed = JSON.parse(stored)
         const { isMock } = useMock()
-        // a mock token (from a previous VITE_USE_MOCK=true session) is worthless against the real API — drop it
-        if (parsed.token && !isMock.value && String(parsed.token).startsWith('mock-jwt-')) {
+        // a mock-mode session is worthless against the real API — drop it on mode-switch.
+        // we tag every persisted blob with `mock: true` rather than sniffing the token string.
+        if (parsed.mock === true && !isMock.value) {
           localStorage.removeItem(AUTH_STORAGE_KEY)
           return
         }
@@ -99,10 +100,12 @@ export const useAuthStore = defineStore('auth', {
     persist() {
       if (!import.meta.client) return
       if (this.user && this.token) {
+        const { isMock } = useMock()
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({
           user: this.user,
           token: this.token,
           refreshToken: this.refreshToken,
+          mock: isMock.value,
         }))
       }
       else {
