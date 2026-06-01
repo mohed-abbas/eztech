@@ -4,12 +4,9 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { CreateCategorySchema, PatchCategorySchema } from '../schemas/catalog.js';
+import { clean } from '../lib/catalog.js';
 
 export const categoriesRouter = Router();
-
-function clean<T extends object>(obj: T): T {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
-}
 
 // GET /api/categories — public; includes active product counts for the catalog nav
 categoriesRouter.get('/', async (_req, res, next) => {
@@ -30,7 +27,7 @@ categoriesRouter.get('/:slug', async (req, res, next) => {
   try {
     const category = await prisma.category.findUnique({
       where: { slug },
-      include: { products: { where: { isActive: true }, orderBy: { name: 'asc' } } },
+      include: { products: { where: { isActive: true }, orderBy: { name: 'asc' }, take: 200 } },
     });
     if (!category) return next(new HttpError(404, 'category_not_found'));
     res.json({ category });

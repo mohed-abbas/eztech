@@ -32,16 +32,15 @@ brandsRouter.post('/', requireAuth, requireRole('admin'), async (req, res, next)
   }
 });
 
-// DELETE /api/brands/:id — admin only; blocked while products still reference it
+// DELETE /api/brands/:id — admin only; products referencing it are unlinked (brandId → null)
 brandsRouter.delete('/:id', requireAuth, requireRole('admin'), async (req, res, next) => {
   const id = String(req.params['id']);
   try {
     await prisma.brand.delete({ where: { id } });
     res.status(204).end();
   } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError) {
-      if (err.code === 'P2025') return next(new HttpError(404, 'brand_not_found'));
-      if (err.code === 'P2003') return next(new HttpError(409, 'brand_in_use'));
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return next(new HttpError(404, 'brand_not_found'));
     }
     next(err);
   }

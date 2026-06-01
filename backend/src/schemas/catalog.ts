@@ -22,7 +22,7 @@ const pricing = {
   weeklyPrice: z.number().nonnegative().nullable().optional(),
 };
 
-export const CreateProductSchema = z.object({
+const ProductFields = z.object({
   name: z.string().min(1),
   slug,
   description: z.string().optional(),
@@ -38,7 +38,17 @@ export const CreateProductSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-export const PatchProductSchema = CreateProductSchema.partial();
+// the price column(s) must match the declared pricingType, else sortPrice/display break (WR-01)
+export const CreateProductSchema = ProductFields.superRefine((v, ctx) => {
+  if (v.pricingType === 'flat' && v.flatPrice == null) {
+    ctx.addIssue({ code: 'custom', path: ['flatPrice'], message: 'flat pricing requires flatPrice' });
+  }
+  if (v.pricingType === 'tiered' && v.hourlyPrice == null && v.dailyPrice == null && v.weeklyPrice == null) {
+    ctx.addIssue({ code: 'custom', path: ['pricingType'], message: 'tiered pricing requires hourly, daily or weekly' });
+  }
+});
+
+export const PatchProductSchema = ProductFields.partial();
 
 export const CreateCategorySchema = z.object({
   name: z.string().min(1),

@@ -272,6 +272,8 @@ model Product {
   hourlyPrice Decimal?    @db.Decimal(10, 2)
   dailyPrice  Decimal?    @db.Decimal(10, 2)
   weeklyPrice Decimal?    @db.Decimal(10, 2)
+  // single comparable price for catalog sorting across both pricing types (coalesced from the above)
+  sortPrice   Decimal     @default(0) @db.Decimal(10, 2)
 
   compatibilityTags String[] // free-form tags powering "compatible with" search, e.g. ["Apple","USB-C"]
   stock             Int      @default(0) // denormalized total available; per-warehouse breakdown lives in WarehouseStock
@@ -289,6 +291,7 @@ model Product {
   @@index([categoryId])
   @@index([brandId])
   @@index([isActive, featured])
+  @@index([isActive, sortPrice])
 }
 
 // a pickup/dispatch warehouse — mirrors warehouses.json

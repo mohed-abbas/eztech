@@ -112,6 +112,7 @@ async function main() {
         hourlyPrice: p.price.hourly ?? null,
         dailyPrice: p.price.daily ?? null,
         weeklyPrice: p.price.weekly ?? null,
+        sortPrice: p.price.flat ?? p.price.daily ?? p.price.hourly ?? p.price.weekly ?? 0,
         compatibilityTags: p.compatibilityTags,
         stock: p.stock,
         featured: p.featured,

@@ -4,15 +4,13 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { CreateProductSchema, PatchProductSchema, ProductQuerySchema } from '../schemas/catalog.js';
+import { clean, sortPriceFor } from '../lib/catalog.js';
 
 export const productsRouter = Router();
 
 const withRelations = { category: true, brand: true } as const;
 
-// strips undefined so Prisma uses column defaults (exactOptionalPropertyTypes)
-function clean<T extends object>(obj: T): T {
-  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
-}
+const toNum = (d: Prisma.Decimal | null): number | null => (d == null ? null : Number(d));
 
 // GET /api/products — public catalog listing with filters, sort, pagination
 productsRouter.get('/', async (req, res, next) => {
@@ -31,12 +29,10 @@ productsRouter.get('/', async (req, res, next) => {
     ];
   }
 
-  // price sort is approximate across pricing types (flat → flatPrice, tiered → dailyPrice)
+  // sortPrice is the coalesced price kept in sync on write, so it orders flat and tiered products together
   const dir = sort === 'price_desc' ? 'desc' : 'asc';
   const orderBy: Prisma.ProductOrderByWithRelationInput[] =
-    sort === 'newest'
-      ? [{ createdAt: 'desc' }]
-      : [{ flatPrice: { sort: dir, nulls: 'last' } }, { dailyPrice: { sort: dir, nulls: 'last' } }];
+    sort === 'newest' ? [{ createdAt: 'desc' }] : [{ sortPrice: dir }];
 
   try {
     const [products, total] = await Promise.all([
@@ -79,7 +75,7 @@ productsRouter.post('/', requireAuth, requireRole('admin'), async (req, res, nex
   if (!parsed.success) return next(new HttpError(422, 'validation_failed', { issues: parsed.error.issues }));
   try {
     const product = await prisma.product.create({
-      data: clean(parsed.data) as Prisma.ProductUncheckedCreateInput,
+      data: { ...clean(parsed.data), sortPrice: sortPriceFor(parsed.data) } as Prisma.ProductUncheckedCreateInput,
       include: withRelations,
     });
     res.status(201).json({ product });
@@ -98,9 +94,22 @@ productsRouter.patch('/:id', requireAuth, requireRole('admin'), async (req, res,
   if (!parsed.success) return next(new HttpError(422, 'validation_failed', { issues: parsed.error.issues }));
   const id = String(req.params['id']);
   try {
+    // load current pricing so sortPrice stays correct after a partial price update
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) return next(new HttpError(404, 'product_not_found'));
+
+    const pick = (key: 'flatPrice' | 'hourlyPrice' | 'dailyPrice' | 'weeklyPrice') =>
+      parsed.data[key] !== undefined ? parsed.data[key] : toNum(existing[key]);
+    const sortPrice = sortPriceFor({
+      flatPrice: pick('flatPrice'),
+      hourlyPrice: pick('hourlyPrice'),
+      dailyPrice: pick('dailyPrice'),
+      weeklyPrice: pick('weeklyPrice'),
+    });
+
     const product = await prisma.product.update({
       where: { id },
-      data: clean(parsed.data) as Prisma.ProductUncheckedUpdateInput,
+      data: { ...clean(parsed.data), sortPrice } as Prisma.ProductUncheckedUpdateInput,
       include: withRelations,
     });
     res.json({ product });
