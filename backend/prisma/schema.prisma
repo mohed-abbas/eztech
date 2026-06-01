@@ -66,15 +66,16 @@ model User {
   riderApplicationStatus RiderApplicationStatus @default(pending)
   riderOnline            Boolean                @default(false)
 
-  refreshTokens   RefreshToken[]
-  riderDocuments  RiderDocument[]
-  assignedOrders  Order[]         @relation("RiderOrders")
-  customerOrders  Order[]         @relation("CustomerOrders")
-  declinedOrders  OrderDecline[]
-  assignedReturns Return[]        @relation("RiderReturns")
-  customerReturns Return[]        @relation("CustomerReturns")
-  notifications   Notification[]
-  addresses       Address[]
+  refreshTokens     RefreshToken[]
+  riderDocuments    RiderDocument[]
+  assignedOrders    Order[]         @relation("RiderOrders")
+  customerOrders    Order[]         @relation("CustomerOrders")
+  declinedOrders    OrderDecline[]
+  assignedReturns   Return[]        @relation("RiderReturns")
+  customerReturns   Return[]        @relation("CustomerReturns")
+  notifications     Notification[]
+  addresses         Address[]
+  managedWarehouses Warehouse[]     @relation("ManagedWarehouses")
 }
 
 // a customer's saved delivery address — captured at registration, editable later
@@ -220,4 +221,108 @@ model Notification {
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
+}
+
+// ── Catalog ─────────────────────────────────────────────────────────────────
+// Phase 3 (read-only catalog) draft. Mirrors the frontend mock (app/data/mock/
+// products.json, categories.json, warehouses.json) so it can be seeded 1:1 and
+// the catalog pages flip to VITE_USE_MOCK=false. Designed to be extended
+// additively — Wilson can refine field shapes without a destructive migration.
+
+// consumables/accessories rent for one flat price; devices rent on hourly/daily/weekly tiers
+enum PricingType {
+  flat
+  tiered
+}
+
+// product taxonomy — mirrors categories.json (Chargeurs, Câbles, Ordinateurs, …)
+model Category {
+  id          String    @id @default(uuid())
+  name        String
+  slug        String    @unique
+  description String    @default("")
+  icon        String    @default("") // iconify name used by the frontend, e.g. "ph:battery-charging"
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  products    Product[]
+}
+
+// optional brand dimension for filtering (Apple, Samsung, Lenovo, …) — products may be unbranded/universal
+model Brand {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
+// a rentable catalog item — products.json maps 1:1 onto this
+model Product {
+  id          String  @id @default(uuid())
+  name        String
+  slug        String  @unique
+  description String  @default("")
+  categoryId  String
+  brandId     String?
+  imageUrl    String  @default("")
+
+  pricingType PricingType @default(flat)
+  // only the columns matching pricingType are populated: flat → flatPrice; tiered → hourly/daily/weekly
+  flatPrice   Decimal?    @db.Decimal(10, 2)
+  hourlyPrice Decimal?    @db.Decimal(10, 2)
+  dailyPrice  Decimal?    @db.Decimal(10, 2)
+  weeklyPrice Decimal?    @db.Decimal(10, 2)
+
+  compatibilityTags String[] // free-form tags powering "compatible with" search, e.g. ["Apple","USB-C"]
+  stock             Int      @default(0) // denormalized total available; per-warehouse breakdown lives in WarehouseStock
+  featured          Boolean  @default(false)
+  rating            Decimal? @db.Decimal(2, 1)
+  reviewCount       Int      @default(0)
+  isActive          Boolean  @default(true) // admins soft-disable instead of deleting
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  category Category         @relation(fields: [categoryId], references: [id])
+  brand    Brand?           @relation(fields: [brandId], references: [id])
+  stocks   WarehouseStock[]
+
+  @@index([categoryId])
+  @@index([brandId])
+  @@index([isActive, featured])
+}
+
+// a pickup/dispatch warehouse — mirrors warehouses.json
+model Warehouse {
+  id            String   @id @default(uuid())
+  name          String
+  address       String
+  lat           Float
+  lng           Float
+  serviceRadius Int      @default(5) // km
+  openTime      String   @default("08:00")
+  closeTime     String   @default("22:00")
+  isActive      Boolean  @default(true)
+  managerId     String? // a warehouse_manager user, assigned by an admin
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  manager User?            @relation("ManagedWarehouses", fields: [managerId], references: [id])
+  stocks  WarehouseStock[]
+
+  @@index([managerId])
+}
+
+// per-warehouse stock of a product — replaces the mock's warehouseIds[] and seeds Phase 4 inventory
+model WarehouseStock {
+  id          String   @id @default(uuid())
+  warehouseId String
+  productId   String
+  quantity    Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, productId])
+  @@index([productId])
 }
