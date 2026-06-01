@@ -62,6 +62,7 @@ function fromMock() {
       image: p.image,
       featured: p.featured,
       rating: p.rating,
+      pricingType: p.price.flat ? 'flat' : 'tiered',
       price: flatten(p.price),
       stock: p.stock ?? 0,
     }))
@@ -88,8 +89,9 @@ export default defineEventHandler(async () => {
       price: Number(p.flatPrice ?? p.dailyPrice ?? p.hourlyPrice ?? p.weeklyPrice ?? 0),
       stock: p.stock,
     }))
-  } catch {
-    // backend unreachable — degrade to local data rather than breaking the catalog
+  } catch (err) {
+    // backend unreachable — degrade to local data rather than breaking the catalog, but surface the outage
+    console.error('[catalog BFF] /products backend fetch failed, serving mock data:', err)
     return fromMock()
   }
 })

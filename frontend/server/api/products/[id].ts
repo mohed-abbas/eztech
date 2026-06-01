@@ -65,13 +65,19 @@ function notFound() {
   return createError({ statusCode: 404, statusMessage: 'Product not found' })
 }
 
+// a valid id is a uuid or a catalog slug — reject anything else so it can never
+// be interpolated into the upstream request path (CR-02: SSRF / path injection)
+const ID_RE = /^[a-zA-Z0-9_-]+$/
+
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
   const { public: pub } = useRuntimeConfig()
 
+  if (!id || !ID_RE.test(id)) throw notFound()
+
   if (!pub.useMock) {
     try {
-      const { product: p } = await $fetch<{ product: ApiProduct }>(`${pub.apiUrl}/products/${id}`)
+      const { product: p } = await $fetch<{ product: ApiProduct }>(`${pub.apiUrl}/products/${encodeURIComponent(id)}`)
       return {
         id: p.id,
         slug: p.slug,
@@ -89,7 +95,8 @@ export default defineEventHandler(async (event) => {
       }
     } catch (err) {
       if ((err as { statusCode?: number }).statusCode === 404) throw notFound()
-      // other errors — fall through to mock so the page still renders
+      // other errors — fall through to mock so the page still renders, but surface the outage
+      console.error('[catalog BFF] /products/:id backend fetch failed, serving mock data:', err)
     }
   }
 
