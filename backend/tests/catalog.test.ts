@@ -88,6 +88,21 @@ describe('catalog public reads', () => {
     expect(body.pageSize).toBe(1);
   });
 
+  it('sorts by price across pricing types (tiered cheaper than flat comes first)', async () => {
+    const cat = await seedCategory();
+    // a cheap tiered product (2/day) must sort ahead of an expensive flat one (50)
+    await testPrisma.product.create({
+      data: { name: 'Flat Pricey', slug: 'flat-pricey', categoryId: cat.id, pricingType: 'flat', flatPrice: 50, sortPrice: 50, stock: 1 },
+    });
+    await testPrisma.product.create({
+      data: { name: 'Tiered Cheap', slug: 'tiered-cheap', categoryId: cat.id, pricingType: 'tiered', dailyPrice: 2, sortPrice: 2, stock: 1 },
+    });
+
+    const res = await request(app).get('/api/products?sort=price_asc');
+    const body = res.body as { products: Array<{ slug: string }> };
+    expect(body.products.map((p) => p.slug)).toEqual(['tiered-cheap', 'flat-pricey']);
+  });
+
   it('returns a product by slug, 404 for unknown', async () => {
     const cat = await seedCategory();
     await seedProduct(cat.id, { slug: 'macbook-air' });
@@ -187,6 +202,16 @@ describe('catalog admin mutations', () => {
       .post('/api/products')
       .set('Authorization', `Bearer ${token}`)
       .send({ name: '', slug: 'Bad Slug', pricingType: 'flat' });
+    expect(res.status).toBe(422);
+  });
+
+  it('rejects a flat product with no price (422)', async () => {
+    const cat = await seedCategory();
+    const token = await adminToken();
+    const res = await request(app)
+      .post('/api/products')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'No Price', slug: 'no-price', categoryId: cat.id, pricingType: 'flat' });
     expect(res.status).toBe(422);
   });
 });
