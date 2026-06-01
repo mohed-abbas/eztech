@@ -55,11 +55,17 @@ productsRouter.get('/', async (req, res, next) => {
   }
 });
 
-// GET /api/products/:slug — public product detail
-productsRouter.get('/:slug', async (req, res, next) => {
-  const slug = String(req.params['slug']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// GET /api/products/:idOrSlug — public product detail (frontend links by id; slug also accepted)
+productsRouter.get('/:idOrSlug', async (req, res, next) => {
+  const key = String(req.params['idOrSlug']);
+  // only match on id when the param is a uuid — querying the uuid column with a slug throws
+  const where: Prisma.ProductWhereInput = UUID_RE.test(key)
+    ? { isActive: true, OR: [{ id: key }, { slug: key }] }
+    : { isActive: true, slug: key };
   try {
-    const product = await prisma.product.findFirst({ where: { slug, isActive: true }, include: withRelations });
+    const product = await prisma.product.findFirst({ where, include: withRelations });
     if (!product) return next(new HttpError(404, 'product_not_found'));
     res.json({ product });
   } catch (err) {

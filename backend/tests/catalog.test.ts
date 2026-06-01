@@ -100,6 +100,15 @@ describe('catalog public reads', () => {
     expect((missing.body as { error: string }).error).toBe('product_not_found');
   });
 
+  it('returns a product by id as well as slug', async () => {
+    const cat = await seedCategory();
+    const product = await seedProduct(cat.id, { slug: 'by-id' });
+
+    const res = await request(app).get(`/api/products/${product.id}`);
+    expect(res.status).toBe(200);
+    expect((res.body as { product: { id: string } }).product.id).toBe(product.id);
+  });
+
   it('lists categories with active product counts', async () => {
     const cat = await seedCategory();
     await seedProduct(cat.id, { slug: 'x-1' });
