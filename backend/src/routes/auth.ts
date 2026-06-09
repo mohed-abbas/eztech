@@ -25,31 +25,42 @@ authRouter.post('/register', async (req, res, next) => {
   const result = RegisterSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
-  const { email, password, name, phone, vehicleType, licenseNumber, insuranceNumber } = result.data;
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return next(new HttpError(409, 'email_taken'));
+  const { email, password, name, phone, vehicleType, licenseNumber, insuranceNumber, address } = result.data;
 
-  // presence of vehicleType means this is a rider sign-up; licence + insurance are then required
+  // validate rider field combinations BEFORE the existence check so we don't leak a timing
+  // oracle for email enumeration via a rider-payload + existing-email branch.
   if (vehicleType !== undefined && (!licenseNumber || !insuranceNumber)) {
     return next(new HttpError(422, 'validation_failed', { issues: [{ message: 'licenseNumber and insuranceNumber are required for riders' }] }));
   }
 
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) return next(new HttpError(409, 'email_taken'));
+
   const passwordHash = await hashPassword(password);
+  const isRider = vehicleType !== undefined && !!licenseNumber && !!insuranceNumber;
   const user = await prisma.user.create({
-    data:
-      vehicleType !== undefined && licenseNumber && insuranceNumber
-        ? {
-            email,
-            passwordHash,
-            name,
-            phone: phone ?? '',
-            role: 'rider',
-            vehicleType,
-            licenseNumber,
-            insuranceNumber,
-            riderApplicationStatus: 'pending',
-          }
-        : { email, passwordHash, name, phone: phone ?? '', role: 'customer' },
+    data: isRider
+      ? {
+          email,
+          passwordHash,
+          name,
+          phone: phone ?? '',
+          role: 'rider',
+          vehicleType,
+          licenseNumber,
+          insuranceNumber,
+          riderApplicationStatus: 'pending',
+        }
+      : {
+          email,
+          passwordHash,
+          name,
+          phone: phone ?? '',
+          role: 'customer',
+          // a customer's address payload is persisted on registration; riders don't have one
+          ...(address ? { addresses: { create: address } } : {}),
+        },
+    include: { addresses: true },
   });
 
   const token = signAccessToken({ sub: user.id, role: user.role });
@@ -63,7 +74,7 @@ authRouter.post('/login', async (req, res, next) => {
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
   const { email, password } = result.data;
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email }, include: { addresses: true } });
 
   if (!user) {
     // constant-time: equalize timing against a real bcrypt compare (D9)
@@ -109,8 +120,8 @@ authRouter.post('/logout', async (req, res, next) => {
 
 // GET /api/auth/me
 authRouter.get('/me', requireAuth, async (req, res, next) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
-  if (!user) return next(new HttpError(401, 'user_not_found'));
+  const user = await prisma.user.findUnique({ where: { id: req.user!.sub }, include: { addresses: true } });
+  if (!user) return next(new HttpError(401, 'user_revoked'));
   res.json({ user: buildUserResponse(user) });
 });
 

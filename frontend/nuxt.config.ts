@@ -21,8 +21,12 @@ export default defineNuxtConfig({
     componentDir: './app/components/ui'
   },
   runtimeConfig: {
+    // server-only: used by the Nuxt BFF (server/api/*) to reach the backend.
+    // In Docker this is the compose service name; on the host it defaults to localhost.
+    apiUrl: process.env.NUXT_API_URL || 'http://localhost:3001/api',
     public: {
       useMock: process.env.VITE_USE_MOCK === 'true',
+      // browser-facing: client stores hit the backend via the host port mapping
       apiUrl: process.env.VITE_API_URL || 'http://localhost:3001/api'
     }
   }

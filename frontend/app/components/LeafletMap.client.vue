@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import 'leaflet/dist/leaflet.css'
-import type { Map, Marker, Polyline, LatLngExpression } from 'leaflet'
+import type { Map, Marker, LatLngExpression } from 'leaflet'
 
 interface Props {
   center?: [number, number]
@@ -257,9 +257,11 @@ function startAnimation() {
 
     if (stepIdx === props.route.length - 1) {
       emit('delivery-complete')
-      if (animInterval) clearInterval(animInterval)
+      // reset both interval refs to null so a future startAnimation() can run again
+      if (animInterval) { clearInterval(animInterval); animInterval = null }
       if (etaInterval) {
         clearInterval(etaInterval)
+        etaInterval = null
         etaSeconds.value = 0
       }
     }

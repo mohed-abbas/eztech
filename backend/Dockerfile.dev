@@ -1,0 +1,27 @@
+# Development image — hot reload via tsx watch, source bind-mounted at runtime.
+# Debian (not alpine) so Prisma's query engine works without musl/openssl gymnastics.
+FROM node:22-bookworm-slim
+
+# openssl: required by Prisma engine. postgresql-client: pg_isready for the entrypoint wait.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl postgresql-client \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install deps in an image layer. Docker seeds the empty node_modules named volume from this
+# layer on first run, so the host's macOS/arm64 modules never leak into the Linux container.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Pre-generate the Prisma client (Debian engine) so first boot is fast.
+COPY prisma ./prisma
+RUN npx prisma generate
+
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+EXPOSE 3001
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+# tsx directly (no --env-file) — env is injected by docker compose, not read from a bind-mounted .env.
+CMD ["npx", "tsx", "watch", "src/index.ts"]

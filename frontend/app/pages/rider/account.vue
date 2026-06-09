@@ -5,22 +5,28 @@ useHead({ title: 'Mon compte livreur - EzTech' })
 const auth = useAuthStore()
 const rider = useRiderStore()
 
-const form = reactive({ name: '', phone: '', vehicleType: 'scooter' as 'bicycle' | 'scooter' | 'car', licenseNumber: '', insuranceNumber: '' })
+type RiderForm = { name: string, phone: string, vehicleType: 'bicycle' | 'scooter' | 'car', licenseNumber: string, insuranceNumber: string }
+const form = reactive<RiderForm>({ name: '', phone: '', vehicleType: 'scooter', licenseNumber: '', insuranceNumber: '' })
+// snapshot of the form's last-persisted state so we can PUT only fields the user actually changed
+const initial = reactive<RiderForm>({ name: '', phone: '', vehicleType: 'scooter', licenseNumber: '', insuranceNumber: '' })
 const saving = ref(false)
 const saved = ref(false)
 const errorMsg = ref('')
+
+function syncFromProfile() {
+  if (!rider.profile) return
+  initial.name = form.name = rider.profile.name
+  initial.phone = form.phone = rider.profile.phone
+  initial.vehicleType = form.vehicleType = rider.profile.vehicleType ?? 'scooter'
+  initial.licenseNumber = form.licenseNumber = rider.profile.licenseNumber ?? ''
+  initial.insuranceNumber = form.insuranceNumber = rider.profile.insuranceNumber ?? ''
+}
 
 onMounted(async () => {
   auth.hydrate()
   if (auth.role !== 'rider') return navigateTo('/products')
   await Promise.all([rider.fetchProfile(), rider.fetchDocuments()])
-  if (rider.profile) {
-    form.name = rider.profile.name
-    form.phone = rider.profile.phone
-    form.vehicleType = rider.profile.vehicleType ?? 'scooter'
-    form.licenseNumber = rider.profile.licenseNumber ?? ''
-    form.insuranceNumber = rider.profile.insuranceNumber ?? ''
-  }
+  syncFromProfile()
 })
 
 async function save() {
@@ -28,7 +34,14 @@ async function save() {
   saved.value = false
   errorMsg.value = ''
   try {
-    await rider.updateProfile({ ...form })
+    // only PUT dirty fields so concurrent admin edits aren't clobbered with stale values
+    const patch: Partial<RiderForm> = {}
+    for (const key of Object.keys(form) as (keyof RiderForm)[]) {
+      if (form[key] !== initial[key]) (patch as Record<string, unknown>)[key] = form[key]
+    }
+    if (Object.keys(patch).length === 0) { saved.value = true; return }
+    await rider.updateProfile(patch)
+    syncFromProfile()
     saved.value = true
   }
   catch (e) { errorMsg.value = e instanceof Error ? e.message : 'Erreur lors de l\'enregistrement' }

@@ -24,4 +24,13 @@ export async function truncateRiderTables() {
   await truncateAuthTables();
 }
 
+// catalog tables — FK order: stock → product/warehouse → brand/category
+export async function truncateCatalogTables() {
+  await prisma.$executeRaw`DELETE FROM "WarehouseStock"`;
+  await prisma.$executeRaw`DELETE FROM "Product"`;
+  await prisma.$executeRaw`DELETE FROM "Warehouse"`;
+  await prisma.$executeRaw`DELETE FROM "Brand"`;
+  await prisma.$executeRaw`DELETE FROM "Category"`;
+}
+
 export { prisma as testPrisma };

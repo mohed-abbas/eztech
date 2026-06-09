@@ -10,6 +10,13 @@ const prisma = new PrismaClient();
 const RIDER_EMAIL = 'rider@eztech.fr';
 const RIDER_PASSWORD = 'riderpass123';
 
+// Demo customers — match the frontend's documented test accounts so login works against the live API.
+const CUSTOMERS = [
+  { email: 'marie@example.com', name: 'Marie Dubois', phone: '+33 6 11 22 33 44' },
+  { email: 'thomas@example.com', name: 'Thomas Bernard', phone: '+33 6 55 66 77 88' },
+];
+const CUSTOMER_PASSWORD = 'password123';
+
 const SAMPLE_JOBS = [
   {
     pickup: 'Entrepôt EzTech, 12 Rue du Faubourg Saint-Antoine, 75011 Paris',
@@ -32,6 +39,16 @@ const SAMPLE_JOBS = [
 ];
 
 async function main() {
+  const customerHash = await bcrypt.hash(CUSTOMER_PASSWORD, 12);
+  for (const c of CUSTOMERS) {
+    await prisma.user.upsert({
+      where: { email: c.email },
+      update: {},
+      create: { email: c.email, passwordHash: customerHash, name: c.name, phone: c.phone, role: 'customer' },
+    });
+  }
+  console.log(`demo customers: ${CUSTOMERS.map((c) => c.email).join(', ')} / ${CUSTOMER_PASSWORD}`);
+
   const passwordHash = await bcrypt.hash(RIDER_PASSWORD, 12);
   const rider = await prisma.user.upsert({
     where: { email: RIDER_EMAIL },

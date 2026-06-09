@@ -13,7 +13,7 @@ const props = withDefaults(defineProps<Props>(), {
   currentStep: 0,
 })
 
-export const STEP_CONFIG = [
+const STEP_CONFIG = [
   {
     color: '#10B981',
     bg: '#ECFDF5',
