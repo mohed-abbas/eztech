@@ -69,11 +69,11 @@ function fromMock() {
 }
 
 export default defineEventHandler(async () => {
-  const { public: pub } = useRuntimeConfig()
-  if (pub.useMock) return fromMock()
+  const config = useRuntimeConfig()
+  if (config.public.useMock) return fromMock()
 
   try {
-    const res = await $fetch<{ products: ApiProduct[] }>(`${pub.apiUrl}/products`, {
+    const res = await $fetch<{ products: ApiProduct[] }>(`${config.apiUrl}/products`, {
       query: { pageSize: 100 },
     })
     return res.products.map((p) => ({

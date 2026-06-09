@@ -1,0 +1,13 @@
+# Development image — Nuxt dev server with HMR, source bind-mounted at runtime.
+FROM node:22-bookworm-slim
+
+WORKDIR /app
+
+# npm ci runs the postinstall `nuxt prepare`. The node_modules + .nuxt named volumes are seeded
+# from this layer, keeping host macOS/arm64 artifacts out of the Linux container.
+COPY package.json package-lock.json ./
+RUN npm ci
+
+EXPOSE 3000
+# --host 0.0.0.0 so the dev server is reachable through the published port (Nuxt binds localhost by default).
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
