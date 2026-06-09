@@ -97,6 +97,13 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml up --bu
    - `NUXT_PUBLIC_UMAMI_HOST=http://localhost:3002` and `NUXT_PUBLIC_UMAMI_WEBSITE_ID=<id>`
 4. Restart the stack. Trigger an error and click around the app — errors land in GlitchTip, pageviews in Umami.
 
+> **Telemetry data is per-machine.** The GlitchTip account/project (and its DSN) and the Umami website
+> live in local Docker volumes (`glitchtip_postgres_data`, `umami_postgres_data`) — they are **not** in
+> git or the compose file. Each developer who runs the overlay gets a **fresh, empty** GlitchTip/Umami and
+> must do the one-time wiring above to get their **own** DSN/website-id. The DSN in your `.env` will not
+> work on someone else's machine. Your setup persists across `up`/`down` but is wiped by `down -v`. For a
+> shared/central instance, you'd host one GlitchTip everyone points at — that's the production model (Phase 7).
+
 With those env vars empty (the default), the Sentry SDK and Umami script are inert. This is the same
 switch you'd flip in production — the instrumentation code ships everywhere; only the config changes.
 
