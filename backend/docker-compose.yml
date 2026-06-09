@@ -1,7 +1,7 @@
 x-environment: &default-environment
   DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
   VALKEY_URL: redis://valkey:6379 # Or set to blank string to disable
-  SECRET_KEY: change_me_to_something_random # best to run openssl rand -hex 32
+  SECRET_KEY: something_random # best to run openssl rand -hex 32
   EMAIL_URL: consolemail:// # Example smtp://email:password@smtp_url:port https://glitchtip.com/documentation/install#configuration
   GLITCHTIP_DOMAIN: http://localhost:8000 # Change this to your domain
   DEFAULT_FROM_EMAIL: email@example.com # Change this to your email
@@ -49,7 +49,39 @@ services:
     volumes:
       - uploads:/code/uploads
 
+  umami:
+    image: ghcr.io/umami-software/umami:latest
+    ports:
+      - "3001:3000"
+    environment:
+      DATABASE_URL: postgresql://umami:umami@db:5432/umami
+      APP_SECRET: eztech
+    depends_on:
+      db:
+        condition: service_healthy
+    init: true
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "curl http://localhost:3001/api/heartbeat"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami
+    volumes:
+      - umami-db-data:/var/lib/postgresql/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
   uploads:
+  umami-db-data:
