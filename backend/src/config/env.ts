@@ -8,6 +8,9 @@ const Env = z.object({
   JWT_ACCESS_TTL: z.string().regex(/^\d+[smhdwy]$/, 'invalid TTL format').default('15m'),
   JWT_REFRESH_TTL: z.string().regex(/^\d+[smhdwy]$/, 'invalid TTL format').default('30d'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // optional — when set, errors are reported to GlitchTip/Sentry (see instrument.ts).
+  // accept '' (compose passes an empty string when unset) as "disabled", not an invalid URL.
+  SENTRY_DSN: z.string().url().optional().or(z.literal('')),
 });
 
 const parsed = Env.safeParse(process.env);

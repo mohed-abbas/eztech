@@ -1,0 +1,96 @@
+# Optional observability overlay — self-hosted GlitchTip (error tracking) + Umami (web analytics).
+# This is OPT-IN. It is NOT started by `docker compose up`. Bring it up alongside the app with:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up
+#
+# Both files share the same project network, so the app's backend reaches `glitchtip` by name while
+# the browser reaches the dashboards via the host ports below. Telemetry databases are internal-only
+# (no host ports) so they never collide with the app's postgres on 5432.
+#
+# Host ports: GlitchTip UI -> 8000, Umami UI -> 3002. (app uses 3000/3001/8080/5432)
+services:
+  # ---- GlitchTip: Sentry-compatible error tracking -------------------------------------------------
+  glitchtip:
+    image: glitchtip/glitchtip:6
+    environment:
+      SERVER_ROLE: all_in_one # web + worker + migrations in one container — fewest services for a demo
+      DATABASE_URL: postgresql://glitchtip:glitchtip@glitchtip-postgres:5432/glitchtip
+      REDIS_URL: redis://glitchtip-valkey:6379/0
+      VALKEY_URL: redis://glitchtip-valkey:6379/0
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-dev-only-change-me-please-0123456789}
+      PORT: "8080"
+      GLITCHTIP_DOMAIN: http://localhost:8000
+      EMAIL_URL: consolemail:// # dev: print emails to the container log instead of sending
+      DEFAULT_FROM_EMAIL: telemetry@eztech.local
+      ENABLE_OPEN_USER_REGISTRATION: "True" # let the team self-register the first account during the demo
+    ports:
+      # host port configurable (override GLITCHTIP_PORT in eztech/.env if 8000 is taken)
+      - "${GLITCHTIP_PORT:-8000}:8080"
+    volumes:
+      - glitchtip_uploads:/code/uploads
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-valkey:
+        condition: service_started
+    restart: unless-stopped
+
+  glitchtip-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: glitchtip
+      POSTGRES_DB: glitchtip
+    volumes:
+      - glitchtip_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  glitchtip-valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+
+  # ---- Umami: privacy-friendly web analytics -------------------------------------------------------
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    environment:
+      DATABASE_URL: postgresql://umami:umami@umami-postgres:5432/umami
+      DATABASE_TYPE: postgresql
+      APP_SECRET: ${UMAMI_APP_SECRET:-dev-only-change-me-umami}
+    ports:
+      # host port configurable (override UMAMI_PORT in eztech/.env if 3002 is taken)
+      - "${UMAMI_PORT:-3002}:3000"
+    depends_on:
+      umami-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    init: true
+    restart: unless-stopped
+
+  umami-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: umami
+    volumes:
+      - umami_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  glitchtip_postgres_data:
+  glitchtip_uploads:
+  umami_postgres_data:

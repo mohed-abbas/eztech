@@ -47,6 +47,8 @@ services:
       ADMIN_PASSWORD: change-me
       SEED_CATALOG: "true"
       SEED_DEMO: "true"
+      # optional error tracking — empty by default (inert). Set in eztech/.env for the telemetry demo.
+      SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "3001:3001"
     volumes:
@@ -73,6 +75,12 @@ services:
       NUXT_API_URL: http://backend:3001/api
       NUXT_HOST: 0.0.0.0
       NUXT_PORT: "3000"
+      # optional telemetry — all empty by default (inert). Set in eztech/.env for the demo.
+      # browser DSN uses GlitchTip's host port; the Nuxt server DSN uses the internal compose host.
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_SENTRY_DSN: ${NUXT_SENTRY_DSN:-}
+      NUXT_PUBLIC_UMAMI_HOST: ${NUXT_PUBLIC_UMAMI_HOST:-}
+      NUXT_PUBLIC_UMAMI_WEBSITE_ID: ${NUXT_PUBLIC_UMAMI_WEBSITE_ID:-}
     ports:
       - "3000:3000"
     volumes:

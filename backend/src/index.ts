@@ -1,3 +1,4 @@
+import './instrument.js'; // must come first — initialises Sentry before Express/Prisma load
 import { buildApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
