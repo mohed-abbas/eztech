@@ -71,13 +71,13 @@ const ID_RE = /^[a-zA-Z0-9_-]+$/
 
 export default defineEventHandler(async (event) => {
   const id = getRouterParam(event, 'id')
-  const { public: pub } = useRuntimeConfig()
+  const config = useRuntimeConfig()
 
   if (!id || !ID_RE.test(id)) throw notFound()
 
-  if (!pub.useMock) {
+  if (!config.public.useMock) {
     try {
-      const { product: p } = await $fetch<{ product: ApiProduct }>(`${pub.apiUrl}/products/${encodeURIComponent(id)}`)
+      const { product: p } = await $fetch<{ product: ApiProduct }>(`${config.apiUrl}/products/${encodeURIComponent(id)}`)
       return {
         id: p.id,
         slug: p.slug,
