@@ -91,7 +91,7 @@ docker compose -f docker-compose.yml -f docker-compose.observability.yml up --bu
 
 1. Start the overlay (command above). Open GlitchTip → create an organization and a project → copy its **DSN**.
 2. Open Umami → add a website → copy its **website id**.
-3. Copy `.env.observability.example` to `eztech/.env` and fill in:
+3. Copy `.env.example` to `eztech/.env` (if you haven't already) and fill in:
    - `NUXT_PUBLIC_SENTRY_DSN=http://<key>@localhost:8000/<project-id>` (browser)
    - `NUXT_SENTRY_DSN` and `SENTRY_DSN` = same key but host `glitchtip:8080` (Nuxt server + backend, internal network)
    - `NUXT_PUBLIC_UMAMI_HOST=http://localhost:3002` and `NUXT_PUBLIC_UMAMI_WEBSITE_ID=<id>`
