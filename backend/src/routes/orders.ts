@@ -9,6 +9,7 @@ import { generateOrderReference, canRiderTransition } from '../lib/orders.js';
 import { notify, notifyOnlineRiders } from '../lib/notifications.js';
 import { computeLineTotal, computeOrderTotals } from '../lib/pricing.js';
 import { pointInAnyZone } from '../lib/zones.js';
+import { getStripe } from '../lib/stripe.js';
 
 export const ordersRouter = Router();
 
@@ -196,6 +197,64 @@ ordersRouter.get('/:id', requireAuth, async (req, res, next) => {
     if (!allowed) return next(new HttpError(403, 'forbidden'));
 
     res.json({ order });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/orders/:id/cancel — the owning customer (pre-pickup) or an admin cancels an order.
+// A full Stripe refund is issued and the decremented stock is restored, but ONLY when the order
+// was actually paid (stock is decremented at paid time, so an unpaid order has nothing to restore
+// and no charge to refund). The order ends paymentStatus=refunded + status=cancelled (D-12).
+ordersRouter.post('/:id/cancel', requireAuth, async (req, res, next) => {
+  const orderId = String(req.params['id']);
+
+  try {
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true } });
+    if (!order) return next(new HttpError(404, 'order_not_found'));
+
+    // owner-or-admin only (mirrors the GET ownership check) — no IDOR on cancel
+    const { sub, role } = req.user!;
+    const allowed = role === 'admin' || order.customerId === sub;
+    if (!allowed) return next(new HttpError(403, 'forbidden'));
+
+    // once a rider has the parcel the order can no longer be cancelled by the customer
+    if (['picked_up', 'in_transit', 'delivered'].includes(order.status)) {
+      return next(new HttpError(409, 'not_cancellable', { status: order.status }));
+    }
+    if (order.paymentStatus === 'refunded' || order.status === 'cancelled') {
+      return next(new HttpError(409, 'already_cancelled'));
+    }
+
+    const wasPaid = order.paymentStatus === 'paid';
+
+    // refund the captured charge only when there is one (paid orders carry a payment intent)
+    if (wasPaid && order.stripePaymentIntentId) {
+      const stripe = await getStripe();
+      await stripe.refunds.create({ payment_intent: order.stripePaymentIntentId });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      // restore stock only if it was actually decremented (i.e. the order had reached paid)
+      if (wasPaid && order.warehouseId) {
+        for (const item of order.items) {
+          if (!item.productId) continue;
+          await tx.warehouseStock.updateMany({
+            where: { warehouseId: order.warehouseId, productId: item.productId },
+            data: { quantity: { increment: item.quantity } },
+          });
+        }
+      }
+      const result = await tx.order.update({
+        where: { id: orderId },
+        data: { paymentStatus: 'refunded', status: 'cancelled' },
+        include: { items: true },
+      });
+      await tx.orderEvent.create({ data: { orderId, status: 'cancelled', note: 'refunded' } });
+      return result;
+    });
+
+    res.json({ order: updated });
   } catch (err) {
     next(err);
   }
