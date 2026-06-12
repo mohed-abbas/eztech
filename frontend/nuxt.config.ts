@@ -29,7 +29,9 @@ export default defineNuxtConfig({
     public: {
       useMock: process.env.VITE_USE_MOCK === 'true',
       // browser-facing: client stores hit the backend via the host port mapping
-      apiUrl: process.env.VITE_API_URL || 'http://localhost:3001/api'
+      apiUrl: process.env.VITE_API_URL || 'http://localhost:3001/api',
+      // Stripe publishable key — public by design; the secret key never leaves the backend
+      stripePublishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
     }
   }
 })

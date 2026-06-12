@@ -273,6 +273,31 @@ export const useOrdersStore = defineStore('orders', {
       return order
     },
 
+    /**
+     * Live order-first create (D-08): POSTs only the cart lines + dropoff (no client prices,
+     * D-06) to the backend, which recomputes money, enforces the zone gate, and returns the
+     * created order (awaiting_payment). Returns the backend order id used to mint the payment
+     * intent. Throws on validation/zone errors so checkout can surface them.
+     */
+    async createLiveOrder(payload: {
+      items: Array<{
+        productId: string
+        quantity: number
+        durationUnit: 'flat' | 'hourly' | 'daily' | 'weekly'
+        durationValue: number
+      }>
+      dropoff: { address: string, lat: number, lng: number }
+    }): Promise<{ orderId: string }> {
+      const config = useRuntimeConfig()
+      const auth = useAuthStore()
+      const res = await $fetch<{ order: { id: string } }>(`${config.public.apiUrl}/orders`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${auth.token}` },
+        body: { items: payload.items, dropoff: payload.dropoff },
+      })
+      return { orderId: res.order.id }
+    },
+
     /** Simulate delivery cycle: advances status every `intervalMs` through all steps. Returns cancel function. */
     simulateDelivery(orderId: string, intervalMs = 3000): () => void {
       // Cancel any existing simulation for this order
