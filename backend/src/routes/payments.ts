@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
@@ -30,7 +31,8 @@ paymentsRouter.post('/create-intent', requireAuth, async (req, res, next) => {
     const stripe = await getStripe();
     const intent = await stripe.paymentIntents.create(
       {
-        amount: Math.round(Number(order.total) * 100), // Decimal → integer cents (Pitfall 3)
+        // Decimal → integer cents via exact Decimal arithmetic (no IEEE-754 float error, WR-05)
+        amount: new Prisma.Decimal(order.total ?? 0).mul(100).toNearest(1).toNumber(),
         currency: 'eur',
         metadata: { orderId: order.id },
         automatic_payment_methods: { enabled: true },
