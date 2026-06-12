@@ -35,6 +35,51 @@ const manualLng = ref<number | null>(null)
 const geoLoading = ref(false)
 const geoError = ref<string | null>(null)
 
+// Manual address geocoding — turns the typed address into coordinates (the dropoff + zone
+// check both require lat/lng). Editing any field invalidates a previous geocode result.
+const geocoding = ref(false)
+const geocodeError = ref<string | null>(null)
+watch([manualStreet, manualZip, manualCity], () => {
+  if (addressMode.value === 'manual') {
+    manualLat.value = null
+    manualLng.value = null
+    geocodeError.value = null
+  }
+})
+
+async function geocodeManualAddress() {
+  const query = [manualStreet.value, manualZip.value, manualCity.value]
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(', ')
+  if (!manualStreet.value.trim() || !manualZip.value.trim()) {
+    geocodeError.value = 'Renseignez la rue et le code postal.'
+    return
+  }
+  geocoding.value = true
+  geocodeError.value = null
+  try {
+    const res = await $fetch<{ found: boolean, lat?: number, lng?: number }>(
+      '/api/geocode',
+      { query: { q: query } },
+    )
+    if (!res.found || res.lat == null || res.lng == null) {
+      geocodeError.value = 'Adresse introuvable. Vérifiez la saisie.'
+      manualLat.value = null
+      manualLng.value = null
+      return
+    }
+    manualLat.value = res.lat
+    manualLng.value = res.lng
+  }
+  catch {
+    geocodeError.value = 'Échec de la localisation de l’adresse. Réessayez.'
+  }
+  finally {
+    geocoding.value = false
+  }
+}
+
 function useCurrentLocation() {
   if (!('geolocation' in navigator)) {
     geoError.value = 'Géolocalisation non supportée par votre navigateur.'
@@ -233,6 +278,8 @@ function describeOrderError(err: unknown): string {
       return 'Stock insuffisant pour livrer cette commande depuis un seul entrepôt.'
     case 'product_not_found':
       return 'Un produit de votre panier n’est plus disponible.'
+    case 'validation_failed':
+      return 'Votre panier contient des articles invalides ou périmés. Videz-le puis rajoutez les produits.'
     default:
       return 'La création de la commande a échoué. Veuillez réessayer.'
   }
@@ -503,6 +550,29 @@ const steps = [
                     </template>
                   </FormField>
                 </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  class="w-full gap-2"
+                  :disabled="geocoding"
+                  @click="geocodeManualAddress"
+                >
+                  <Icon
+                    :name="geocoding ? 'ph:circle-notch' : 'ph:map-pin'"
+                    class="size-4"
+                    :class="geocoding ? 'animate-spin' : ''"
+                  />
+                  {{ geocoding ? 'Localisation…' : 'Localiser cette adresse' }}
+                </Button>
+
+                <p v-if="manualLat != null" class="text-caption text-primary-600/70 font-mono">
+                  Coordonnées : {{ manualLat.toFixed(4) }}, {{ manualLng?.toFixed(4) }}
+                </p>
+                <p v-if="geocodeError" class="text-sm text-error flex items-center gap-2">
+                  <Icon name="ph:warning-circle" class="size-4 shrink-0" />
+                  {{ geocodeError }}
+                </p>
               </div>
 
               <!-- Geo -->
