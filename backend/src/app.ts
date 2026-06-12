@@ -4,6 +4,7 @@ import cors from 'cors';
 import { pinoHttp } from 'pino-http';
 import { logger } from './lib/logger.js';
 import { apiRouter } from './routes/index.js';
+import { webhooksRouter } from './routes/webhooks.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { errorHandler } from './middleware/error.js';
 import { notFoundHandler } from './middleware/notFound.js';
@@ -22,6 +23,11 @@ export function buildApp() {
       credentials: true,
     }),
   );
+  // Stripe webhook needs the UNPARSED body for signature verification, so it must be mounted
+  // with express.raw BEFORE the global express.json and OUTSIDE the /api router (Pitfall 1).
+  // Server-to-server (no browser Origin) — intentionally not in the CORS allowlist.
+  app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }), webhooksRouter);
+
   // larger limit than the default 1mb so base64-encoded rider documents fit
   app.use(express.json({ limit: '8mb' }));
 
