@@ -1,22 +1,29 @@
 import { Router } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
-import { CreateOrderSchema, UpdateOrderStatusSchema } from '../schemas/order.js';
+import { CreateCommerceOrderSchema, CreateDeliveryJobSchema, UpdateOrderStatusSchema } from '../schemas/order.js';
 import { generateOrderReference, canRiderTransition } from '../lib/orders.js';
-import { notify } from '../lib/notifications.js';
+import { notify, notifyOnlineRiders } from '../lib/notifications.js';
 import { computeLineTotal, computeOrderTotals } from '../lib/pricing.js';
 import { pointInAnyZone } from '../lib/zones.js';
 
 export const ordersRouter = Router();
 
-// POST /api/orders — commerce order create (customer or admin). The order is created
-// awaiting_payment and stays OUT of the rider pool until the Stripe webhook flips it to paid
-// (the paid flip + pending_assignment OrderEvent + rider notification live in the payments plan).
-// Server is the sole source of money + zone truth here (D-04/D-06/D-07/D-10/D-11/D-14).
+// POST /api/orders — create an order (customer or admin). Two shapes share this entry point:
+//  • commerce (body carries items[]): server-priced, zone-gated, awaiting_payment, OUT of the
+//    rider pool until the Stripe webhook flips it to paid (D-04/D-06/D-07/D-10/D-11/D-14).
+//  • legacy delivery-job (no items[]): seeds a pending_assignment order straight into the rider
+//    pool, preserving the existing rider lifecycle create path.
 ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req, res, next) => {
-  const result = CreateOrderSchema.safeParse(req.body);
+  // legacy delivery-job create — selected when the client sends no cart lines
+  if (!req.body || (req.body as { items?: unknown }).items === undefined) {
+    return createDeliveryJob(req, res, next);
+  }
+
+  const result = CreateCommerceOrderSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
   try {
@@ -122,6 +129,55 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
     next(err);
   }
 });
+
+// legacy delivery-job create — drops a pending_assignment order straight into the rider pool
+// and notifies online riders. Customer anchoring matches the commerce path (anti-spoof).
+async function createDeliveryJob(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const result = CreateDeliveryJobSchema.safeParse(req.body);
+  if (!result.success) {
+    next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+    return;
+  }
+
+  try {
+    const { customerId, riderFee, ...rest } = result.data;
+    const data = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as {
+      pickupAddress: string;
+      dropoffAddress: string;
+      pickupLat?: number;
+      pickupLng?: number;
+      dropoffLat?: number;
+      dropoffLng?: number;
+    };
+
+    let effectiveCustomerId: string | null = null;
+    if (req.user!.role === 'admin') {
+      if (customerId !== undefined) {
+        const target = await prisma.user.findUnique({ where: { id: customerId }, select: { id: true, role: true } });
+        if (!target || target.role !== 'customer') return next(new HttpError(422, 'invalid_customer'));
+        effectiveCustomerId = target.id;
+      }
+    }
+    else {
+      effectiveCustomerId = req.user!.sub;
+    }
+
+    const order = await prisma.order.create({
+      data: {
+        ...data,
+        reference: generateOrderReference(),
+        customerId: effectiveCustomerId,
+        ...(riderFee !== undefined ? { riderFee: new Prisma.Decimal(riderFee) } : {}),
+        events: { create: { status: 'pending_assignment', note: 'order created' } },
+      },
+      include: { events: true },
+    });
+    await notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`).catch(() => {});
+    res.status(201).json({ order });
+  } catch (err) {
+    next(err);
+  }
+}
 
 // GET /api/orders/:id — visible to the owning customer, the assigned rider, or an admin
 ordersRouter.get('/:id', requireAuth, async (req, res, next) => {

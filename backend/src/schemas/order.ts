@@ -19,7 +19,7 @@ const OrderItemInput = z.object({
   durationValue: z.number().int().positive(),
 });
 
-export const CreateOrderSchema = z.object({
+export const CreateCommerceOrderSchema = z.object({
   // admins may target a specific customer; customers anchor to their own id (enforced in the route)
   customerId: z.string().uuid().optional(),
   items: z.array(OrderItemInput).min(1),
@@ -28,4 +28,17 @@ export const CreateOrderSchema = z.object({
     lat: z.number(),
     lng: z.number(),
   }),
+});
+
+// legacy delivery-job create (rider pool seeding) — preserved so the rider lifecycle keeps a
+// way to inject a pending_assignment order. Selected when the body carries no `items[]`.
+export const CreateDeliveryJobSchema = z.object({
+  customerId: z.string().uuid().optional(),
+  pickupAddress: z.string().min(1),
+  pickupLat: z.number().optional(),
+  pickupLng: z.number().optional(),
+  dropoffAddress: z.string().min(1),
+  dropoffLat: z.number().optional(),
+  dropoffLng: z.number().optional(),
+  riderFee: z.number().nonnegative().optional(),
 });
