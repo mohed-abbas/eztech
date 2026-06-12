@@ -194,12 +194,15 @@ export const useOrdersStore = defineStore('orders', {
           return
         }
 
-        const config = useRuntimeConfig()
         const auth = useAuthStore()
-        const response = await $fetch<{ orders: Order[] }>(`${config.public.apiUrl}/orders`, {
+        // hydrate through the BFF (/api/orders), which coerces the backend's Decimal strings
+        // to numbers and maps the backend status enum onto the frontend display shape.
+        // Hitting the backend directly here returns string totals (breaks stats.spent.toFixed)
+        // and the unmapped order shape.
+        const orders = await $fetch<Order[]>('/api/orders', {
           headers: { Authorization: `Bearer ${auth.token}` },
         })
-        this.orders = response.orders
+        this.orders = orders
       }
       catch (err) {
         this.error = err instanceof Error ? err.message : 'Erreur de chargement des commandes'
