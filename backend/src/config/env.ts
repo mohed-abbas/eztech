@@ -10,7 +10,7 @@ const Env = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   // optional — when set, errors are reported to GlitchTip/Sentry (see instrument.ts).
   // accept '' (compose passes an empty string when unset) as "disabled", not an invalid URL.
-  SENTRY_DSN: z.string().url().optional().or(z.literal('')),
+  SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
 });
 
 const parsed = Env.safeParse(process.env);

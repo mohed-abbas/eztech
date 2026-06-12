@@ -8,6 +8,7 @@ const dsn = useRuntimeConfig().public.sentryDsn
 if (dsn) {
   Sentry.init({
     dsn,
+    environment: import.meta.env.MODE || 'development',
     tracesSampleRate: 0.1,
   })
 }
