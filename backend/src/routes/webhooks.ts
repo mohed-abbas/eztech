@@ -43,11 +43,13 @@ webhooksRouter.post('/', async (req, res, next) => {
         break;
       }
       case 'charge.refunded': {
-        const orderId = orderIdOf(event);
-        if (orderId) {
+        // metadata.orderId lives on the PaymentIntent, NOT the Charge, so a dashboard-initiated
+        // refund arrives with no charge metadata — resolve via the charge's payment_intent (WR-04)
+        const where = refundedOrderWhere(event);
+        if (where) {
           // idempotent: only flip an order that is not already refunded
           await prisma.order.updateMany({
-            where: { id: orderId, paymentStatus: { not: 'refunded' } },
+            where: { ...where, paymentStatus: { not: 'refunded' } },
             data: { paymentStatus: 'refunded', status: 'cancelled' },
           });
         }
@@ -67,6 +69,22 @@ webhooksRouter.post('/', async (req, res, next) => {
 function orderIdOf(event: Stripe.Event): string | undefined {
   const obj = event.data.object as { metadata?: { orderId?: string } };
   return obj.metadata?.orderId;
+}
+
+// resolves the order targeted by a charge.refunded event. Prefers metadata.orderId (set on the
+// PaymentIntent) but falls back to the charge's payment_intent id matched against
+// stripePaymentIntentId, so dashboard/dispute refunds — whose Charge carries no orderId metadata —
+// still reconcile the order to refunded (WR-04). Returns a Prisma where-clause or null.
+function refundedOrderWhere(
+  event: Stripe.Event,
+): { id: string } | { stripePaymentIntentId: string } | null {
+  const orderId = orderIdOf(event);
+  if (orderId) return { id: orderId };
+  const charge = event.data.object as { payment_intent?: string | { id: string } | null };
+  const pi = charge.payment_intent;
+  const piId = typeof pi === 'string' ? pi : pi?.id;
+  if (piId) return { stripePaymentIntentId: piId };
+  return null;
 }
 
 // payment_intent.succeeded → atomically decrement stock and release the order into the rider
