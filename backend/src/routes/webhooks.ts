@@ -119,7 +119,11 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
     // paid but unfulfillable → refund and cancel; never leave a paid-but-unstocked order (A6)
     const stripe = await getStripe();
     if (order.stripePaymentIntentId) {
-      await stripe.refunds.create({ payment_intent: order.stripePaymentIntentId });
+      // deterministic idempotency key keyed on the order — a webhook replay won't double-refund (CR-02)
+      await stripe.refunds.create(
+        { payment_intent: order.stripePaymentIntentId },
+        { idempotencyKey: `refund_${order.id}` },
+      );
     }
     await prisma.order.updateMany({
       where: { id: orderId, paymentStatus: 'awaiting_payment' },

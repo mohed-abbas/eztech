@@ -231,7 +231,11 @@ ordersRouter.post('/:id/cancel', requireAuth, async (req, res, next) => {
     // refund the captured charge only when there is one (paid orders carry a payment intent)
     if (wasPaid && order.stripePaymentIntentId) {
       const stripe = await getStripe();
-      await stripe.refunds.create({ payment_intent: order.stripePaymentIntentId });
+      // deterministic idempotency key keyed on the order — replays/double-submits are no-ops (CR-02)
+      await stripe.refunds.create(
+        { payment_intent: order.stripePaymentIntentId },
+        { idempotencyKey: `refund_${order.id}` },
+      );
     }
 
     const updated = await prisma.$transaction(async (tx) => {
