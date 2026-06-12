@@ -1,2 +1,1 @@
 CREATE DATABASE eztech_test;
-CREATE DATABASE umami;

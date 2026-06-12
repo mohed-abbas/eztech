@@ -16,13 +16,9 @@ useHead({
 })
 
 const menuOpen = ref(false)
-function undefinedFunction() {
-  throw new Error("This is a test error for Sentry integration!");
-}
 </script>
 
 <template>
-
   <div class="min-h-screen bg-background font-sans text-foreground overflow-x-hidden">
     <LandingAppNavbar v-model:open="menuOpen" />
     <LandingHeroSection />
