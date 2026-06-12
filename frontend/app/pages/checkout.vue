@@ -31,12 +31,15 @@ const manualCity = ref('Paris')
 const manualZip = ref('')
 const manualLat = ref<number | null>(null)
 const manualLng = ref<number | null>(null)
+// Coordinates for the selected saved address — the backend Address model stores no lat/lng,
+// so we geocode the saved address the same way manual entry does (see watcher below).
+const savedGeo = ref<{ lat: number, lng: number } | null>(null)
 
 const geoLoading = ref(false)
 const geoError = ref<string | null>(null)
 
-// Manual address geocoding — turns the typed address into coordinates (the dropoff + zone
-// check both require lat/lng). Editing any field invalidates a previous geocode result.
+// Address geocoding — turns a free-text address into coordinates (the dropoff + zone check
+// both require lat/lng). Shared by manual entry and saved-address resolution.
 const geocoding = ref(false)
 const geocodeError = ref<string | null>(null)
 watch([manualStreet, manualZip, manualCity], () => {
@@ -47,15 +50,9 @@ watch([manualStreet, manualZip, manualCity], () => {
   }
 })
 
-async function geocodeManualAddress() {
-  const query = [manualStreet.value, manualZip.value, manualCity.value]
-    .map(s => s.trim())
-    .filter(Boolean)
-    .join(', ')
-  if (!manualStreet.value.trim() || !manualZip.value.trim()) {
-    geocodeError.value = 'Renseignez la rue et le code postal.'
-    return
-  }
+// Geocode a free-text query via the BFF. Returns coordinates or null, setting geocodeError on
+// failure. Caller decides where to store the result.
+async function geocodeQuery(query: string): Promise<{ lat: number, lng: number } | null> {
   geocoding.value = true
   geocodeError.value = null
   try {
@@ -65,20 +62,48 @@ async function geocodeManualAddress() {
     )
     if (!res.found || res.lat == null || res.lng == null) {
       geocodeError.value = 'Adresse introuvable. Vérifiez la saisie.'
-      manualLat.value = null
-      manualLng.value = null
-      return
+      return null
     }
-    manualLat.value = res.lat
-    manualLng.value = res.lng
+    return { lat: res.lat, lng: res.lng }
   }
   catch {
     geocodeError.value = 'Échec de la localisation de l’adresse. Réessayez.'
+    return null
   }
   finally {
     geocoding.value = false
   }
 }
+
+async function geocodeManualAddress() {
+  if (!manualStreet.value.trim() || !manualZip.value.trim()) {
+    geocodeError.value = 'Renseignez la rue et le code postal.'
+    return
+  }
+  const query = [manualStreet.value, manualZip.value, manualCity.value]
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(', ')
+  const coords = await geocodeQuery(query)
+  manualLat.value = coords?.lat ?? null
+  manualLng.value = coords?.lng ?? null
+}
+
+// Auto-geocode the chosen saved address when it has no stored coordinates, so it gets the same
+// zone badge + dropoff coordinates as a manual address (otherwise payment dead-ends asking for
+// a geolocated address). Runs immediately for the default-selected address.
+watch([selectedSavedId, addressMode], async () => {
+  savedGeo.value = null
+  if (addressMode.value !== 'saved') return
+  const saved = savedAddresses.value.find(a => a.id === selectedSavedId.value)
+  if (!saved || saved.coordinates) return
+  const query = [saved.street, saved.zipCode, saved.city]
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(', ')
+  if (!query) return
+  savedGeo.value = await geocodeQuery(query)
+}, { immediate: true })
 
 function useCurrentLocation() {
   if (!('geolocation' in navigator)) {
@@ -118,7 +143,7 @@ const resolvedAddress = computed<ResolvedAddress | null>(() => {
       street: saved.street,
       city: saved.city,
       zipCode: saved.zipCode,
-      coordinates: saved.coordinates ?? null,
+      coordinates: saved.coordinates ?? savedGeo.value,
     }
   }
   if (addressMode.value === 'geo') {
@@ -351,9 +376,12 @@ async function submitLivePayment() {
     return
   }
 
-  // 4) Success is UX-only — the paid truth arrives via the backend webhook (D-09). Redirect to the order.
+  // 4) Success is UX-only — the paid truth arrives via the backend webhook (D-09). Force a
+  // refetch so the new order is present on the list/detail rather than hidden behind a stale
+  // hydrated=true, then redirect to the order.
   paymentState.value = 'success'
   clearCart()
+  void ordersStore.hydrate(true)
   setTimeout(() => navigateTo(`/orders/${orderId}`), 1200)
 }
 
@@ -528,6 +556,14 @@ const steps = [
                 <p v-if="savedAddresses.length === 0" class="text-sm text-text-muted py-4 text-center">
                   Aucune adresse enregistrée.
                   <Button variant="link" size="sm" class="px-0 h-auto" @click="addressMode = 'manual'">Saisir manuellement</Button>
+                </p>
+                <p v-if="geocoding" class="text-sm text-text-muted flex items-center gap-2">
+                  <Icon name="ph:circle-notch" class="size-4 animate-spin" />
+                  Localisation de l’adresse…
+                </p>
+                <p v-else-if="geocodeError" class="text-sm text-error flex items-center gap-2">
+                  <Icon name="ph:warning-circle" class="size-4 shrink-0" />
+                  {{ geocodeError }}
                 </p>
               </div>
 
