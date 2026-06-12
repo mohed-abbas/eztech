@@ -41,6 +41,7 @@ enum RiderDocumentStatus {
 
 // full delivery lifecycle — frontend timeline maps onto these
 enum OrderStatus {
+  awaiting_payment // commerce order created but unpaid — NOT in the rider pool until the webhook flips it to pending_assignment (D-04)
   pending_assignment // created, no rider yet — appears in the rider "available" list
   rider_assigned // a rider accepted, on the way to the warehouse
   at_warehouse // rider arrived at the warehouse

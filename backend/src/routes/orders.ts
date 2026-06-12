@@ -106,6 +106,9 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
       data: {
         reference: generateOrderReference(),
         customerId: effectiveCustomerId,
+        // unpaid commerce order is held OUT of the rider pool — the webhook flips BOTH
+        // paymentStatus→paid and status→pending_assignment once the signed event arrives (D-04)
+        status: 'awaiting_payment',
         paymentStatus: 'awaiting_payment',
         warehouseId: warehouse.id,
         subtotal,
