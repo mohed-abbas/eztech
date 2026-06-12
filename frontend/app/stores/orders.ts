@@ -205,9 +205,11 @@ export const useOrdersStore = defineStore('orders', {
         // normally restores the session. Without this, the fetch goes out as `Bearer null`.
         auth.hydrate()
         if (!auth.token) {
-          // Not authenticated yet — leave the list empty but allow a later retry rather than
-          // firing an unauthenticated request that the BFF would mask as mock/empty.
-          this.hydrated = false
+          // No session (auth.hydrate() restores synchronously from storage, so this means
+          // genuinely logged out, not a race). The auth route middleware redirects such a user;
+          // mark hydrated so the page resolves to a clean state instead of an endless spinner,
+          // rather than firing an unauthenticated request the BFF would surface as an error.
+          this.hydrated = true
           return
         }
         // hydrate through the BFF (/api/orders), which coerces the backend's Decimal strings

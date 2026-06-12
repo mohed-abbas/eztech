@@ -92,8 +92,13 @@ async function geocodeManualAddress() {
 // Auto-geocode the chosen saved address when it has no stored coordinates, so it gets the same
 // zone badge + dropoff coordinates as a manual address (otherwise payment dead-ends asking for
 // a geolocated address). Runs immediately for the default-selected address.
+// A sequence token guards against out-of-order resolution: switching addresses quickly fires
+// concurrent geocode calls, and only the latest may write savedGeo (else B could be selected
+// while A's coordinates are stored — and POSTed as the dropoff).
+let savedGeoSeq = 0
 watch([selectedSavedId, addressMode], async () => {
   savedGeo.value = null
+  const seq = ++savedGeoSeq
   if (addressMode.value !== 'saved') return
   const saved = savedAddresses.value.find(a => a.id === selectedSavedId.value)
   if (!saved || saved.coordinates) return
@@ -102,7 +107,8 @@ watch([selectedSavedId, addressMode], async () => {
     .filter(Boolean)
     .join(', ')
   if (!query) return
-  savedGeo.value = await geocodeQuery(query)
+  const coords = await geocodeQuery(query)
+  if (seq === savedGeoSeq) savedGeo.value = coords
 }, { immediate: true })
 
 function useCurrentLocation() {

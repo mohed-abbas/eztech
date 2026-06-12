@@ -50,6 +50,7 @@ services:
       ADMIN_PASSWORD: change-me
       SEED_CATALOG: "true"
       SEED_DEMO: "true"
+      SEED_ZONES: "true"
     ports:
       - "3001:3001"
     volumes:
