@@ -210,55 +210,68 @@ ordersRouter.post('/:id/cancel', requireAuth, async (req, res, next) => {
   const orderId = String(req.params['id']);
 
   try {
-    const order = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true } });
-    if (!order) return next(new HttpError(404, 'order_not_found'));
-
-    // owner-or-admin only (mirrors the GET ownership check) — no IDOR on cancel
+    // cheap auth pre-check before the transactional claim (the claim re-reads authoritative state)
+    const owner = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { customerId: true },
+    });
+    if (!owner) return next(new HttpError(404, 'order_not_found'));
     const { sub, role } = req.user!;
-    const allowed = role === 'admin' || order.customerId === sub;
+    const allowed = role === 'admin' || owner.customerId === sub;
     if (!allowed) return next(new HttpError(403, 'forbidden'));
 
-    // once a rider has the parcel the order can no longer be cancelled by the customer
-    if (['picked_up', 'in_transit', 'delivered'].includes(order.status)) {
-      return next(new HttpError(409, 'not_cancellable', { status: order.status }));
-    }
-    if (order.paymentStatus === 'refunded' || order.status === 'cancelled') {
-      return next(new HttpError(409, 'already_cancelled'));
-    }
+    // Atomically claim the cancel: re-read inside the tx, validate, then flip with a guarded
+    // updateMany so only ONE of cancel-vs-webhook (or two concurrent cancels) can win. The Stripe
+    // refund is issued AFTER the claim commits, so a charge is never refunded for a row we did not
+    // actually transition (CR-01). Stock is restored inside the same tx, only on the winning claim.
+    const claimed = await prisma.$transaction(async (tx) => {
+      const current = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
+      if (!current) throw new HttpError(404, 'order_not_found');
 
-    const wasPaid = order.paymentStatus === 'paid';
+      // once a rider has the parcel the order can no longer be cancelled by the customer
+      if (['picked_up', 'in_transit', 'delivered'].includes(current.status)) {
+        throw new HttpError(409, 'not_cancellable', { status: current.status });
+      }
+      if (current.paymentStatus === 'refunded' || current.status === 'cancelled') {
+        throw new HttpError(409, 'already_cancelled');
+      }
 
-    // refund the captured charge only when there is one (paid orders carry a payment intent)
-    if (wasPaid && order.stripePaymentIntentId) {
-      const stripe = await getStripe();
-      // deterministic idempotency key keyed on the order — replays/double-submits are no-ops (CR-02)
-      await stripe.refunds.create(
-        { payment_intent: order.stripePaymentIntentId },
-        { idempotencyKey: `refund_${order.id}` },
-      );
-    }
+      const wasPaid = current.paymentStatus === 'paid';
 
-    const updated = await prisma.$transaction(async (tx) => {
+      // guarded claim — fails (count 0) if a concurrent webhook/cancel moved the row first
+      const claim = await tx.order.updateMany({
+        where: { id: orderId, status: current.status, paymentStatus: current.paymentStatus },
+        data: { paymentStatus: 'refunded', status: 'cancelled' },
+      });
+      if (claim.count !== 1) throw new HttpError(409, 'already_cancelled');
+
       // restore stock only if it was actually decremented (i.e. the order had reached paid)
-      if (wasPaid && order.warehouseId) {
-        for (const item of order.items) {
+      if (wasPaid && current.warehouseId) {
+        for (const item of current.items) {
           if (!item.productId) continue;
           await tx.warehouseStock.updateMany({
-            where: { warehouseId: order.warehouseId, productId: item.productId },
+            where: { warehouseId: current.warehouseId, productId: item.productId },
             data: { quantity: { increment: item.quantity } },
           });
         }
       }
-      const result = await tx.order.update({
-        where: { id: orderId },
-        data: { paymentStatus: 'refunded', status: 'cancelled' },
-        include: { items: true },
-      });
       await tx.orderEvent.create({ data: { orderId, status: 'cancelled', note: 'refunded' } });
-      return result;
+
+      const result = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
+      return { order: result!, wasPaid, stripePaymentIntentId: current.stripePaymentIntentId };
     });
 
-    res.json({ order: updated });
+    // refund the captured charge only after the claim committed — guarantees at most one refund
+    // per order (combined with the idempotency key, CR-02). An unpaid order has no charge.
+    if (claimed.wasPaid && claimed.stripePaymentIntentId) {
+      const stripe = await getStripe();
+      await stripe.refunds.create(
+        { payment_intent: claimed.stripePaymentIntentId },
+        { idempotencyKey: `refund_${orderId}` },
+      );
+    }
+
+    res.json({ order: claimed.order });
   } catch (err) {
     next(err);
   }

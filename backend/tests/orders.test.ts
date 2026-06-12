@@ -186,4 +186,28 @@ describe('commerce order create', () => {
     const order = (cancel.body as { order: { paymentStatus: string } }).order;
     expect(order.paymentStatus).toBe('refunded');
   });
+
+  it('double cancel is a no-op — the second cancel returns 409 already_cancelled', async () => {
+    const token = await customerToken();
+    await seedZone();
+    const wh = await seedWarehouse();
+    const product = await seedProduct('charger-dblcancel', 3.5);
+    await stockAt(wh.id, product.id, 5);
+
+    const create = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        items: [{ productId: product.id, quantity: 2, durationUnit: 'flat', durationValue: 1 }],
+        dropoff: INSIDE,
+      });
+    expect(create.status).toBe(201);
+    const orderId = (create.body as { order: { id: string } }).order.id;
+
+    const first = await request(app).post(`/api/orders/${orderId}/cancel`).set('Authorization', `Bearer ${token}`);
+    expect(first.status).toBe(200);
+
+    const second = await request(app).post(`/api/orders/${orderId}/cancel`).set('Authorization', `Bearer ${token}`);
+    expect(second.status).toBe(409);
+  });
 });
