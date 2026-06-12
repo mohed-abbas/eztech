@@ -8,6 +8,7 @@ import { returnsRouter } from './returns.js';
 import { productsRouter } from './products.js';
 import { categoriesRouter } from './categories.js';
 import { brandsRouter } from './brands.js';
+import { zonesRouter } from './zones.js';
 
 export const apiRouter = Router();
 
@@ -20,3 +21,4 @@ apiRouter.use('/returns', returnsRouter);
 apiRouter.use('/products', productsRouter);
 apiRouter.use('/categories', categoriesRouter);
 apiRouter.use('/brands', brandsRouter);
+apiRouter.use('/zones', zonesRouter);
