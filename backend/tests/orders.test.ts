@@ -187,6 +187,34 @@ describe('commerce order create', () => {
     expect(order.paymentStatus).toBe('refunded');
   });
 
+  it('GET /api/orders lists only the calling customer own orders with items', async () => {
+    const mineToken = await customerToken('mine@example.com');
+    const otherToken = await customerToken('other@example.com');
+    await seedZone();
+    const wh = await seedWarehouse();
+    const product = await seedProduct('charger-list', 3.5);
+    await stockAt(wh.id, product.id, 20);
+
+    const place = (token: string) =>
+      request(app)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          items: [{ productId: product.id, quantity: 1, durationUnit: 'flat', durationValue: 1 }],
+          dropoff: INSIDE,
+        });
+
+    expect((await place(mineToken)).status).toBe(201);
+    expect((await place(otherToken)).status).toBe(201);
+
+    const list = await request(app).get('/api/orders').set('Authorization', `Bearer ${mineToken}`);
+    expect(list.status).toBe(200);
+    const orders = (list.body as { orders: Array<{ items: unknown[] }> }).orders;
+    expect(orders).toHaveLength(1);
+    expect(Array.isArray(orders[0]!.items)).toBe(true);
+    expect(orders[0]!.items).toHaveLength(1);
+  });
+
   it('double cancel is a no-op — the second cancel returns 409 already_cancelled', async () => {
     const token = await customerToken();
     await seedZone();

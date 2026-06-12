@@ -183,6 +183,25 @@ async function createDeliveryJob(req: Request, res: Response, next: NextFunction
   }
 }
 
+// GET /api/orders — the caller's own orders, newest first. Ownership-scoped: a customer sees
+// orders they placed, a rider sees orders assigned to them, an admin sees all. Items are included
+// so the frontend BFF/store can render line snapshots without a second round-trip (CR-03).
+ordersRouter.get('/', requireAuth, async (req, res, next) => {
+  try {
+    const { sub, role } = req.user!;
+    const where =
+      role === 'admin' ? {} : role === 'rider' ? { riderId: sub } : { customerId: sub };
+    const orders = await prisma.order.findMany({
+      where,
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ orders });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/orders/:id — visible to the owning customer, the assigned rider, or an admin
 ordersRouter.get('/:id', requireAuth, async (req, res, next) => {
   try {
