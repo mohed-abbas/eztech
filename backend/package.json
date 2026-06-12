@@ -22,7 +22,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
     "seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
-    "seed:catalog": "tsx --env-file=.env prisma/seed-catalog.ts"
+    "seed:catalog": "tsx --env-file=.env prisma/seed-catalog.ts",
+    "seed:zones": "tsx --env-file=.env prisma/seed-zones.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
