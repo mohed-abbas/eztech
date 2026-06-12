@@ -5,25 +5,22 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { CreateOrderSchema, UpdateOrderStatusSchema } from '../schemas/order.js';
 import { generateOrderReference, canRiderTransition } from '../lib/orders.js';
-import { notify, notifyOnlineRiders } from '../lib/notifications.js';
+import { notify } from '../lib/notifications.js';
+import { computeLineTotal, computeOrderTotals } from '../lib/pricing.js';
+import { pointInAnyZone } from '../lib/zones.js';
 
 export const ordersRouter = Router();
 
-// POST /api/orders — create a delivery job (customer or admin); lands in the rider available pool
+// POST /api/orders — commerce order create (customer or admin). The order is created
+// awaiting_payment and stays OUT of the rider pool until the Stripe webhook flips it to paid
+// (the paid flip + pending_assignment OrderEvent + rider notification live in the payments plan).
+// Server is the sole source of money + zone truth here (D-04/D-06/D-07/D-10/D-11/D-14).
 ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req, res, next) => {
   const result = CreateOrderSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
   try {
-    const { customerId, riderFee, ...rest } = result.data;
-    const data = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined)) as {
-      pickupAddress: string;
-      dropoffAddress: string;
-      pickupLat?: number;
-      pickupLng?: number;
-      dropoffLat?: number;
-      dropoffLng?: number;
-    };
+    const { customerId, items, dropoff } = result.data;
 
     // resolve and validate the effective customerId — admins may target any customer, but the
     // target must exist with role=customer; customers may only create orders for themselves.
@@ -40,19 +37,86 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
       effectiveCustomerId = req.user!.sub;
     }
 
+    // authoritative zone gate — reject a dropoff outside every active zone before any write (D-14)
+    if (!(await pointInAnyZone(dropoff.lng, dropoff.lat))) {
+      return next(new HttpError(422, 'outside_delivery_zone'));
+    }
+
+    // load the live products in one query; reject if any requested product is missing/inactive
+    const productIds = items.map((i) => i.productId);
+    const products = await prisma.product.findMany({ where: { id: { in: productIds }, isActive: true } });
+    const productById = new Map(products.map((p) => [p.id, p]));
+    for (const item of items) {
+      if (!productById.has(item.productId)) return next(new HttpError(404, 'product_not_found', { productId: item.productId }));
+    }
+
+    // recompute every line from the live product price — client-sent money is ignored (D-06)
+    const lineSnapshots = items.map((item) => {
+      const product = productById.get(item.productId)!;
+      const { unitPrice, lineTotal } = computeLineTotal(
+        {
+          pricingType: product.pricingType,
+          flatPrice: product.flatPrice,
+          hourlyPrice: product.hourlyPrice,
+          dailyPrice: product.dailyPrice,
+          weeklyPrice: product.weeklyPrice,
+        },
+        item,
+      );
+      return {
+        productId: product.id,
+        name: product.name,
+        imageUrl: product.imageUrl,
+        quantity: item.quantity,
+        durationUnit: item.durationUnit,
+        durationValue: item.durationValue,
+        unitPrice,
+        lineTotal,
+      };
+    });
+    const { subtotal, deliveryFee, total } = computeOrderTotals(lineSnapshots.map((l) => l.lineTotal));
+
+    // pick a single warehouse that stocks EVERY item at the requested quantity (D-11). The
+    // intersection of "warehouses with enough stock" across all items is the eligible set.
+    const stocks = await prisma.warehouseStock.findMany({ where: { productId: { in: productIds } } });
+    let eligible: Set<string> | null = null;
+    for (const item of items) {
+      const enough = new Set(
+        stocks.filter((s) => s.productId === item.productId && s.quantity >= item.quantity).map((s) => s.warehouseId),
+      );
+      eligible = eligible === null ? enough : new Set([...eligible].filter((id: string) => enough.has(id)));
+      if (eligible.size === 0) break;
+    }
+    if (!eligible || eligible.size === 0) {
+      // no warehouse can fulfil the whole cart at create-time (insufficient stock or a split cart)
+      return next(new HttpError(409, 'no_single_warehouse'));
+    }
+    const warehouseId = [...eligible][0]!;
+    const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
+    if (!warehouse) return next(new HttpError(409, 'no_single_warehouse'));
+
     const order = await prisma.order.create({
       data: {
-        ...data,
         reference: generateOrderReference(),
         customerId: effectiveCustomerId,
-        ...(riderFee !== undefined ? { riderFee: new Prisma.Decimal(riderFee) } : {}),
-        events: { create: { status: 'pending_assignment', note: 'order created' } },
+        paymentStatus: 'awaiting_payment',
+        warehouseId: warehouse.id,
+        subtotal,
+        deliveryFee,
+        total,
+        // pickup is the selected fulfillment warehouse; dropoff is the validated request address
+        pickupAddress: warehouse.address,
+        pickupLat: warehouse.lat,
+        pickupLng: warehouse.lng,
+        dropoffAddress: dropoff.address,
+        dropoffLat: dropoff.lat,
+        dropoffLng: dropoff.lng,
+        items: { create: lineSnapshots },
       },
-      include: { events: true },
+      include: { items: true },
     });
-    // notify online riders; a transient failure should not roll back the commit, so we swallow
-    // errors after awaiting — tests and callers can rely on notifications being durable at response
-    await notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`).catch(() => {});
+    // NOTE: the order is NOT rider-visible yet — no pending_assignment OrderEvent and no rider
+    // notification here. Those fire from the Stripe webhook once paymentStatus flips to paid (D-04).
     res.status(201).json({ order });
   } catch (err) {
     next(err);
