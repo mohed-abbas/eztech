@@ -106,9 +106,20 @@ function formatDate(iso: string): string {
 
     <!-- Main Content -->
     <div class="mx-auto max-w-7xl px-6 py-10 sm:px-10">
-      <!-- Loading -->
-      <div v-if="store.loading" class="py-20 text-center text-text-muted">
+      <!-- Loading — treat "not yet hydrated" as loading so the empty state never flashes
+           before the client fetch runs (SSR returns un-hydrated). Yields to the error state. -->
+      <div v-if="!store.error && (store.loading || !store.hydrated)" class="py-20 text-center text-text-muted">
         Chargement des commandes...
+      </div>
+
+      <!-- Error -->
+      <div v-else-if="store.error" class="py-20 text-center">
+        <p class="text-text-muted">
+          Impossible de charger vos commandes pour le moment.
+        </p>
+        <Button variant="outline" size="sm" class="mt-4" @click="store.hydrate(true)">
+          Réessayer
+        </Button>
       </div>
 
       <!-- Empty State -->

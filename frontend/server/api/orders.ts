@@ -82,9 +82,16 @@ export default defineEventHandler(async (event) => {
     })
     return res.orders.map(remap)
   }
-  catch (err) {
-    // backend unreachable — degrade to local data rather than breaking the orders page, but surface it
-    console.error('[orders BFF] /orders backend fetch failed, serving mock data:', err)
-    return fromMock()
+  catch (err: unknown) {
+    // In live mode, surface the failure instead of silently serving mock data. Masking a 401
+    // (stale/missing token) or a down backend as another user's mock orders is exactly what made
+    // the orders page appear to "randomly" show empty/wrong data. Propagate the real status so
+    // the store renders an error state the user (and we) can see.
+    console.error('[orders BFF] /orders backend fetch failed:', err)
+    const e = err as { statusCode?: number, response?: { status?: number } }
+    throw createError({
+      statusCode: e.statusCode ?? e.response?.status ?? 502,
+      statusMessage: 'orders_fetch_failed',
+    })
   }
 })

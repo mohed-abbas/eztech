@@ -168,8 +168,13 @@ export const useOrdersStore = defineStore('orders', {
   },
 
   actions: {
-    async hydrate() {
-      if (this.hydrated) return
+    async hydrate(force = false) {
+      if (this.hydrated && !force) return
+      // Client-only: orders are scoped by a token that lives in client storage. Fetching on the
+      // server can't authenticate, and (being fire-and-forget in setup) SSR may serialize a
+      // mid-flight state (hydrated=true, loading=true) that leaves the client stuck loading
+      // because the hydrated guard above then skips the real client fetch.
+      if (import.meta.server) return
       this.hydrated = true
       this.loading = true
       this.error = null
@@ -195,6 +200,16 @@ export const useOrdersStore = defineStore('orders', {
         }
 
         const auth = useAuthStore()
+        // Ensure the token is restored from storage before we read it: hydrate() fires
+        // fire-and-forget in page setup, which can race ahead of the auth middleware that
+        // normally restores the session. Without this, the fetch goes out as `Bearer null`.
+        auth.hydrate()
+        if (!auth.token) {
+          // Not authenticated yet — leave the list empty but allow a later retry rather than
+          // firing an unauthenticated request that the BFF would mask as mock/empty.
+          this.hydrated = false
+          return
+        }
         // hydrate through the BFF (/api/orders), which coerces the backend's Decimal strings
         // to numbers and maps the backend status enum onto the frontend display shape.
         // Hitting the backend directly here returns string totals (breaks stats.spent.toFixed)
