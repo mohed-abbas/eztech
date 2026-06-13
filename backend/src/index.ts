@@ -1,4 +1,5 @@
-import './instrument.js'; // must come first — initialises Sentry before Express/Prisma load
+import './instrument.js'; // fallback init — the start command also preloads this via --import so Sentry
+                          // auto-instruments Express/Prisma (a top-level import alone is too late under ESM)
 import { buildApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';

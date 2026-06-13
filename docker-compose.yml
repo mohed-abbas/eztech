@@ -33,7 +33,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     # Run tsx directly (not `npm run dev`) so we skip --env-file=.env — env comes from compose below.
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    # --import loads instrument.ts before app code so Sentry's auto-instrumentation patches Express/Prisma
+    # (a top-level import alone is too late under ESM — Node logs "express is not instrumented").
+    command: ["npx", "tsx", "watch", "--import", "./src/instrument.ts", "src/index.ts"]
     environment:
       NODE_ENV: development
       PORT: "3001"

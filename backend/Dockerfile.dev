@@ -24,4 +24,5 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 EXPOSE 3001
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # tsx directly (no --env-file) — env is injected by docker compose, not read from a bind-mounted .env.
-CMD ["npx", "tsx", "watch", "src/index.ts"]
+# --import preloads instrument.ts so Sentry instruments Express/Prisma (top-level import is too late under ESM).
+CMD ["npx", "tsx", "watch", "--import", "./src/instrument.ts", "src/index.ts"]
