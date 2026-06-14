@@ -69,8 +69,43 @@ docker compose exec backend sh
 
 To disable demo/catalog seeding, set `SEED_DEMO=false` / `SEED_CATALOG=false` in `docker-compose.yml`.
 
-> Don't also run `backend/docker-compose.yml` (Postgres-only) at the same time — both publish host
-> port 5432 and will conflict. The root `docker-compose.yml` is the canonical dev stack.
+### Telemetry / observability (optional, for the demo)
+
+Self-hosted **GlitchTip** (error tracking) and **Umami** (web analytics) live in a separate, opt-in
+overlay. They are **not** started by `docker compose up` — day-to-day dev stays lightweight, and the app
+sends no telemetry unless you configure it. Bring them up alongside the app with both compose files:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up --build
+```
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| GlitchTip (errors) | http://localhost:8000 | self-register the first account |
+| Umami (analytics) | http://localhost:3002 | default login `admin` / `umami` |
+
+> GlitchTip runs Django + a worker + Valkey, so the overlay is RAM-hungry — fine for a demo laptop,
+> but expect it to use noticeably more memory than the app alone.
+
+**One-time wiring** (self-hosted tools mint their own keys, so this can't be fully pre-baked):
+
+1. Start the overlay (command above). Open GlitchTip → create an organization and a project → copy its **DSN**.
+2. Open Umami → add a website → copy its **website id**.
+3. Copy `.env.example` to `eztech/.env` (if you haven't already) and fill in:
+   - `NUXT_PUBLIC_SENTRY_DSN=http://<key>@localhost:8000/<project-id>` (browser)
+   - `NUXT_SENTRY_DSN` and `SENTRY_DSN` = same key but host `glitchtip:8080` (Nuxt server + backend, internal network)
+   - `NUXT_PUBLIC_UMAMI_HOST=http://localhost:3002` and `NUXT_PUBLIC_UMAMI_WEBSITE_ID=<id>`
+4. Restart the stack. Trigger an error and click around the app — errors land in GlitchTip, pageviews in Umami.
+
+> **Telemetry data is per-machine.** The GlitchTip account/project (and its DSN) and the Umami website
+> live in local Docker volumes (`glitchtip_postgres_data`, `umami_postgres_data`) — they are **not** in
+> git or the compose file. Each developer who runs the overlay gets a **fresh, empty** GlitchTip/Umami and
+> must do the one-time wiring above to get their **own** DSN/website-id. The DSN in your `.env` will not
+> work on someone else's machine. Your setup persists across `up`/`down` but is wiped by `down -v`. For a
+> shared/central instance, you'd host one GlitchTip everyone points at — that's the production model (Phase 7).
+
+With those env vars empty (the default), the Sentry SDK and Umami script are inert. This is the same
+switch you'd flip in production — the instrumentation code ships everywhere; only the config changes.
 
 ### Run natively (without Docker)
 
@@ -91,7 +126,7 @@ Opens at [http://localhost:3000](http://localhost:3000).
 cd backend
 npm install
 cp .env.example .env          # set DATABASE_URL + a 32+ char JWT_SECRET
-docker compose up -d          # Postgres only (backend/docker-compose.yml)
+(cd .. && docker compose up -d postgres)   # Postgres only, from the root dev stack
 npx prisma migrate deploy
 npm run prisma:seed           # admin user
 npm run seed:catalog          # catalog (optional)

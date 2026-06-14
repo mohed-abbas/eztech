@@ -4,16 +4,16 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: eztech_dev
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in eztech/.env}
+      POSTGRES_DB: ${POSTGRES_DB:-eztech_dev}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d eztech_dev"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -33,20 +33,24 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     # Run tsx directly (not `npm run dev`) so we skip --env-file=.env — env comes from compose below.
-    command: ["npx", "tsx", "watch", "src/index.ts"]
+    # --import loads instrument.ts before app code so Sentry's auto-instrumentation patches Express/Prisma
+    # (a top-level import alone is too late under ESM — Node logs "express is not instrumented").
+    command: ["npx", "tsx", "watch", "--import", "./src/instrument.ts", "src/index.ts"]
     environment:
       NODE_ENV: development
       PORT: "3001"
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/eztech_dev
-      JWT_SECRET: abcdefghijklmnopqrstuvwxyz123456
-      JWT_ACCESS_TTL: 15m
-      JWT_REFRESH_TTL: 30d
-      LOG_LEVEL: info
-      CORS_ORIGIN: http://localhost:3000
-      ADMIN_EMAIL: admin@eztech.fr
-      ADMIN_PASSWORD: change-me
-      SEED_CATALOG: "true"
-      SEED_DEMO: "true"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in eztech/.env}@postgres:5432/${POSTGRES_DB:-eztech_dev}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (min 32 chars) in eztech/.env}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@eztech.fr}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      SEED_CATALOG: ${SEED_CATALOG:-true}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      # optional error tracking — empty by default (inert). Set in eztech/.env for the telemetry demo.
+      SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "3001:3001"
     volumes:
@@ -67,12 +71,18 @@ services:
     environment:
       NODE_ENV: development
       # browser-facing (public runtimeConfig) -> backend via host port mapping
-      VITE_API_URL: http://localhost:3001/api
-      VITE_USE_MOCK: "false"
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001/api}
+      VITE_USE_MOCK: ${VITE_USE_MOCK:-false}
       # BFF / SSR (server-only runtimeConfig) -> backend over the compose network
       NUXT_API_URL: http://backend:3001/api
       NUXT_HOST: 0.0.0.0
       NUXT_PORT: "3000"
+      # optional telemetry — all empty by default (inert). Set in eztech/.env for the demo.
+      # browser DSN uses GlitchTip's host port; the Nuxt server DSN uses the internal compose host.
+      NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+      NUXT_SENTRY_DSN: ${NUXT_SENTRY_DSN:-}
+      NUXT_PUBLIC_UMAMI_HOST: ${NUXT_PUBLIC_UMAMI_HOST:-}
+      NUXT_PUBLIC_UMAMI_WEBSITE_ID: ${NUXT_PUBLIC_UMAMI_WEBSITE_ID:-}
     ports:
       - "3000:3000"
     volumes:
