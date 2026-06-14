@@ -14,6 +14,10 @@ const Env = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().min(1),
   // single source of truth for the delivery fee (D-07); the frontend renders this value
   DELIVERY_FEE: z.coerce.number().nonnegative().default(4.99),
+  // optional — validates the DSN format and fails fast on a malformed value. NOTE: instrument.ts reads
+  // process.env.SENTRY_DSN directly (it is preloaded via --import, before this file runs), so this field
+  // validates/documents the var rather than gating init. '' (compose's empty default) means "disabled".
+  SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
 });
 
 const parsed = Env.safeParse(process.env);

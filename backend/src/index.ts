@@ -1,3 +1,6 @@
+// Sentry is initialised by ./instrument.ts, preloaded via `node --import` in every start command
+// (see package.json scripts, docker-compose.yml, Dockerfile.dev). Preloading is required under ESM so
+// Sentry's auto-instrumentation patches Express/Prisma before they load — a top-level import is too late.
 import { buildApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './lib/logger.js';

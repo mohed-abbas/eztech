@@ -8,9 +8,9 @@
   },
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/index.ts",
+    "dev": "tsx watch --import ./src/instrument.ts --env-file=.env src/index.ts",
     "build": "tsc -p tsconfig.build.json",
-    "start": "node dist/index.js",
+    "start": "node --import ./dist/instrument.js dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
+    "@sentry/node": "^10.57.0",
     "@turf/boolean-point-in-polygon": "^7.3.5",
     "@turf/helpers": "^7.3.5",
     "bcryptjs": "^3.0.3",

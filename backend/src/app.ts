@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -55,6 +56,9 @@ export function buildApp() {
 
   // order matters: notFound only fires when no route matched, errorHandler must be last
   app.use(notFoundHandler);
+  // capture unhandled errors to GlitchTip before our terminal handler swallows them.
+  // No-op unless SENTRY_DSN is set (see instrument.ts).
+  Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
 
   return app;
