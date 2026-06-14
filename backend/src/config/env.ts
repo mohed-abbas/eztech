@@ -8,8 +8,9 @@ const Env = z.object({
   JWT_ACCESS_TTL: z.string().regex(/^\d+[smhdwy]$/, 'invalid TTL format').default('15m'),
   JWT_REFRESH_TTL: z.string().regex(/^\d+[smhdwy]$/, 'invalid TTL format').default('30d'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  // optional — when set, errors are reported to GlitchTip/Sentry (see instrument.ts).
-  // accept '' (compose passes an empty string when unset) as "disabled", not an invalid URL.
+  // optional — validates the DSN format and fails fast on a malformed value. NOTE: instrument.ts reads
+  // process.env.SENTRY_DSN directly (it is preloaded via --import, before this file runs), so this field
+  // validates/documents the var rather than gating init. '' (compose's empty default) means "disabled".
   SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
 });
 
