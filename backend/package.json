@@ -22,7 +22,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
     "seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
-    "seed:catalog": "tsx --env-file=.env prisma/seed-catalog.ts"
+    "seed:catalog": "tsx --env-file=.env prisma/seed-catalog.ts",
+    "seed:zones": "tsx --env-file=.env prisma/seed-zones.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -30,6 +31,8 @@
   "dependencies": {
     "@prisma/client": "^6.19.2",
     "@sentry/node": "^10.57.0",
+    "@turf/boolean-point-in-polygon": "^7.3.5",
+    "@turf/helpers": "^7.3.5",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "express": "^5.2.1",
@@ -37,6 +40,7 @@
     "jsonwebtoken": "^9.0.3",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "stripe": "^22.2.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

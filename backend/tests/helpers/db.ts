@@ -20,7 +20,9 @@ export async function truncateRiderTables() {
   await prisma.$executeRaw`DELETE FROM "RiderDocument"`;
   await prisma.$executeRaw`DELETE FROM "Notification"`;
   await prisma.$executeRaw`DELETE FROM "Return"`;
+  await prisma.$executeRaw`DELETE FROM "OrderItem"`; // FK: OrderItem → Order, delete before Order
   await prisma.$executeRaw`DELETE FROM "Order"`;
+  await prisma.$executeRaw`DELETE FROM "Zone"`; // independent commerce table
   await truncateAuthTables();
 }
 

@@ -31,5 +31,10 @@ if [ "${SEED_DEMO}" = "true" ]; then
   npx tsx prisma/seed-demo.ts || echo "[entrypoint] WARN: demo seed failed"
 fi
 
+if [ "${SEED_ZONES}" = "true" ]; then
+  echo "[entrypoint] seeding delivery zones (idempotent)"
+  npx tsx prisma/seed-zones.ts || echo "[entrypoint] WARN: zone seed failed (is the mock dir mounted?)"
+fi
+
 echo "[entrypoint] starting backend: $*"
 exec "$@"

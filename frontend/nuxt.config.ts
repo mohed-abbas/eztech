@@ -33,12 +33,16 @@ export default defineNuxtConfig({
     // server-only: used by the Nuxt BFF (server/api/*) to reach the backend.
     // In Docker this is the compose service name; on the host it defaults to localhost.
     apiUrl: process.env.NUXT_API_URL || 'http://localhost:3001/api',
+    // D-07: delivery fee is a server-side single source of truth, surfaced to the cart via /api/config
+    deliveryFee: Number(process.env.NUXT_DELIVERY_FEE ?? 4.99),
     // (the server-side Sentry DSN is read from process.env.NUXT_SENTRY_DSN directly in
     // sentry.server.config.ts — that file loads before runtime config is available.)
     public: {
       useMock: process.env.VITE_USE_MOCK === 'true',
       // browser-facing: client stores hit the backend via the host port mapping
       apiUrl: process.env.VITE_API_URL || 'http://localhost:3001/api',
+      // Stripe publishable key — public by design; the secret key never leaves the backend
+      stripePublishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || '',
       // browser-facing Sentry DSN — reaches GlitchTip via its host port (localhost:8000). Inert if empty.
       sentryDsn: process.env.NUXT_PUBLIC_SENTRY_DSN || '',
       umamiHost: process.env.NUXT_PUBLIC_UMAMI_HOST || '',

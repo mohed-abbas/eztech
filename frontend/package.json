@@ -18,6 +18,7 @@
     "@nuxt/icon": "^2.2.1",
     "@pinia/nuxt": "^0.11.3",
     "@sentry/nuxt": "^10.57.0",
+    "@stripe/stripe-js": "^9.8.0",
     "@tailwindcss/vite": "^4.2.1",
     "@turf/boolean-point-in-polygon": "^7.3.4",
     "@turf/helpers": "^7.3.4",

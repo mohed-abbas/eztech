@@ -41,6 +41,7 @@ enum RiderDocumentStatus {
 
 // full delivery lifecycle — frontend timeline maps onto these
 enum OrderStatus {
+  awaiting_payment // commerce order created but unpaid — NOT in the rider pool until the webhook flips it to pending_assignment (D-04)
   pending_assignment // created, no rider yet — appears in the rider "available" list
   rider_assigned // a rider accepted, on the way to the warehouse
   at_warehouse // rider arrived at the warehouse
@@ -48,6 +49,14 @@ enum OrderStatus {
   in_transit // en route to the customer
   delivered // completed — counts toward earnings
   cancelled
+}
+
+// commerce payment state — separate from the rider fulfillment OrderStatus (D-03)
+enum PaymentStatus {
+  awaiting_payment // order created, not yet paid — NOT rider-visible
+  paid // payment confirmed via signed webhook — order enters the rider pool
+  refunded // cancelled and fully refunded
+  failed // payment attempt failed
 }
 
 model User {
@@ -139,14 +148,57 @@ model Order {
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
+  // ── commerce fields (Phase 4) — additive, nullable/defaulted so the migration is
+  // non-destructive over existing rider rows; legacy rows backfilled paymentStatus=paid (A1)
+  paymentStatus         PaymentStatus? // null for legacy rider-origin rows; awaiting_payment → paid on webhook (D-04)
+  subtotal              Decimal?       @db.Decimal(10, 2) // sum of line totals, server-computed (D-06)
+  deliveryFee           Decimal?       @db.Decimal(10, 2) // from server env config (D-07)
+  total                 Decimal?       @db.Decimal(10, 2) // subtotal + deliveryFee
+  warehouseId           String? // single fulfillment warehouse picked at create (D-11)
+  stripePaymentIntentId String? // anchors the order to its Stripe PaymentIntent
+
   customer User?          @relation("CustomerOrders", fields: [customerId], references: [id])
   rider    User?          @relation("RiderOrders", fields: [riderId], references: [id])
   events   OrderEvent[]
   declines OrderDecline[]
   returns  Return[]       @relation("OrderReturns")
+  items    OrderItem[]
 
   @@index([status])
   @@index([riderId])
+}
+
+// a full snapshot of a purchased line (D-05) — order history stays correct even if the
+// product is later renamed or deleted (productId nullable, SetNull on product deletion)
+model OrderItem {
+  id            String  @id @default(uuid())
+  orderId       String
+  productId     String? // nullable FK — preserved if the product is later deleted
+  name          String // snapshot of the product name at purchase time
+  imageUrl      String  @default("")
+  quantity      Int
+  durationUnit  String // flat | hourly | daily | weekly
+  durationValue Int
+  unitPrice     Decimal @db.Decimal(10, 2) // server-computed unit price (D-06)
+  lineTotal     Decimal @db.Decimal(10, 2) // unitPrice * quantity * durationValue
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+}
+
+// a service delivery zone — GeoJSON Polygon stored in a Json column (Pitfall 5), checked
+// server-side with Turf point-in-polygon at checkout (D-13/D-14)
+model Zone {
+  id        String   @id @default(uuid())
+  name      String
+  geometry  Json // full GeoJSON Polygon { type:'Polygon', coordinates:[[[lng,lat],...]] }
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
 }
 
 model OrderEvent {
@@ -285,9 +337,10 @@ model Product {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  category Category         @relation(fields: [categoryId], references: [id])
-  brand    Brand?           @relation(fields: [brandId], references: [id])
-  stocks   WarehouseStock[]
+  category   Category         @relation(fields: [categoryId], references: [id])
+  brand      Brand?           @relation(fields: [brandId], references: [id])
+  stocks     WarehouseStock[]
+  orderItems OrderItem[]
 
   @@index([categoryId])
   @@index([brandId])

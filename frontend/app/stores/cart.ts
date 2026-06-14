@@ -16,7 +16,8 @@ export interface CartItem {
 }
 
 const CART_STORAGE_KEY = 'ez-cart'
-const DELIVERY_FEE = 4.99
+// offline fallback only — the live fee comes from the server (D-07) via loadDeliveryFee()
+const DELIVERY_FEE_FALLBACK = 4.99
 
 function computeLinePrice(item: CartItem): number {
   const qty = item.quantity
@@ -35,12 +36,15 @@ export const useCartStore = defineStore('cart', {
   state: () => ({
     items: [] as CartItem[],
     hydrated: false,
+    // server-driven delivery fee (D-07); seeded with the offline fallback until loadDeliveryFee resolves
+    serverDeliveryFee: DELIVERY_FEE_FALLBACK,
+    feeLoaded: false,
   }),
 
   getters: {
     count: state => state.items.reduce((sum, i) => sum + i.quantity, 0),
     subtotal: state => state.items.reduce((sum, i) => sum + computeLinePrice(i), 0),
-    deliveryFee: state => (state.items.length > 0 ? DELIVERY_FEE : 0),
+    deliveryFee: state => (state.items.length > 0 ? state.serverDeliveryFee : 0),
     total(): number {
       return this.subtotal + this.deliveryFee
     },
@@ -51,6 +55,8 @@ export const useCartStore = defineStore('cart', {
     hydrate() {
       if (!import.meta.client || this.hydrated) return
       this.hydrated = true
+      // pull the server-driven delivery fee (D-07) — fire-and-forget, falls back to offline value
+      void this.loadDeliveryFee()
       const stored = localStorage.getItem(CART_STORAGE_KEY)
       if (!stored) return
       try {
@@ -58,6 +64,19 @@ export const useCartStore = defineStore('cart', {
       }
       catch {
         localStorage.removeItem(CART_STORAGE_KEY)
+      }
+    },
+
+    async loadDeliveryFee() {
+      if (this.feeLoaded) return
+      this.feeLoaded = true
+      try {
+        const res = await $fetch<{ deliveryFee: number }>('/api/config')
+        if (typeof res.deliveryFee === 'number') this.serverDeliveryFee = res.deliveryFee
+      }
+      catch {
+        // keep the offline fallback if the config BFF is unreachable
+        this.feeLoaded = false
       }
     },
 

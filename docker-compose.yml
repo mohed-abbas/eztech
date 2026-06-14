@@ -32,10 +32,13 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
-    # Run tsx directly (not `npm run dev`) so we skip --env-file=.env — env comes from compose below.
     # --import loads instrument.ts before app code so Sentry's auto-instrumentation patches Express/Prisma
     # (a top-level import alone is too late under ESM — Node logs "express is not instrumented").
     command: ["npx", "tsx", "watch", "--import", "./src/instrument.ts", "src/index.ts"]
+    # Stripe keys + DELIVERY_FEE load from the gitignored backend/.env; the environment block below
+    # overrides infra vars (DATABASE_URL, JWT, etc.) from the global eztech/.env.
+    env_file:
+      - ./backend/.env
     environment:
       NODE_ENV: development
       PORT: "3001"
@@ -49,6 +52,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
       SEED_CATALOG: ${SEED_CATALOG:-true}
       SEED_DEMO: ${SEED_DEMO:-true}
+      SEED_ZONES: ${SEED_ZONES:-true}
       # optional error tracking — empty by default (inert). Set in eztech/.env for the telemetry demo.
       SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
@@ -68,6 +72,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.dev
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    # VITE_STRIPE_PUBLISHABLE_KEY (+ NUXT_DELIVERY_FEE) load from the gitignored frontend/.env;
+    # the environment block below overrides API URLs and the mock flag.
+    env_file:
+      - ./frontend/.env
     environment:
       NODE_ENV: development
       # browser-facing (public runtimeConfig) -> backend via host port mapping

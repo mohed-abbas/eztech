@@ -168,8 +168,13 @@ export const useOrdersStore = defineStore('orders', {
   },
 
   actions: {
-    async hydrate() {
-      if (this.hydrated) return
+    async hydrate(force = false) {
+      if (this.hydrated && !force) return
+      // Client-only: orders are scoped by a token that lives in client storage. Fetching on the
+      // server can't authenticate, and (being fire-and-forget in setup) SSR may serialize a
+      // mid-flight state (hydrated=true, loading=true) that leaves the client stuck loading
+      // because the hydrated guard above then skips the real client fetch.
+      if (import.meta.server) return
       this.hydrated = true
       this.loading = true
       this.error = null
@@ -194,12 +199,27 @@ export const useOrdersStore = defineStore('orders', {
           return
         }
 
-        const config = useRuntimeConfig()
         const auth = useAuthStore()
-        const response = await $fetch<{ orders: Order[] }>(`${config.public.apiUrl}/orders`, {
+        // Ensure the token is restored from storage before we read it: hydrate() fires
+        // fire-and-forget in page setup, which can race ahead of the auth middleware that
+        // normally restores the session. Without this, the fetch goes out as `Bearer null`.
+        auth.hydrate()
+        if (!auth.token) {
+          // No session (auth.hydrate() restores synchronously from storage, so this means
+          // genuinely logged out, not a race). The auth route middleware redirects such a user;
+          // mark hydrated so the page resolves to a clean state instead of an endless spinner,
+          // rather than firing an unauthenticated request the BFF would surface as an error.
+          this.hydrated = true
+          return
+        }
+        // hydrate through the BFF (/api/orders), which coerces the backend's Decimal strings
+        // to numbers and maps the backend status enum onto the frontend display shape.
+        // Hitting the backend directly here returns string totals (breaks stats.spent.toFixed)
+        // and the unmapped order shape.
+        const orders = await $fetch<Order[]>('/api/orders', {
           headers: { Authorization: `Bearer ${auth.token}` },
         })
-        this.orders = response.orders
+        this.orders = orders
       }
       catch (err) {
         this.error = err instanceof Error ? err.message : 'Erreur de chargement des commandes'
@@ -271,6 +291,31 @@ export const useOrdersStore = defineStore('orders', {
       this.persistLocal()
 
       return order
+    },
+
+    /**
+     * Live order-first create (D-08): POSTs only the cart lines + dropoff (no client prices,
+     * D-06) to the backend, which recomputes money, enforces the zone gate, and returns the
+     * created order (awaiting_payment). Returns the backend order id used to mint the payment
+     * intent. Throws on validation/zone errors so checkout can surface them.
+     */
+    async createLiveOrder(payload: {
+      items: Array<{
+        productId: string
+        quantity: number
+        durationUnit: 'flat' | 'hourly' | 'daily' | 'weekly'
+        durationValue: number
+      }>
+      dropoff: { address: string, lat: number, lng: number }
+    }): Promise<{ orderId: string }> {
+      const config = useRuntimeConfig()
+      const auth = useAuthStore()
+      const res = await $fetch<{ order: { id: string } }>(`${config.public.apiUrl}/orders`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${auth.token}` },
+        body: { items: payload.items, dropoff: payload.dropoff },
+      })
+      return { orderId: res.order.id }
     },
 
     /** Simulate delivery cycle: advances status every `intervalMs` through all steps. Returns cancel function. */

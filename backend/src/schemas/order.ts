@@ -7,8 +7,32 @@ export const UpdateOrderStatusSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
-// POST /api/orders — minimal creation endpoint so riders have something to accept in dev/demo
-export const CreateOrderSchema = z.object({
+// POST /api/orders — commerce create. The client supplies ONLY what it is allowed to:
+// the cart lines (product + quantity + rental duration) and the dropoff. All money is
+// recomputed server-side from the live Product (D-06 anti-tamper) — any client-sent
+// unitPrice/lineTotal/subtotal/deliveryFee/total fields are simply not in the schema and
+// are dropped. Strict-by-default still drops unknown keys; we never read them.
+const OrderItemInput = z.object({
+  productId: z.string().uuid(),
+  quantity: z.number().int().positive(),
+  durationUnit: z.enum(['flat', 'hourly', 'daily', 'weekly']),
+  durationValue: z.number().int().positive(),
+});
+
+export const CreateCommerceOrderSchema = z.object({
+  // admins may target a specific customer; customers anchor to their own id (enforced in the route)
+  customerId: z.string().uuid().optional(),
+  items: z.array(OrderItemInput).min(1),
+  dropoff: z.object({
+    address: z.string().min(1),
+    lat: z.number(),
+    lng: z.number(),
+  }),
+});
+
+// legacy delivery-job create (rider pool seeding) — preserved so the rider lifecycle keeps a
+// way to inject a pending_assignment order. Selected when the body carries no `items[]`.
+export const CreateDeliveryJobSchema = z.object({
   customerId: z.string().uuid().optional(),
   pickupAddress: z.string().min(1),
   pickupLat: z.number().optional(),

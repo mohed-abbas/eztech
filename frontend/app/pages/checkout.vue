@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { Stripe, StripeCardElement, StripeElements } from '@stripe/stripe-js'
+import { loadStripe } from '@stripe/stripe-js'
 import type { Address } from '~/stores/auth'
 
 definePageMeta({ layout: 'default', middleware: 'auth' })
@@ -10,6 +12,8 @@ const { clearCart, linePrice } = cart
 const auth = useAuthStore()
 const { user } = storeToRefs(auth)
 const { check: checkZone } = useServiceZone()
+const { isMock } = useMock()
+const runtimeConfig = useRuntimeConfig()
 // Redirect to cart if empty
 onMounted(() => {
   if (isEmpty.value) navigateTo('/cart', { replace: true })
@@ -27,9 +31,85 @@ const manualCity = ref('Paris')
 const manualZip = ref('')
 const manualLat = ref<number | null>(null)
 const manualLng = ref<number | null>(null)
+// Coordinates for the selected saved address — the backend Address model stores no lat/lng,
+// so we geocode the saved address the same way manual entry does (see watcher below).
+const savedGeo = ref<{ lat: number, lng: number } | null>(null)
 
 const geoLoading = ref(false)
 const geoError = ref<string | null>(null)
+
+// Address geocoding — turns a free-text address into coordinates (the dropoff + zone check
+// both require lat/lng). Shared by manual entry and saved-address resolution.
+const geocoding = ref(false)
+const geocodeError = ref<string | null>(null)
+watch([manualStreet, manualZip, manualCity], () => {
+  if (addressMode.value === 'manual') {
+    manualLat.value = null
+    manualLng.value = null
+    geocodeError.value = null
+  }
+})
+
+// Geocode a free-text query via the BFF. Returns coordinates or null, setting geocodeError on
+// failure. Caller decides where to store the result.
+async function geocodeQuery(query: string): Promise<{ lat: number, lng: number } | null> {
+  geocoding.value = true
+  geocodeError.value = null
+  try {
+    const res = await $fetch<{ found: boolean, lat?: number, lng?: number }>(
+      '/api/geocode',
+      { query: { q: query } },
+    )
+    if (!res.found || res.lat == null || res.lng == null) {
+      geocodeError.value = 'Adresse introuvable. Vérifiez la saisie.'
+      return null
+    }
+    return { lat: res.lat, lng: res.lng }
+  }
+  catch {
+    geocodeError.value = 'Échec de la localisation de l’adresse. Réessayez.'
+    return null
+  }
+  finally {
+    geocoding.value = false
+  }
+}
+
+async function geocodeManualAddress() {
+  if (!manualStreet.value.trim() || !manualZip.value.trim()) {
+    geocodeError.value = 'Renseignez la rue et le code postal.'
+    return
+  }
+  const query = [manualStreet.value, manualZip.value, manualCity.value]
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(', ')
+  const coords = await geocodeQuery(query)
+  manualLat.value = coords?.lat ?? null
+  manualLng.value = coords?.lng ?? null
+}
+
+// Auto-geocode the chosen saved address when it has no stored coordinates, so it gets the same
+// zone badge + dropoff coordinates as a manual address (otherwise payment dead-ends asking for
+// a geolocated address). Runs immediately for the default-selected address.
+// A sequence token guards against out-of-order resolution: switching addresses quickly fires
+// concurrent geocode calls, and only the latest may write savedGeo (else B could be selected
+// while A's coordinates are stored — and POSTed as the dropoff).
+let savedGeoSeq = 0
+watch([selectedSavedId, addressMode], async () => {
+  savedGeo.value = null
+  const seq = ++savedGeoSeq
+  if (addressMode.value !== 'saved') return
+  const saved = savedAddresses.value.find(a => a.id === selectedSavedId.value)
+  if (!saved || saved.coordinates) return
+  const query = [saved.street, saved.zipCode, saved.city]
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join(', ')
+  if (!query) return
+  const coords = await geocodeQuery(query)
+  if (seq === savedGeoSeq) savedGeo.value = coords
+}, { immediate: true })
 
 function useCurrentLocation() {
   if (!('geolocation' in navigator)) {
@@ -69,7 +149,7 @@ const resolvedAddress = computed<ResolvedAddress | null>(() => {
       street: saved.street,
       city: saved.city,
       zipCode: saved.zipCode,
-      coordinates: saved.coordinates ?? null,
+      coordinates: saved.coordinates ?? savedGeo.value,
     }
   }
   if (addressMode.value === 'geo') {
@@ -110,54 +190,77 @@ const canProceed = computed(() => {
 // --- Card form ---
 const monoInputClass = 'w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3 text-body text-text-primary font-mono placeholder:text-text-muted outline-none focus:ring-2 focus:ring-primary-400/30 focus:border-primary-500 transition'
 
-const cardNumber = ref('')
-const cardExpiry = ref('')
-const cardCvc = ref('')
+// Mock-mode card name (Stripe Elements owns the card fields in live mode — PCI: the card
+// number/expiry/cvc are rendered by Stripe inside an iframe and never reach our app or API).
 const cardName = ref('')
 
-function formatCardNumber(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 16)
-  return digits.replace(/(.{4})/g, '$1 ').trim()
-}
-function onCardNumberInput(e: Event) {
-  const input = e.target as HTMLInputElement
-  cardNumber.value = formatCardNumber(input.value)
-  input.value = cardNumber.value
-}
-function formatExpiry(value: string) {
-  const digits = value.replace(/\D/g, '').slice(0, 4)
-  if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`
-  return digits
-}
-function onExpiryInput(e: Event) {
-  const input = e.target as HTMLInputElement
-  cardExpiry.value = formatExpiry(input.value)
-  input.value = cardExpiry.value
-}
-function onCvcInput(e: Event) {
-  const input = e.target as HTMLInputElement
-  cardCvc.value = input.value.replace(/\D/g, '').slice(0, 3)
-  input.value = cardCvc.value
+// --- Stripe Elements (live mode) ---
+const ordersStore = useOrdersStore()
+ordersStore.hydrate()
+
+let stripe: Stripe | null = null
+let elements: StripeElements | null = null
+let cardElement: StripeCardElement | null = null
+
+const cardMountRef = ref<HTMLDivElement | null>(null)
+const cardReady = ref(false)
+const cardError = ref<string | null>(null)
+const stripeLoadError = ref<string | null>(null)
+
+async function mountStripe() {
+  if (isMock.value) return
+  const key = runtimeConfig.public.stripePublishableKey as string
+  if (!key) {
+    stripeLoadError.value = 'Paiement indisponible : clé Stripe non configurée.'
+    return
+  }
+  try {
+    stripe = await loadStripe(key)
+    if (!stripe || !cardMountRef.value) {
+      stripeLoadError.value = 'Impossible de charger le module de paiement.'
+      return
+    }
+    elements = stripe.elements()
+    cardElement = elements.create('card', {
+      style: {
+        base: {
+          fontSize: '16px',
+          color: '#1a1a1a',
+          fontFamily: 'ui-monospace, SFMono-Regular, monospace',
+          '::placeholder': { color: '#9ca3af' },
+        },
+        invalid: { color: '#dc2626' },
+      },
+    })
+    cardElement.mount(cardMountRef.value)
+    cardElement.on('change', (ev) => {
+      cardReady.value = ev.complete
+      cardError.value = ev.error?.message ?? null
+    })
+  }
+  catch (err) {
+    stripeLoadError.value = err instanceof Error ? err.message : 'Erreur de chargement de Stripe.'
+  }
 }
 
-const cardBrand = computed(() => {
-  const d = cardNumber.value.replace(/\s/g, '')
-  if (d.startsWith('4')) return 'Visa'
-  if (d.startsWith('5')) return 'Mastercard'
-  if (d.startsWith('3')) return 'Amex'
-  return null
+onMounted(() => {
+  if (!isEmpty.value) void mountStripe()
+})
+
+onBeforeUnmount(() => {
+  cardElement?.destroy()
 })
 
 // --- Payment flow ---
 type PaymentState = 'idle' | 'loading' | 'success' | 'error'
 const paymentState = ref<PaymentState>('idle')
+const paymentError = ref<string | null>(null)
 
-const formComplete = computed(() =>
-  !!(cardNumber.value && cardExpiry.value && cardCvc.value && cardName.value && canProceed.value),
-)
-
-const ordersStore = useOrdersStore()
-ordersStore.hydrate()
+// Mock mode keeps the simple "name + ready" gate; live mode gates on the Stripe card being complete.
+const formComplete = computed(() => {
+  if (!canProceed.value) return false
+  return isMock.value ? !!cardName.value : cardReady.value
+})
 
 function createMockOrder() {
   const addr = resolvedAddress.value
@@ -186,16 +289,9 @@ function createMockOrder() {
   return order.id
 }
 
-function submitPayment() {
-  if (!formComplete.value) return
+function submitMockPayment() {
   paymentState.value = 'loading'
-
   setTimeout(() => {
-    const digits = cardNumber.value.replace(/\s/g, '')
-    if (digits.endsWith('0000')) {
-      paymentState.value = 'error'
-      return
-    }
     paymentState.value = 'success'
     const orderId = createMockOrder()
     clearCart()
@@ -203,8 +299,107 @@ function submitPayment() {
   }, 2000)
 }
 
+// Map backend create-order errors to a friendly message (D-14 zone gate, stock, etc.)
+function describeOrderError(err: unknown): string {
+  const data = (err as { data?: { error?: string } })?.data
+  switch (data?.error) {
+    case 'outside_delivery_zone':
+      return 'Cette adresse est en dehors de notre zone de livraison.'
+    case 'no_single_warehouse':
+      return 'Stock insuffisant pour livrer cette commande depuis un seul entrepôt.'
+    case 'product_not_found':
+      return 'Un produit de votre panier n’est plus disponible.'
+    case 'validation_failed':
+      return 'Votre panier contient des articles invalides ou périmés. Videz-le puis rajoutez les produits.'
+    default:
+      return 'La création de la commande a échoué. Veuillez réessayer.'
+  }
+}
+
+async function submitLivePayment() {
+  const addr = resolvedAddress.value
+  if (!addr?.coordinates) {
+    paymentError.value = 'Veuillez fournir une adresse géolocalisée pour la livraison.'
+    paymentState.value = 'error'
+    return
+  }
+  if (!stripe || !cardElement) {
+    paymentError.value = stripeLoadError.value ?? 'Le module de paiement n’est pas prêt.'
+    paymentState.value = 'error'
+    return
+  }
+
+  paymentState.value = 'loading'
+  paymentError.value = null
+
+  // 1) Order-first (D-08): create the server-validated order — server recomputes money (D-06)
+  let orderId: string
+  try {
+    const created = await ordersStore.createLiveOrder({
+      items: items.value.map(i => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        durationUnit: i.durationUnit,
+        durationValue: i.durationValue,
+      })),
+      dropoff: { address: addr.street, lat: addr.coordinates.lat, lng: addr.coordinates.lng },
+    })
+    orderId = created.orderId
+  }
+  catch (err) {
+    paymentError.value = describeOrderError(err)
+    paymentState.value = 'error'
+    return
+  }
+
+  // 2) Mint the PaymentIntent for that order
+  let clientSecret: string
+  try {
+    const intent = await $fetch<{ clientSecret: string }>(
+      `${runtimeConfig.public.apiUrl}/payments/create-intent`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${auth.token}` },
+        body: { orderId },
+      },
+    )
+    clientSecret = intent.clientSecret
+  }
+  catch {
+    paymentError.value = 'Impossible d’initialiser le paiement. Veuillez réessayer.'
+    paymentState.value = 'error'
+    return
+  }
+
+  // 3) Confirm with Stripe Elements — the card data goes straight to Stripe, never to our API
+  const { error } = await stripe.confirmCardPayment(clientSecret, {
+    payment_method: { card: cardElement },
+  })
+
+  if (error) {
+    paymentError.value = error.message ?? 'Le paiement a été refusé.'
+    paymentState.value = 'error'
+    return
+  }
+
+  // 4) Success is UX-only — the paid truth arrives via the backend webhook (D-09). Force a
+  // refetch so the new order is present on the list/detail rather than hidden behind a stale
+  // hydrated=true, then redirect to the order.
+  paymentState.value = 'success'
+  clearCart()
+  void ordersStore.hydrate(true)
+  setTimeout(() => navigateTo(`/orders/${orderId}`), 1200)
+}
+
+function submitPayment() {
+  if (!formComplete.value || paymentState.value === 'loading') return
+  if (isMock.value) submitMockPayment()
+  else void submitLivePayment()
+}
+
 function retryPayment() {
   paymentState.value = 'idle'
+  paymentError.value = null
 }
 
 // --- Step indicator ---
@@ -368,6 +563,14 @@ const steps = [
                   Aucune adresse enregistrée.
                   <Button variant="link" size="sm" class="px-0 h-auto" @click="addressMode = 'manual'">Saisir manuellement</Button>
                 </p>
+                <p v-if="geocoding" class="text-sm text-text-muted flex items-center gap-2">
+                  <Icon name="ph:circle-notch" class="size-4 animate-spin" />
+                  Localisation de l’adresse…
+                </p>
+                <p v-else-if="geocodeError" class="text-sm text-error flex items-center gap-2">
+                  <Icon name="ph:warning-circle" class="size-4 shrink-0" />
+                  {{ geocodeError }}
+                </p>
               </div>
 
               <!-- Manual -->
@@ -389,6 +592,29 @@ const steps = [
                     </template>
                   </FormField>
                 </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  class="w-full gap-2"
+                  :disabled="geocoding"
+                  @click="geocodeManualAddress"
+                >
+                  <Icon
+                    :name="geocoding ? 'ph:circle-notch' : 'ph:map-pin'"
+                    class="size-4"
+                    :class="geocoding ? 'animate-spin' : ''"
+                  />
+                  {{ geocoding ? 'Localisation…' : 'Localiser cette adresse' }}
+                </Button>
+
+                <p v-if="manualLat != null" class="text-caption text-primary-600/70 font-mono">
+                  Coordonnées : {{ manualLat.toFixed(4) }}, {{ manualLng?.toFixed(4) }}
+                </p>
+                <p v-if="geocodeError" class="text-sm text-error flex items-center gap-2">
+                  <Icon name="ph:warning-circle" class="size-4 shrink-0" />
+                  {{ geocodeError }}
+                </p>
               </div>
 
               <!-- Geo -->
@@ -442,64 +668,38 @@ const steps = [
             </div>
 
             <div class="p-6 space-y-4">
-              <FormField id="card-name" label="Nom sur la carte" required>
-                <template #default="{ id }">
-                  <Input :id="id" v-model="cardName" type="text" placeholder="Jean Dupont" />
-                </template>
-              </FormField>
-
-              <FormField id="card-number" label="Numéro de carte" required>
-                <template #default="{ id }">
-                  <div class="relative">
-                    <input
-                      :id="id"
-                      :value="cardNumber"
-                      type="text"
-                      placeholder="4242 4242 4242 4242"
-                      maxlength="19"
-                      :class="[monoInputClass, 'pr-20']"
-                      @input="onCardNumberInput"
-                    >
-                    <Transition name="brand-fade">
-                      <span
-                        v-if="cardBrand"
-                        class="absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-primary-50 border border-primary-100 px-2.5 py-1 text-caption font-bold text-primary-700 font-mono tracking-wider"
-                      >
-                        {{ cardBrand }}
-                      </span>
-                    </Transition>
-                  </div>
-                </template>
-              </FormField>
-
-              <div class="grid grid-cols-2 gap-4">
-                <FormField id="card-expiry" label="Date d'expiration" required>
+              <!-- Live mode: Stripe Elements card field (PCI — card data never touches our server) -->
+              <template v-if="!isMock">
+                <FormField id="card-stripe" label="Carte bancaire" required>
                   <template #default="{ id }">
-                    <input
+                    <div
                       :id="id"
-                      :value="cardExpiry"
-                      type="text"
-                      placeholder="MM/AA"
-                      maxlength="5"
-                      :class="monoInputClass"
-                      @input="onExpiryInput"
-                    >
+                      ref="cardMountRef"
+                      class="w-full bg-white border border-neutral-200 rounded-[--radius-md] px-4 py-3.5 outline-none focus-within:ring-2 focus-within:ring-primary-400/30 focus-within:border-primary-500 transition"
+                    />
                   </template>
                 </FormField>
-                <FormField id="card-cvc" label="CVC" required>
+                <p v-if="cardError" class="text-sm text-error flex items-center gap-2">
+                  <Icon name="ph:warning-circle" class="size-4 shrink-0" />
+                  {{ cardError }}
+                </p>
+                <p v-if="stripeLoadError" class="text-sm text-error flex items-center gap-2">
+                  <Icon name="ph:warning-circle" class="size-4 shrink-0" />
+                  {{ stripeLoadError }}
+                </p>
+              </template>
+
+              <!-- Mock mode: lightweight name field stands in for the card form -->
+              <template v-else>
+                <FormField id="card-name" label="Nom sur la carte" required>
                   <template #default="{ id }">
-                    <input
-                      :id="id"
-                      :value="cardCvc"
-                      type="text"
-                      placeholder="123"
-                      maxlength="3"
-                      :class="monoInputClass"
-                      @input="onCvcInput"
-                    >
+                    <Input :id="id" v-model="cardName" type="text" placeholder="Jean Dupont" />
                   </template>
                 </FormField>
-              </div>
+                <div :class="monoInputClass" class="opacity-60 select-none">
+                  4242 4242 4242 4242 (démo)
+                </div>
+              </template>
 
               <!-- Error State -->
               <Transition name="fade">
@@ -511,8 +711,8 @@ const steps = [
                     <Icon name="ph:x-circle-fill" class="size-5 text-error" />
                   </div>
                   <div class="flex-1">
-                    <p class="text-sm font-semibold text-error">Paiement refusé</p>
-                    <p class="text-sm text-text-muted mt-0.5">Votre carte a été refusée. Vérifiez les informations ou utilisez une autre carte.</p>
+                    <p class="text-sm font-semibold text-error">Paiement échoué</p>
+                    <p class="text-sm text-text-muted mt-0.5">{{ paymentError ?? 'Votre paiement n’a pas pu être traité. Veuillez réessayer.' }}</p>
                     <Button variant="link" size="sm" class="mt-2 px-0 h-auto" @click="retryPayment">
                       Réessayer
                     </Button>
@@ -524,8 +724,7 @@ const steps = [
               <div class="rounded-lg bg-neutral-50 border border-neutral-100 px-4 py-3 flex items-center gap-3">
                 <Icon name="ph:flask" class="size-4 text-text-muted shrink-0" />
                 <p class="text-caption text-text-muted">
-                  Test : <code class="bg-white px-1.5 py-0.5 rounded text-primary-600 font-mono border border-neutral-200">4242 4242 4242 4242</code> → succès ·
-                  <code class="bg-white px-1.5 py-0.5 rounded text-error font-mono border border-neutral-200">...0000</code> → échec
+                  Test : <code class="bg-white px-1.5 py-0.5 rounded text-primary-600 font-mono border border-neutral-200">4242 4242 4242 4242</code> → succès
                 </p>
               </div>
             </div>
