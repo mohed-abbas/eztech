@@ -14,10 +14,10 @@ services:
     image: glitchtip/glitchtip:6
     environment:
       SERVER_ROLE: all_in_one # web + worker + migrations in one container — fewest services for a demo
-      DATABASE_URL: postgresql://glitchtip:glitchtip@glitchtip-postgres:5432/glitchtip
+      DATABASE_URL: postgresql://glitchtip:${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in eztech/.env}@glitchtip-postgres:5432/glitchtip
       REDIS_URL: redis://glitchtip-valkey:6379/0
       VALKEY_URL: redis://glitchtip-valkey:6379/0
-      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-dev-only-change-me-please-0123456789}
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?set GLITCHTIP_SECRET_KEY in eztech/.env}
       PORT: "8080"
       GLITCHTIP_DOMAIN: http://localhost:${GLITCHTIP_PORT:-8000}
       EMAIL_URL: consolemail:// # dev: print emails to the container log instead of sending
@@ -39,7 +39,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: glitchtip
-      POSTGRES_PASSWORD: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in eztech/.env}
       POSTGRES_DB: glitchtip
     volumes:
       - glitchtip_postgres_data:/var/lib/postgresql/data
@@ -58,9 +58,9 @@ services:
   umami:
     image: ghcr.io/umami-software/umami:postgresql-latest
     environment:
-      DATABASE_URL: postgresql://umami:umami@umami-postgres:5432/umami
+      DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:?set UMAMI_DB_PASSWORD in eztech/.env}@umami-postgres:5432/umami
       DATABASE_TYPE: postgresql
-      APP_SECRET: ${UMAMI_APP_SECRET:-dev-only-change-me-umami}
+      APP_SECRET: ${UMAMI_APP_SECRET:?set UMAMI_APP_SECRET in eztech/.env}
     ports:
       # host port configurable (override UMAMI_PORT in eztech/.env if 3002 is taken)
       - "${UMAMI_PORT:-3002}:3000"
@@ -80,7 +80,7 @@ services:
     environment:
       POSTGRES_DB: umami
       POSTGRES_USER: umami
-      POSTGRES_PASSWORD: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD:?set UMAMI_DB_PASSWORD in eztech/.env}
     volumes:
       - umami_postgres_data:/var/lib/postgresql/data
     healthcheck:
