@@ -18,6 +18,18 @@ services:
       timeout: 5s
       retries: 10
 
+  mongo:
+    image: mongo:8
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   adminer:
     image: adminer:latest
     ports:
@@ -43,6 +55,7 @@ services:
       NODE_ENV: development
       PORT: "3001"
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in eztech/.env}@postgres:5432/${POSTGRES_DB:-eztech_dev}
+      MONGODB_URI: mongodb://mongo:27017/eztech_dev
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (min 32 chars) in eztech/.env}
       JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
       JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
@@ -65,6 +78,8 @@ services:
       - ./frontend/app/data/mock:/frontend/app/data/mock:ro
     depends_on:
       postgres:
+        condition: service_healthy
+      mongo:
         condition: service_healthy
 
   frontend:
@@ -102,6 +117,7 @@ services:
 
 volumes:
   postgres_data:
+  mongo_data:
   backend_node_modules:
   backend_uploads:
   frontend_node_modules:
