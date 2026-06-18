@@ -41,6 +41,9 @@ export default defineNuxtConfig({
       useMock: process.env.VITE_USE_MOCK === 'true',
       // browser-facing: client stores hit the backend via the host port mapping
       apiUrl: process.env.VITE_API_URL || 'http://localhost:3001/api',
+      // browser-facing Socket.io endpoint — the realtime client connects to the backend
+      // ROOT (NOT apiUrl, which ends in /api). Separate var so the two never drift (RESEARCH A1).
+      socketUrl: process.env.VITE_SOCKET_URL || 'http://localhost:3001',
       // Stripe publishable key — public by design; the secret key never leaves the backend
       stripePublishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || '',
       // browser-facing Sentry DSN — reaches GlitchTip via its host port (localhost:8000). Inert if empty.
