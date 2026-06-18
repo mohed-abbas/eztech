@@ -2,6 +2,8 @@ import { Server } from 'socket.io';
 import type { Socket } from 'socket.io';
 import type { Server as HttpServer } from 'node:http';
 import { socketAuth } from '../socket/auth.js';
+import { registerOrderHandler } from '../socket/handlers/order.js';
+import { registerRiderHandler } from '../socket/handlers/rider.js';
 
 // Socket.io server singleton (D-08/D-13, RESEARCH Pattern 1). Module-private _io binding; consumers
 // import the FUNCTIONS only (initSocket/getIO), never the live instance — this is the ESM
@@ -18,10 +20,13 @@ function corsOrigins(): string[] {
     .filter(Boolean);
 }
 
-// Plan 03 fill-in point: replaces this body with the rider + order socket.on registrations using the
-// frozen event names. Kept as a no-op stub now so CORS + auth + exp-disconnect are fully functional.
-export function registerHandlers(_io: Server, _socket: Socket): void {
-  // intentionally empty — wired in Plan 03
+// Per-connection handler wiring (D-15). Attaches the subscribe:order (room-auth + join + last-known
+// emit) and rider:position (authz + throttle + Mongo upsert + rider-moved broadcast) handlers to
+// each authenticated socket. Functions only — no circular import on the live _io binding; the rider
+// handler reaches getIO() lazily at emit time.
+export function registerHandlers(_io: Server, socket: Socket): void {
+  registerOrderHandler(socket);
+  registerRiderHandler(socket);
 }
 
 // Construct the single Socket.io Server against the shared http.Server (D-08), install the JWT
