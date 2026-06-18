@@ -23,7 +23,8 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
     "seed:catalog": "tsx --env-file=.env prisma/seed-catalog.ts",
-    "seed:zones": "tsx --env-file=.env prisma/seed-zones.ts"
+    "seed:zones": "tsx --env-file=.env prisma/seed-zones.ts",
+    "sim:gps": "tsx --env-file=.env scripts/gps-simulator.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
