@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { STATUS_CONFIG, ACTIVE_STATUSES, type OrderStatus } from '~/stores/orders'
+import type { BackendOrderStatus } from '~/lib/orderStatus'
+import type { TrackingOrder } from '~/server/api/orders/[id].get'
 
 const route = useRoute()
 
@@ -13,45 +14,74 @@ const orderId = computed(() => {
 
 useHead({ title: computed(() => `Commande #${orderId.value} - EzTech`) })
 
-const store = useOrdersStore()
-store.hydrate()
+// ─── LIVE owner-scoped order via the BFF (Pitfall A) ───────────────────────
+// We read the LIVE order (raw Prisma OrderStatus) through GET /api/orders/:id, NOT the
+// mock Pinia store — so the status vocabulary matches the backend enum and no display
+// lookup ever throws. The auth token is forwarded so the backend scopes the order.
+const auth = useAuthStore()
+const { data: order, pending, error } = await useFetch<TrackingOrder>(
+  () => `/api/orders/${orderId.value}`,
+  {
+    headers: computed(() => (auth.token ? { Authorization: `Bearer ${auth.token}` } : {})),
+  },
+)
 
-const order = computed(() => store.getOrder(orderId.value))
-const rider = computed(() => order.value ? store.getRider(order.value.riderId) : undefined)
+// ─── Live tracking wiring (TRACK-01/04/06/07) ──────────────────────────────
+// Seed from the live order; the composable keeps status current via order-status events
+// and exposes the reactive rider position + the showMap gate (live picked_up/in_transit).
+const tracking = useOrderTracking(orderId.value, order.value ? { id: order.value.id, status: order.value.status } : null)
+const { riderPos, status: liveStatus, showMap, reconnecting, lastUpdate } = tracking
 
-const currentStepIndex = computed(() => {
-  if (!order.value) return 0
-  return store.getStepIndex(order.value.status)
-})
+// the effective live status: the composable's status once it has seeded, else the fetched one
+const currentStatus = computed<BackendOrderStatus>(() =>
+  (liveStatus.value || order.value?.status || 'pending_assignment') as BackendOrderStatus,
+)
 
-const isActive = computed(() => {
-  if (!order.value) return false
-  return ACTIVE_STATUSES.includes(order.value.status)
-})
+// ─── Status display config keyed on the canonical Prisma vocabulary ────────
+// Every BackendOrderStatus has an entry, so a live status never throws (Pitfall A).
+interface StatusMeta { label: string, icon: string, color: string, bg: string }
+const STATUS_CONFIG: Record<BackendOrderStatus, StatusMeta> = {
+  awaiting_payment: { label: 'En attente de paiement', icon: 'ph:hourglass', color: 'text-amber-700', bg: 'bg-amber-50' },
+  pending_assignment: { label: 'En recherche de livreur', icon: 'ph:magnifying-glass', color: 'text-blue-700', bg: 'bg-blue-50' },
+  rider_assigned: { label: 'Livreur assigné', icon: 'ph:user-circle', color: 'text-primary-700', bg: 'bg-primary-50' },
+  at_warehouse: { label: 'En préparation', icon: 'ph:package', color: 'text-amber-700', bg: 'bg-amber-50' },
+  picked_up: { label: 'Récupérée', icon: 'ph:cube', color: 'text-primary-700', bg: 'bg-primary-50' },
+  in_transit: { label: 'En route', icon: 'ph:motorcycle', color: 'text-primary-700', bg: 'bg-primary-50' },
+  delivered: { label: 'Livrée', icon: 'ph:check-circle', color: 'text-emerald-700', bg: 'bg-emerald-50' },
+  cancelled: { label: 'Annulée', icon: 'ph:x-circle', color: 'text-red-700', bg: 'bg-red-50' },
+}
 
-// Show live map only when rider is physically carrying the order
-const TRANSIT_STATUSES: OrderStatus[] = ['picked_up', 'in_transit']
-const showMap = computed(() => {
-  if (!order.value) return false
-  return TRANSIT_STATUSES.includes(order.value.status)
-})
+function statusMeta(s: BackendOrderStatus): StatusMeta {
+  return STATUS_CONFIG[s] ?? STATUS_CONFIG.pending_assignment
+}
 
+// active = anything before a terminal state (delivered/cancelled)
+const isActive = computed(() => currentStatus.value !== 'delivered' && currentStatus.value !== 'cancelled')
+
+// ─── Delivery timeline driven by the Prisma vocabulary ─────────────────────
 interface StepDisplay {
-  key: OrderStatus
+  key: BackendOrderStatus
   label: string
   description: string
   icon: string
 }
 
 const STEPS: StepDisplay[] = [
-  { key: 'pending', label: 'Commande passée', description: 'Votre commande a été confirmée', icon: 'ph:seal-check' },
-  { key: 'confirmed', label: 'Confirmée', description: 'Commande validée et en attente de préparation', icon: 'ph:check-circle' },
-  { key: 'preparing', label: 'En préparation', description: 'Vos produits sont préparés dans l\'entrepôt', icon: 'ph:package' },
+  { key: 'awaiting_payment', label: 'Commande passée', description: 'Votre commande a été enregistrée', icon: 'ph:seal-check' },
+  { key: 'pending_assignment', label: 'Recherche de livreur', description: 'Nous cherchons un livreur disponible', icon: 'ph:magnifying-glass' },
   { key: 'rider_assigned', label: 'Livreur assigné', description: 'Un livreur a pris en charge votre commande', icon: 'ph:user-circle' },
+  { key: 'at_warehouse', label: 'En préparation', description: 'Vos produits sont préparés à l\'entrepôt', icon: 'ph:package' },
   { key: 'picked_up', label: 'Récupérée', description: 'Le livreur a récupéré votre commande', icon: 'ph:cube' },
   { key: 'in_transit', label: 'En route', description: 'Votre commande est en chemin vers vous', icon: 'ph:motorcycle' },
   { key: 'delivered', label: 'Livrée', description: 'Commande livrée avec succès', icon: 'ph:house' },
 ]
+
+const STEP_ORDER: BackendOrderStatus[] = STEPS.map(s => s.key)
+
+const currentStepIndex = computed(() => {
+  const idx = STEP_ORDER.indexOf(currentStatus.value)
+  return idx >= 0 ? idx : 0
+})
 
 function getStepStatus(index: number): 'completed' | 'active' | 'pending' {
   if (index < currentStepIndex.value) return 'completed'
@@ -59,50 +89,24 @@ function getStepStatus(index: number): 'completed' | 'active' | 'pending' {
   return 'pending'
 }
 
-const vehicleLabels: Record<string, string> = {
-  bicycle: 'Vélo cargo',
-  scooter: 'Scooter',
-  car: 'Voiture',
-}
-
-// Mock delivery route — coordinates must stay consistent with ROUTE endpoints
-const WAREHOUSE: [number, number] = [48.8447, 2.3799]
-const DESTINATION: [number, number] = [48.8584, 2.2945]
-const ROUTE: [number, number][] = [
-  [48.8447, 2.3799],
-  [48.8461, 2.3712],
-  [48.8480, 2.3640],
-  [48.8500, 2.3560],
-  [48.8520, 2.3490],
-  [48.8538, 2.3400],
-  [48.8551, 2.3320],
-  [48.8563, 2.3220],
-  [48.8575, 2.3110],
-  [48.8584, 2.2945],
-]
-const MAP_CENTER: [number, number] = [48.8515, 2.3372]
-
-// ETA countdown mock (18 minutes)
-const etaMinutes = ref(18)
-let etaInterval: ReturnType<typeof setInterval> | null = null
-
-function clearEtaInterval() {
-  if (etaInterval !== null) { clearInterval(etaInterval); etaInterval = null }
-}
-
-onMounted(() => {
-  etaInterval = setInterval(() => {
-    if (etaMinutes.value > 0) etaMinutes.value--
-    else clearEtaInterval()
-  }, 60000)
+// last-known position freshness for the reconnecting hint (D-05)
+const lastUpdateLabel = computed(() => {
+  if (lastUpdate.value === null) return null
+  const d = new Date(lastUpdate.value)
+  return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 })
 
-watch(isActive, (val) => {
-  if (!val) clearEtaInterval()
-})
-
-onBeforeUnmount(() => {
-  clearEtaInterval()
+// the warehouse/destination markers come from the live order's coordinates when present
+const warehousePos = computed<[number, number] | undefined>(() =>
+  order.value?.pickup ? [order.value.pickup.lat, order.value.pickup.lng] : undefined,
+)
+const destinationPos = computed<[number, number] | undefined>(() =>
+  order.value?.dropoff ? [order.value.dropoff.lat, order.value.dropoff.lng] : undefined,
+)
+const mapCenter = computed<[number, number]>(() => {
+  if (riderPos.value) return [riderPos.value.lat, riderPos.value.lng]
+  if (order.value?.dropoff) return [order.value.dropoff.lat, order.value.dropoff.lng]
+  return [48.8566, 2.3522]
 })
 </script>
 
@@ -130,19 +134,16 @@ onBeforeUnmount(() => {
             </p>
           </div>
 
-          <!-- ETA Badge (only for active orders) -->
-          <div v-if="isActive" class="flex items-center gap-3 rounded-full bg-primary-500/20 border border-primary-400/30 px-5 py-2.5 backdrop-blur-sm">
+          <!-- Live status badge (active orders) -->
+          <div v-if="order && isActive" class="flex items-center gap-3 rounded-full bg-primary-500/20 border border-primary-400/30 px-5 py-2.5 backdrop-blur-sm">
             <span class="size-2.5 rounded-full bg-primary-400 animate-pulse" />
-            <span class="text-body-sm font-semibold text-white">{{ order ? STATUS_CONFIG[order.status].label : '' }}</span>
-            <div class="h-4 w-px bg-white/20" />
-            <Icon name="ph:clock" class="size-4 text-primary-300" />
-            <span class="text-body-sm font-medium text-primary-200">{{ etaMinutes }} min</span>
+            <span class="text-body-sm font-semibold text-white">{{ statusMeta(currentStatus).label }}</span>
           </div>
 
           <!-- Delivered / Cancelled badge -->
-          <div v-else-if="order" class="flex items-center gap-2 rounded-full px-5 py-2.5 backdrop-blur-sm" :class="STATUS_CONFIG[order.status].bg">
-            <Icon :name="STATUS_CONFIG[order.status].icon" class="size-4" :class="STATUS_CONFIG[order.status].color" />
-            <span class="text-body-sm font-semibold" :class="STATUS_CONFIG[order.status].color">{{ STATUS_CONFIG[order.status].label }}</span>
+          <div v-else-if="order" class="flex items-center gap-2 rounded-full px-5 py-2.5 backdrop-blur-sm" :class="statusMeta(currentStatus).bg">
+            <Icon :name="statusMeta(currentStatus).icon" class="size-4" :class="statusMeta(currentStatus).color" />
+            <span class="text-body-sm font-semibold" :class="statusMeta(currentStatus).color">{{ statusMeta(currentStatus).label }}</span>
           </div>
         </div>
       </div>
@@ -151,13 +152,13 @@ onBeforeUnmount(() => {
     <!-- Main Content -->
     <div class="mx-auto max-w-5xl px-6 py-10 sm:px-10">
       <!-- Loading -->
-      <div v-if="store.loading" class="py-20 text-center text-text-muted">
+      <div v-if="pending" class="py-20 text-center text-text-muted">
         Chargement...
       </div>
 
       <!-- Order not found -->
       <EmptyState
-        v-else-if="!order"
+        v-else-if="error || !order"
         title="Commande introuvable"
         description="Cette commande n'existe pas ou vous n'y avez pas accès."
       >
@@ -250,15 +251,15 @@ onBeforeUnmount(() => {
 
                     <!-- Rider info under "Livreur assigné" -->
                     <div
-                      v-if="step.key === 'rider_assigned' && getStepStatus(index) !== 'pending' && rider"
+                      v-if="step.key === 'rider_assigned' && getStepStatus(index) !== 'pending' && order && order.riderId"
                       class="mt-2 flex items-center gap-2 rounded-lg bg-surface-purple border border-primary-100 px-3 py-2 w-fit"
                     >
                       <div class="flex size-8 items-center justify-center rounded-full bg-primary-100">
                         <Icon name="ph:user" class="size-4 text-primary-600" />
                       </div>
                       <div>
-                        <p class="text-body-sm font-medium text-text-primary">{{ rider.name }}</p>
-                        <p class="text-caption text-text-muted">{{ vehicleLabels[rider.vehicleType] ?? rider.vehicleType }} · {{ rider.rating }} <Icon name="ph:star-fill" class="inline size-3 text-amber-400" /></p>
+                        <p class="text-body-sm font-medium text-text-primary">Livreur en route</p>
+                        <p class="text-caption text-text-muted">Votre commande est prise en charge</p>
                       </div>
                     </div>
                   </div>
@@ -271,44 +272,41 @@ onBeforeUnmount(() => {
 
         <!-- Right Column -->
         <div class="lg:col-span-7 space-y-4">
-          <!-- Map Card (only when rider is physically in transit) -->
+          <!-- Map Card (only when rider is physically in transit — live showMap) -->
           <Card v-if="showMap" class="overflow-hidden">
             <div class="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
               <div>
                 <h2 class="text-h4 font-semibold text-text-primary">Localisation en direct</h2>
                 <p class="mt-0.5 text-body-sm text-text-muted">Mise à jour en temps réel</p>
               </div>
-              <div class="text-right">
-                <p class="text-body font-semibold text-text-primary">{{ etaMinutes }} min</p>
-                <p class="text-caption text-text-muted">Arrivée estimée</p>
+              <!-- Connection / reconnecting hint (D-05) -->
+              <div class="flex items-center gap-2 rounded-full px-3 py-1.5" :class="reconnecting ? 'bg-amber-50' : 'bg-emerald-50'">
+                <span
+                  class="size-2 rounded-full"
+                  :class="reconnecting ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'"
+                />
+                <span class="text-caption font-medium" :class="reconnecting ? 'text-amber-700' : 'text-emerald-700'">
+                  {{ reconnecting ? 'reconnexion…' : 'en direct' }}
+                </span>
               </div>
             </div>
 
             <LeafletMap
-              :center="MAP_CENTER"
-              :zoom="13"
-              :route="ROUTE"
-              :warehouse-pos="WAREHOUSE"
-              :destination-pos="DESTINATION"
-              :animate-rider="true"
+              :center="mapCenter"
+              :zoom="14"
+              :rider-pos="riderPos"
+              :warehouse-pos="warehousePos"
+              :destination-pos="destinationPos"
               height="380px"
             />
 
-            <!-- Rider bar under map -->
-            <div v-if="rider" class="flex items-center gap-4 border-t border-neutral-100 bg-neutral-50 px-6 py-4">
-              <div class="flex size-10 items-center justify-center rounded-full bg-primary-100">
-                <Icon name="ph:user" class="size-5 text-primary-600" />
-              </div>
-              <div class="flex-1">
-                <p class="text-body font-medium text-text-primary">{{ rider.name }}</p>
-                <p class="text-body-sm text-text-muted">
-                  {{ vehicleLabels[rider.vehicleType] ?? rider.vehicleType }} · {{ rider.rating }} <Icon name="ph:star-fill" class="inline size-3 text-amber-400" /> · {{ rider.totalDeliveries }} livraisons
-                </p>
-              </div>
-              <Button variant="outline" size="sm">
-                <Icon name="ph:phone" class="size-4" />
-                Contacter
-              </Button>
+            <!-- Last-known timestamp bar under map (never blank — last-known shows on load, D-05) -->
+            <div class="flex items-center gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-3">
+              <Icon name="ph:map-pin-line" class="size-4 text-primary-600" />
+              <p class="text-body-sm text-text-muted">
+                <template v-if="lastUpdateLabel">Dernière position à {{ lastUpdateLabel }}</template>
+                <template v-else>En attente de la position du livreur…</template>
+              </p>
             </div>
           </Card>
 
@@ -321,8 +319,8 @@ onBeforeUnmount(() => {
               <h3 class="text-body font-semibold text-text-primary">Résumé de la commande</h3>
             </div>
             <div class="space-y-2.5 text-body-sm">
-              <div v-for="item in order.items" :key="item.productId" class="flex items-center justify-between gap-4">
-                <span class="text-text-secondary">{{ store.getProductName(item.productId) }} <span v-if="item.quantity > 1" class="text-text-muted">×{{ item.quantity }}</span></span>
+              <div v-for="(item, idx) in order.items" :key="item.productId || idx" class="flex items-center justify-between gap-4">
+                <span class="text-text-secondary">{{ item.name }} <span v-if="item.quantity > 1" class="text-text-muted">×{{ item.quantity }}</span></span>
                 <span class="shrink-0 font-medium text-text-primary">{{ item.total.toFixed(2) }} &euro;</span>
               </div>
               <div class="border-t border-neutral-100 pt-3 mt-3 space-y-1.5">

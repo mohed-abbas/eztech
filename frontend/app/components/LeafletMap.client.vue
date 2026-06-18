@@ -1,49 +1,35 @@
 <script setup lang="ts">
 import 'leaflet/dist/leaflet.css'
-import type { Map, Marker, LatLngExpression } from 'leaflet'
+import type { Map, Marker, LatLng } from 'leaflet'
+
+interface RiderPos {
+  lat: number
+  lng: number
+}
 
 interface Props {
   center?: [number, number]
   zoom?: number
-  route?: [number, number][]
   warehousePos?: [number, number]
   destinationPos?: [number, number]
-  animateRider?: boolean
+  // live rider position pushed from useOrderTracking (rider-moved {lat,lng}) — D-06/D-12/TRACK-06
+  riderPos?: RiderPos | null
   autoCenter?: boolean      // recentre la carte sur le livreur à chaque déplacement
   height?: string
-  initialEta?: number       // ETA initial en secondes
 }
 
 const props = withDefaults(defineProps<Props>(), {
   center: () => [48.8566, 2.3522],
   zoom: 13,
-  route: () => [],
-  animateRider: false,
+  riderPos: null,
   autoCenter: true,
   height: '400px',
-  initialEta: 0,
 })
-
-const emit = defineEmits<{
-  'rider-moved': [pos: [number, number], stepIndex: number]
-  'delivery-complete': []
-}>()
 
 const mapContainer = ref<HTMLElement | null>(null)
 let mapInstance: Map | null = null
 let riderMarker: Marker | null = null
-let animInterval: ReturnType<typeof setInterval> | null = null
-
-// ETA countdown
-const etaSeconds = ref(props.initialEta)
-let etaInterval: ReturnType<typeof setInterval> | null = null
-
-const etaDisplay = computed(() => {
-  const m = Math.floor(etaSeconds.value / 60)
-  const s = etaSeconds.value % 60
-  if (m === 0) return `${s}s`
-  return `${m} min`
-})
+let leaflet: typeof import('leaflet') | null = null
 
 // ─── Marqueur livreur : cercle violet avec icône véhicule ───────────
 function createRiderIcon(L: typeof import('leaflet')) {
@@ -162,6 +148,7 @@ function createWarehouseIcon(L: typeof import('leaflet')) {
 
 async function initMap() {
   const L = await import('leaflet')
+  leaflet = L
   if (!mapContainer.value) return
 
   mapInstance = L.map(mapContainer.value, {
@@ -195,86 +182,69 @@ async function initMap() {
       .bindPopup('<strong>Adresse de livraison</strong>')
   }
 
-  // Polyline de route (partie "restante" en violet)
-  if (props.route.length > 1) {
-    // Ombre de la route complète (gris clair)
-    L.polyline(props.route as LatLngExpression[], {
-      color: '#E5E7EB',
-      weight: 6,
-      opacity: 1,
-    }).addTo(mapInstance)
+  // Marqueur livreur — placé immédiatement si une dernière position connue est disponible
+  // (last-known au chargement, D-05). Sinon il est créé au premier rider-moved.
+  if (props.riderPos) {
+    placeRider(props.riderPos)
+  }
+}
 
-    // Route violette en pointillés par-dessus
-    L.polyline(props.route as LatLngExpression[], {
-      color: '#7C3AED',
-      weight: 4,
-      opacity: 0.9,
-      dashArray: '10, 6',
-    }).addTo(mapInstance)
+// ─── Glide du marqueur livreur vers une position live ───────────────────────
+// Interpole la position courante vers la nouvelle via requestAnimationFrame pour
+// éviter le « téléport » entre deux fixes GPS (D-06/TRACK-06). Coordonnées TOUJOURS
+// nommées via L.latLng(lat,lng) — jamais un tableau [lat,lng] (D-12/Pitfall D).
+let glideFrame: number | null = null
 
-    // Marqueur livreur au départ (positionné mais immobile)
-    riderMarker = L.marker(props.route[0]!, { icon: createRiderIcon(L) })
+function placeRider(pos: RiderPos) {
+  if (!leaflet || !mapInstance) return
+  const L = leaflet
+  const target = L.latLng(pos.lat, pos.lng)
+
+  if (!riderMarker) {
+    riderMarker = L.marker(target, { icon: createRiderIcon(L) })
       .addTo(mapInstance)
       .bindPopup('<strong>Livreur EzTech</strong><br>En route vers vous ⚡')
+    recenter(target)
+    return
+  }
+
+  // glide depuis la position actuelle vers la cible
+  if (glideFrame !== null) cancelAnimationFrame(glideFrame)
+  const start = riderMarker.getLatLng()
+  const startAt = performance.now()
+  const DURATION = 900 // ms — assez doux pour des fixes de 3–5s
+
+  const step = (now: number) => {
+    const k = Math.min(1, (now - startAt) / DURATION)
+    const lat = start.lat + (target.lat - start.lat) * k
+    const lng = start.lng + (target.lng - start.lng) * k
+    riderMarker?.setLatLng(L.latLng(lat, lng))
+    if (k < 1) {
+      glideFrame = requestAnimationFrame(step)
+    } else {
+      glideFrame = null
+      recenter(target)
+    }
+  }
+  glideFrame = requestAnimationFrame(step)
+}
+
+function recenter(target: LatLng) {
+  if (!mapInstance) return
+  if (props.autoCenter) {
+    mapInstance.panTo(target, { animate: true, duration: 0.5 })
   }
 }
 
-// Démarre l'animation du livreur — appelé depuis le parent quand l'étape "En route" est atteinte
-function startAnimation() {
-  if (!props.animateRider || props.route.length < 2) return
-  if (animInterval) return // déjà en cours
-
-  let stepIdx = 0
-
-  // ETA countdown
-  if (props.initialEta > 0) {
-    const perStep = Math.floor(props.initialEta / props.route.length)
-    etaInterval = setInterval(() => {
-      etaSeconds.value = Math.max(0, etaSeconds.value - perStep)
-    }, 2500)
-  }
-
-  animInterval = setInterval(async () => {
-    stepIdx = (stepIdx + 1) % props.route.length
-    const newPos = props.route[stepIdx] as LatLngExpression
-
-    if (riderMarker) {
-      riderMarker.setLatLng(newPos)
-    }
-
-    if (mapInstance) {
-      if (props.autoCenter) {
-        mapInstance.flyTo(newPos, mapInstance.getZoom(), {
-          animate: true,
-          duration: 0.8,
-        })
-      } else {
-        mapInstance.panTo(newPos, { animate: true, duration: 0.5 })
-      }
-    }
-
-    emit('rider-moved', props.route[stepIdx]!, stepIdx)
-
-    if (stepIdx === props.route.length - 1) {
-      emit('delivery-complete')
-      // reset both interval refs to null so a future startAnimation() can run again
-      if (animInterval) { clearInterval(animInterval); animInterval = null }
-      if (etaInterval) {
-        clearInterval(etaInterval)
-        etaInterval = null
-        etaSeconds.value = 0
-      }
-    }
-  }, 2500)
-}
-
-defineExpose({ startAnimation })
+// Drive the marker from the reactive live position pushed by the parent
+watch(() => props.riderPos, (pos) => {
+  if (pos) placeRider(pos)
+})
 
 onMounted(initMap)
 
 onUnmounted(() => {
-  if (animInterval) clearInterval(animInterval)
-  if (etaInterval) clearInterval(etaInterval)
+  if (glideFrame !== null) cancelAnimationFrame(glideFrame)
   if (mapInstance) mapInstance.remove()
 })
 </script>
@@ -283,18 +253,6 @@ onUnmounted(() => {
   <div class="relative w-full" :style="{ height: props.height }">
     <!-- Carte -->
     <div ref="mapContainer" class="w-full h-full rounded-xl overflow-hidden z-0" />
-
-    <!-- Badge ETA superposé (si ETA actif) -->
-    <div
-      v-if="props.initialEta > 0"
-      class="absolute top-3 left-3 z-[400] pointer-events-none"
-    >
-      <div class="flex items-center gap-2 rounded-xl bg-white/95 backdrop-blur-sm border border-neutral-200 px-3 py-2 shadow-md">
-        <span class="w-2 h-2 rounded-full bg-success animate-pulse" />
-        <span class="text-[11px] font-semibold text-text-muted uppercase tracking-wide">ETA</span>
-        <span class="text-sm font-bold text-text-primary tabular-nums">{{ etaDisplay }}</span>
-      </div>
-    </div>
 
     <!-- Légende -->
     <div class="absolute bottom-3 left-3 z-[400] pointer-events-none">
