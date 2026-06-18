@@ -10,6 +10,8 @@ import { notify, notifyOnlineRiders } from '../lib/notifications.js';
 import { computeLineTotal, computeOrderTotals } from '../lib/pricing.js';
 import { pointInAnyZone } from '../lib/zones.js';
 import { getStripe } from '../lib/stripe.js';
+import { getIO } from '../lib/socket.js';
+import { orderRoom } from '../socket/rooms.js';
 
 export const ordersRouter = Router();
 
@@ -333,6 +335,14 @@ ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req,
       });
       return updated;
     });
+    // broadcast the transition to the per-order room (D-15). getIO() throws before the socket layer
+    // is initialised (e.g. in HTTP-only tests) — swallow so the HTTP path is never coupled to it,
+    // mirroring the notify().catch(()=>{}) idiom below. Emit on every transition (cheap, future-proof).
+    try {
+      getIO().to(orderRoom(orderId)).emit('order-status', { orderId, status: order.status });
+    } catch {
+      // socket layer not initialised — realtime is best-effort, the HTTP response is authoritative
+    }
     if (order.status === 'delivered') {
       // awaited so the notification is durable by the time we respond, but errors are swallowed
       await notify(riderId, 'earning_credited', 'Livraison complétée', `Commande ${order.reference} : ${Number(order.riderFee).toFixed(2)} € crédités`).catch(() => {});
