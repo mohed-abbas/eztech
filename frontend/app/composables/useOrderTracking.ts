@@ -1,3 +1,4 @@
+import { getCurrentInstance } from 'vue'
 import type { BackendOrderStatus } from '~/lib/orderStatus'
 
 // ─── Live order-tracking composable (TRACK-01 / TRACK-04 / TRACK-07, Pitfall A) ──
@@ -84,12 +85,16 @@ export function useOrderTracking(orderId: string, liveOrder?: TrackedOrder | nul
     off('error', onError as (...args: never[]) => void)
   }
 
-  // wire up on mount, tear down on unmount (client-only; SSR has no socket)
-  onMounted(() => {
-    if (!import.meta.client) return
-    subscribe()
-  })
-  onBeforeUnmount(cleanup)
+  // wire up on mount, tear down on unmount (client-only; SSR has no socket).
+  // Only register the lifecycle hooks when called inside a component setup — keeps the
+  // composable directly testable (and warning-free) outside a component instance.
+  if (getCurrentInstance()) {
+    onMounted(() => {
+      if (!import.meta.client) return
+      subscribe()
+    })
+    onBeforeUnmount(cleanup)
+  }
 
   return {
     riderPos,
