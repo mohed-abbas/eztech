@@ -22,9 +22,10 @@ import type { prisma as Prisma } from '../src/lib/prisma.js';
 // signAccessToken / prisma are imported lazily inside main() AFTER the --help check, so `--help`
 // works even with an incomplete .env (signAccessToken transitively validates the zod env, ADR-007).
 
-// Paris delivery route: warehouse (Bercy-ish) -> Eiffel Tower area. Lifted from the old
-// pages/orders/[id].vue ROUTE polyline (named [lat, lng] pairs) before Plan 04 deletes them.
-const ROUTE: ReadonlyArray<readonly [number, number]> = [
+// Fallback Paris route (warehouse Bercy-ish -> Eiffel area) used only when the order has no
+// pickup/dropoff coordinates. Normally the route is built from the order's own pickup -> dropoff
+// so the marker visibly heads toward the Destination pin (see buildRoute).
+const FALLBACK_ROUTE: ReadonlyArray<readonly [number, number]> = [
   [48.8447, 2.3799],
   [48.8461, 2.3712],
   [48.848, 2.364],
@@ -36,6 +37,25 @@ const ROUTE: ReadonlyArray<readonly [number, number]> = [
   [48.8575, 2.311],
   [48.8584, 2.2945],
 ];
+
+// Number of interpolated waypoints between pickup and dropoff.
+const ROUTE_STEPS = 12;
+
+// Linear interpolation of [lat, lng] waypoints from pickup to dropoff so the rider tracks toward the
+// order's actual destination. Not road-accurate (no routing API — that's deferred TRACK-F1); a
+// straight glide is enough to demo the live pipeline heading to the Destination pin.
+function buildRoute(
+  pickup: readonly [number, number],
+  dropoff: readonly [number, number],
+  steps = ROUTE_STEPS,
+): ReadonlyArray<readonly [number, number]> {
+  const [aLat, aLng] = pickup;
+  const [bLat, bLng] = dropoff;
+  return Array.from({ length: steps + 1 }, (_unused, i) => {
+    const t = i / steps;
+    return [aLat + (bLat - aLat) * t, aLng + (bLng - aLng) * t] as const;
+  });
+}
 
 // Emit cadence: 3-5s (server throttle floor is >=1/s, Plan 03 — so every fix passes).
 const MIN_INTERVAL_MS = 3000;
@@ -52,23 +72,39 @@ function nextDelay(): number {
   return MIN_INTERVAL_MS + Math.random() * (MAX_INTERVAL_MS - MIN_INTERVAL_MS);
 }
 
-async function resolveRiderId(
+interface ResolvedOrder {
+  riderId: string;
+  route: ReadonlyArray<readonly [number, number]>;
+}
+
+async function resolveOrder(
   prisma: typeof Prisma,
   orderId: string,
-  override?: string,
-): Promise<string> {
-  if (override) return override;
+  riderOverride?: string,
+): Promise<ResolvedOrder> {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    select: { riderId: true },
+    select: { riderId: true, pickupLat: true, pickupLng: true, dropoffLat: true, dropoffLng: true },
   });
   if (!order) throw new Error(`order ${orderId} not found`);
-  if (!order.riderId) {
+
+  const riderId = riderOverride ?? order.riderId ?? undefined;
+  if (!riderId) {
     throw new Error(
       `order ${orderId} has no assigned rider — assign one (status rider_assigned/in_transit) before simulating`,
     );
   }
-  return order.riderId;
+
+  // Build the glide path from the order's own pickup -> dropoff when both are present; otherwise
+  // fall back to the canned Paris route.
+  const { pickupLat, pickupLng, dropoffLat, dropoffLng } = order;
+  const hasCoords =
+    pickupLat != null && pickupLng != null && dropoffLat != null && dropoffLng != null;
+  const route = hasCoords
+    ? buildRoute([pickupLat, pickupLng], [dropoffLat, dropoffLng])
+    : FALLBACK_ROUTE;
+
+  return { riderId, route };
 }
 
 async function main(): Promise<void> {
@@ -84,7 +120,8 @@ async function main(): Promise<void> {
         '  <orderId>  id of an assigned, in-transit order to stream positions for',
         '  [riderId]  optional override; defaults to the order\'s assigned rider',
         '',
-        'Emits rider:position along a Paris route every ~3-5s. Ctrl-C to stop.',
+        "Emits rider:position from the order's pickup toward its dropoff every ~3-5s, then idles",
+        'at the destination. Ctrl-C to stop.',
       ].join('\n'),
     );
     process.exit(orderId ? 0 : 1);
@@ -95,7 +132,7 @@ async function main(): Promise<void> {
   const { signAccessToken } = await import('../src/middleware/auth.js');
   const { prisma } = await import('../src/lib/prisma.js');
 
-  const riderId = await resolveRiderId(prisma, orderId, riderIdArg);
+  const { riderId, route } = await resolveOrder(prisma, orderId, riderIdArg);
   const token = signAccessToken({ sub: riderId, role: 'rider' });
 
   console.log(`[sim] connecting to ${SERVER_URL} as rider ${riderId} for order ${orderId}`);
@@ -109,18 +146,21 @@ async function main(): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | null = null;
 
   const emitNext = (): void => {
-    const [baseLat, baseLng] = ROUTE[step % ROUTE.length]!;
+    // Walk pickup -> dropoff, then clamp at the destination so the marker "arrives" and idles there
+    // (still emitting every 3-5s with a small wobble — keeps the timestamp live for the demo).
+    const idx = Math.min(step, route.length - 1);
+    const [baseLat, baseLng] = route[idx]!;
     const lat = baseLat + jitter();
     const lng = baseLng + jitter();
     const accuracy = 5 + Math.random() * 10;
 
     socket.emit('rider:position', { orderId, lat, lng, accuracy });
+    const arrived = idx === route.length - 1 ? ' (arrived)' : '';
     console.log(
-      `[sim] emit rider:position #${step} -> { lat: ${lat.toFixed(5)}, lng: ${lng.toFixed(5)}, accuracy: ${accuracy.toFixed(1)} }`,
+      `[sim] emit rider:position #${step}${arrived} -> { lat: ${lat.toFixed(5)}, lng: ${lng.toFixed(5)}, accuracy: ${accuracy.toFixed(1)} }`,
     );
 
     step += 1;
-    // loop the route so the demo can run indefinitely.
     timer = setTimeout(emitNext, nextDelay());
   };
 
