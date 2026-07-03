@@ -255,6 +255,37 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    async resetPassword(token: string, password: string): Promise<void> {
+      this.loading = true
+      try {
+        const { isMock } = useMock()
+
+        if (isMock.value) {
+          await new Promise(r => setTimeout(r, 800))
+          return
+        }
+
+        const config = useRuntimeConfig()
+        try {
+          await $fetch(`${config.public.apiUrl}/auth/reset-password`, {
+            method: 'POST',
+            body: { token, password },
+          })
+        }
+        catch (err) {
+          const code = (err as { data?: { error?: string }, response?: { _data?: { error?: string } } })?.data?.error
+            ?? (err as { response?: { _data?: { error?: string } } })?.response?._data?.error
+          if (code === 'invalid_or_expired_token') {
+            throw new Error('Ce lien de réinitialisation est invalide ou a expiré.')
+          }
+          throw err
+        }
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
     logout() {
       const { isMock } = useMock()
       // best-effort server-side revoke (don't block the UI on it)

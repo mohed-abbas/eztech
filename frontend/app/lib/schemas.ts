@@ -31,6 +31,15 @@ export const forgotPasswordSchema = z.object({
 })
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>
 
+export const resetPasswordSchema = z.object({
+  password: passwordField,
+  confirmPassword: z.string({ message: 'Please confirm your password.' }),
+}).refine(data => data.password === data.confirmPassword, {
+  message: 'Passwords do not match.',
+  path: ['confirmPassword'],
+})
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>
+
 const registerBase = z.object({
   name: z
     .string({ message: 'Name is required.' })
