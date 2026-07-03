@@ -10,6 +10,10 @@ export const RIDER_POSITION = 'rider:position' as const;
 export const RIDER_MOVED = 'rider-moved' as const;
 // server -> room: an order status change, emitted on the OrderEvent write (D-15).
 export const ORDER_STATUS = 'order-status' as const;
+// server -> user:<id> room: a new notification for the bell (Phase 6).
+export const USER_NOTIFICATION = 'notification:new' as const;
+// server -> riders:available room: a new order is available for pickup (Phase 6).
+export const ORDER_NEW = 'order:new' as const;
 
 // Grouped constant for ergonomic imports / exhaustive references.
 export const SOCKET_EVENTS = {
@@ -17,6 +21,8 @@ export const SOCKET_EVENTS = {
   RIDER_POSITION,
   RIDER_MOVED,
   ORDER_STATUS,
+  USER_NOTIFICATION,
+  ORDER_NEW,
 } as const;
 
 // ---- Payload contracts ----
