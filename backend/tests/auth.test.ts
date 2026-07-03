@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
 import { truncateAuthTables, testPrisma } from './helpers/db.js';
+import { issueResetToken, consumeResetToken } from '../src/lib/reset-token.js';
 
 const app = buildApp();
 
@@ -182,5 +183,34 @@ describe('GET /api/auth/me', () => {
     expect(res.status).toBe(200);
     const body = res.body as { user: Record<string, unknown> };
     expect(body.user).not.toHaveProperty('passwordHash');
+  });
+});
+
+describe('reset-token lib (single-use, expiring)', () => {
+  beforeEach(truncateAuthTables);
+
+  it('resets: consumeResetToken resolves a fresh token to the userId once, then null on reuse (single-use)', async () => {
+    const { user } = await registerAndLogin();
+    const raw = await issueResetToken(user.id as string);
+
+    const first = await consumeResetToken(raw);
+    expect(first).toBe(user.id);
+
+    const second = await consumeResetToken(raw);
+    expect(second).toBeNull();
+  });
+
+  it('resets: consumeResetToken returns null for an expired token', async () => {
+    const { user } = await registerAndLogin();
+    const raw = await issueResetToken(user.id as string);
+    await testPrisma.$executeRaw`UPDATE "PasswordResetToken" SET "expiresAt" = NOW() - INTERVAL '1 second'`;
+
+    const result = await consumeResetToken(raw);
+    expect(result).toBeNull();
+  });
+
+  it('resets: consumeResetToken returns null for an unknown token', async () => {
+    const result = await consumeResetToken('a'.repeat(64));
+    expect(result).toBeNull();
   });
 });
