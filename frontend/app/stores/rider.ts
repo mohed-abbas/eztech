@@ -417,9 +417,7 @@ export const useRiderStore = defineStore('rider', {
     // --- Notifications -------------------------------------------------------
 
     async fetchNotifications(onlyUnread = false) {
-      const { isMock } = useMock()
-      if (isMock.value) { this.notifications = []; this.unreadCount = 0; return }
-      const res = await this._api(`/rider/notifications${onlyUnread ? '?unread=true' : ''}`) as { notifications: RiderNotification[], unreadCount: number }
+      const res = await this._api(`/notifications${onlyUnread ? '?unread=true' : ''}`) as { notifications: RiderNotification[], unreadCount: number }
       this.notifications = res.notifications
       this.unreadCount = res.unreadCount
     },
@@ -432,10 +430,8 @@ export const useRiderStore = defineStore('rider', {
       const prevCount = this.unreadCount
       n.read = true
       this.unreadCount = Math.max(0, this.unreadCount - 1)
-      const { isMock } = useMock()
-      if (isMock.value) return
       try {
-        await this._api(`/rider/notifications/${id}/read`, { method: 'PATCH' })
+        await this._api(`/notifications/${id}/read`, { method: 'PATCH' })
       }
       catch (e) {
         // rollback so the UI stays in sync with the server
@@ -450,10 +446,8 @@ export const useRiderStore = defineStore('rider', {
       const prevCount = this.unreadCount
       this.notifications.forEach((n) => { n.read = true })
       this.unreadCount = 0
-      const { isMock } = useMock()
-      if (isMock.value) return
       try {
-        await this._api('/rider/notifications/read-all', { method: 'POST' })
+        await this._api('/notifications/read-all', { method: 'PATCH' })
       }
       catch (e) {
         // rollback every entry's prior state on failure
