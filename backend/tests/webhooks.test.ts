@@ -3,9 +3,16 @@ import request from 'supertest';
 import { buildApp } from '../src/app.js';
 import { truncateRiderTables, truncateCatalogTables, testPrisma } from './helpers/db.js';
 import { stripeMockFactory, resetStripeMock, stripeMockState, fakePaymentIntentSucceeded } from './helpers/stripeMock.js';
+import { sendEmail } from '../src/lib/resend.js';
 
 // Mock the Stripe SDK so the suite runs with no live keys.
 vi.mock('stripe', () => stripeMockFactory());
+// Spy on sendEmail so low-stock opt-out suppression is observable — the real implementation is
+// already inert in tests (RESEND_API_KEY unset), this just lets us assert call args.
+vi.mock('../src/lib/resend.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/lib/resend.js')>();
+  return { ...actual, sendEmail: vi.fn(async () => ({ skipped: true as const })) };
+});
 
 const app = buildApp();
 
@@ -64,8 +71,13 @@ function postHook() {
 describe('stripe webhook', () => {
   beforeEach(async () => {
     resetStripeMock();
+    vi.mocked(sendEmail).mockClear();
     await truncateRiderTables();
     await truncateCatalogTables();
+    // truncateRiderTables intentionally preserves role='admin' rows (the seed admin) — these
+    // test-created extra admins are NOT part of the seed, so they must be cleaned up explicitly
+    // or they'd survive (and unique-collide) across every subsequent run.
+    await testPrisma.user.deleteMany({ where: { email: { in: ['admin-b@eztech.fr', 'admin-c@eztech.fr'] } } });
   });
 
   it('rejects a bad signature with 400 and changes no order state', async () => {
@@ -100,5 +112,54 @@ describe('stripe webhook', () => {
     expect(second.status).toBe(200);
     const stockAfterSecond = await testPrisma.warehouseStock.findFirst({ where: { warehouseId, productId } });
     expect(stockAfterSecond?.quantity).toBe(3);
+  });
+
+  it('dispatches order_confirmed once — a webhook replay never duplicates it (T-06-11)', async () => {
+    const token = await customerToken();
+    const { orderId } = await seedOrder(token);
+    stripeMockState.nextEvent = fakePaymentIntentSucceeded(orderId);
+
+    const first = await postHook();
+    expect(first.status).toBe(200);
+    const rowsAfterFirst = await testPrisma.notification.findMany({ where: { orderId, event: 'order_confirmed' } });
+    expect(rowsAfterFirst).toHaveLength(1);
+
+    const second = await postHook();
+    expect(second.status).toBe(200);
+    const rowsAfterSecond = await testPrisma.notification.findMany({ where: { orderId, event: 'order_confirmed' } });
+    expect(rowsAfterSecond).toHaveLength(1);
+  });
+
+  it('low-stock threshold crossing emails non-opted-out admins and persists one row per admin with orderId=null (no P2002 drop)', async () => {
+    const token = await customerToken();
+    // seedOrder buys quantity=2 against a warehouse stocked with 5 — post-decrement quantity=3,
+    // crossing the default LOW_STOCK_THRESHOLD (<=3).
+    const { orderId } = await seedOrder(token);
+
+    // a second admin, NOT opted out — must receive both the row and the email
+    const adminB = await testPrisma.user.create({
+      data: { email: 'admin-b@eztech.fr', name: 'Admin B', passwordHash: 'x', role: 'admin', emailOptOut: false },
+    });
+    // a third admin, opted out — receives the row but the email must be suppressed (NOTIF-06)
+    await testPrisma.user.create({
+      data: { email: 'admin-c@eztech.fr', name: 'Admin C', passwordHash: 'x', role: 'admin', emailOptOut: true },
+    });
+
+    stripeMockState.nextEvent = fakePaymentIntentSucceeded(orderId);
+    const res = await postHook();
+    expect(res.status).toBe(200);
+
+    // every admin (seeded admin@eztech.fr + adminB + adminC) gets a persisted row — the
+    // orderId=null idempotency key never collides across admins/products (Pitfall 2)
+    const rows = await testPrisma.notification.findMany({ where: { event: 'low_stock' } });
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+    expect(rows.every((r) => r.orderId === null)).toBe(true);
+    const recipientIds = new Set(rows.map((r) => r.userId));
+    expect(recipientIds.has(adminB.id)).toBe(true);
+
+    // email suppressed for the opted-out admin, sent to the non-opted-out ones
+    const emailedAddresses = vi.mocked(sendEmail).mock.calls.map((call) => call[0]?.to);
+    expect(emailedAddresses).toContain('admin-b@eztech.fr');
+    expect(emailedAddresses).not.toContain('admin-c@eztech.fr');
   });
 });
