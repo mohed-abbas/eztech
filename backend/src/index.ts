@@ -7,6 +7,7 @@ import { env } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { initMongo, closeMongo } from './lib/mongo.js';
 import { initSocket } from './lib/socket.js';
+import { startReturnReminders, stopReturnReminders } from './jobs/return-reminders.js';
 
 const app = buildApp();
 
@@ -21,11 +22,14 @@ server.listen(env.PORT, () => {
 initMongo(env.MONGODB_URI).catch((e) => logger.error({ e }, 'mongo init failed — GPS disabled'));
 // Attach the realtime layer after the server is constructed (D-08). Never imported from instrument.ts.
 initSocket(server);
+// Return-reminder cron (NOTIF-03) — boots after the server is built, normal import graph.
+startReturnReminders();
 
 // graceful shutdown — give in-flight requests up to 10s to finish before forcing exit
 function shutdown(signal: NodeJS.Signals) {
   logger.info({ signal }, 'shutting down');
   server.close(async () => {
+    stopReturnReminders();
     await closeMongo();
     process.exit(0);
   });
