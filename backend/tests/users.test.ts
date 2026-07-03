@@ -112,3 +112,41 @@ describe('PATCH /api/users/:id', () => {
     expect((res.body as ErrorResponse).error).toBe('user_not_found');
   });
 });
+
+describe('PATCH /api/users/me/notifications', () => {
+  beforeEach(truncateAuthTables);
+
+  it('toggles emailOptOut for the caller and returns the sanitized user', async () => {
+    const { token } = await createCustomer();
+
+    const res = await request(app)
+      .patch('/api/users/me/notifications')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ emailOptOut: true });
+
+    expect(res.status).toBe(200);
+    const body = res.body as { user: { emailOptOut: boolean } & Record<string, unknown> };
+    expect(body.user.emailOptOut).toBe(true);
+    expect(body.user).not.toHaveProperty('passwordHash');
+  });
+
+  it('only mutates the caller\'s own row (owner-scoped)', async () => {
+    const { id: otherId, token: otherToken } = await createCustomer();
+    const other = await request(app)
+      .patch('/api/users/me/notifications')
+      .set('Authorization', `Bearer ${otherToken}`)
+      .send({ emailOptOut: true });
+    expect(other.status).toBe(200);
+
+    const adminToken = await getAdminToken();
+    const check = await request(app)
+      .get(`/api/users/${otherId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((check.body as { user: { emailOptOut: boolean } }).user.emailOptOut).toBe(true);
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app).patch('/api/users/me/notifications').send({ emailOptOut: true });
+    expect(res.status).toBe(401);
+  });
+});

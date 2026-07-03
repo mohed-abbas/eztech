@@ -10,3 +10,8 @@ export const PatchUserSchema = z.object({
 export const ReviewRiderApplicationSchema = z.object({
   status: z.enum(['pending', 'approved', 'rejected']),
 });
+
+// PATCH /api/users/me/notifications — owner-scoped global email opt-out toggle (NOTIF-07)
+export const NotificationPrefsSchema = z.object({
+  emailOptOut: z.boolean(),
+});
