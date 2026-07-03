@@ -242,6 +242,38 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
     expect(corsOrigin).toBeTruthy();
   });
 
+  it('own bell room membership, no cross-user leak', async () => {
+    // T-06-07: an authed socket joins user:<its own sub> and is never a member of another user's room.
+    const { customer, rider } = await seedAssignedOrder();
+    const customerSock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    await waitFor(customerSock, '__never__', 200).catch(() => undefined); // settle time for the async join
+
+    expect(roomMembers(io, `user:${customer.id}`)).toContain(customerSock.id);
+    expect(roomMembers(io, `user:${rider.id}`)).not.toContain(customerSock.id);
+  });
+
+  it('approved+online rider joins riders:available', async () => {
+    // T-06-08: role==='rider' && riderApplicationStatus==='approved' && riderOnline=true → joined.
+    const { rider } = await seedAssignedOrder();
+    await testPrisma.user.update({ where: { id: rider.id }, data: { riderOnline: true } });
+    const riderSock = await track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
+    await waitFor(riderSock, '__never__', 200).catch(() => undefined);
+
+    expect(roomMembers(io, 'riders:available')).toContain(riderSock.id);
+  });
+
+  it('unapproved/offline rider and non-rider do not join riders:available', async () => {
+    const { customer, rider } = await seedAssignedOrder();
+    // rider seeded approved but offline (riderOnline defaults false) — must NOT join.
+    const riderSock = await track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
+    // a non-rider (customer role) must never join riders:available either.
+    const customerSock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    await waitFor(riderSock, '__never__', 200).catch(() => undefined);
+
+    expect(roomMembers(io, 'riders:available')).not.toContain(riderSock.id);
+    expect(roomMembers(io, 'riders:available')).not.toContain(customerSock.id);
+  });
+
   it('throttle floor', async () => {
     // Pitfall H / D-06: 5 emits in <1s → at most 1 Mongo write + 1 broadcast.
     const { customer, rider, order } = await seedAssignedOrder();
