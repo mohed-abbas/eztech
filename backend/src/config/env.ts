@@ -21,6 +21,10 @@ const Env = z.object({
   // process.env.SENTRY_DSN directly (it is preloaded via --import, before this file runs), so this field
   // validates/documents the var rather than gating init. '' (compose's empty default) means "disabled".
   SENTRY_DSN: z.string().url().or(z.literal('')).optional(),
+  // Resend — optional, mirrors SENTRY_DSN: unset means email is inert (no send), keeping dev/CI/tests
+  // key-free. Set a real key only when live delivery is needed.
+  RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM: z.string().default('EzTech <no-reply@eztech.fr>'),
 });
 
 const parsed = Env.safeParse(process.env);
