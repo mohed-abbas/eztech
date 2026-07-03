@@ -287,7 +287,7 @@ describe('rider store — returns', () => {
 
 describe('rider store — notifications', () => {
   it('fetchNotifications stores list + unread count', async () => {
-    routeFetch({ '/rider/notifications': { notifications: [
+    routeFetch({ '/notifications': { notifications: [
       { id: 'n1', type: 'new_order', title: 'Nouvelle commande', body: '', read: false, createdAt: '2026-05-12T10:00:00Z' },
       { id: 'n2', type: 'earning_credited', title: 'Gain', body: '7€', read: true, createdAt: '2026-05-12T09:00:00Z' },
     ], unreadCount: 1 } })
@@ -298,18 +298,18 @@ describe('rider store — notifications', () => {
   })
 
   it('markNotificationRead flips the flag, decrements the counter and calls the API', async () => {
-    routeFetch({ '/rider/notifications/n1/read': {} })
+    routeFetch({ '/notifications/n1/read': {} })
     const store = useRiderStore()
     store.notifications = [{ id: 'n1', type: 'new_order', title: 't', body: '', read: false, createdAt: '2026-05-12T10:00:00Z' }]
     store.unreadCount = 1
     await store.markNotificationRead('n1')
     expect(store.notifications[0]!.read).toBe(true)
     expect(store.unreadCount).toBe(0)
-    expect(nuxtStubState.fetch).toHaveBeenCalledWith('http://api.test/api/rider/notifications/n1/read', expect.objectContaining({ method: 'PATCH' }))
+    expect(nuxtStubState.fetch).toHaveBeenCalledWith('http://api.test/api/notifications/n1/read', expect.objectContaining({ method: 'PATCH' }))
   })
 
   it('markAllNotificationsRead clears everything', async () => {
-    routeFetch({ '/rider/notifications/read-all': { updated: 2 } })
+    routeFetch({ '/notifications/read-all': { updated: 2 } })
     const store = useRiderStore()
     store.notifications = [
       { id: 'n1', type: 'new_order', title: 't', body: '', read: false, createdAt: '2026-05-12T10:00:00Z' },
