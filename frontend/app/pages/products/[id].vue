@@ -2,6 +2,7 @@
 const route = useRoute()
 const productId = route.params.id as string
 const cart = useCartStore()
+const { track } = useTracking()
 const added = ref(false)
 const quantity = ref(1)
 const activeImageIndex = ref(0)
@@ -32,6 +33,18 @@ watch(() => product.value?.stock, (stock) => {
 
 useHead({
   title: computed(() => product.value ? `${product.value.name} - EzTech` : 'Produit - EzTech'),
+})
+
+// Tunnel 1/4 — consultation d'une fiche produit.
+onMounted(() => {
+  const p = product.value
+  if (!p) return
+  track('view_product', {
+    product_id: p.id,
+    product_name: p.name,
+    category: p.categoryId,
+    price: Number(p.price),
+  })
 })
 
 const isOutOfStock = computed(() => product.value?.stock === 0)
@@ -88,6 +101,13 @@ function addToCart() {
     quantity: quantity.value,
     stock: p.stock,
     warehouseIds: p.warehouseIds ?? [],
+  })
+  // Tunnel 2/4 — ajout au panier.
+  track('add_to_cart', {
+    product_id: p.id,
+    product_name: p.name,
+    quantity: quantity.value,
+    price: Number(p.price),
   })
   added.value = true
   setTimeout(() => { added.value = false }, 2000)

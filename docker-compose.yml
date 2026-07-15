@@ -1,5 +1,7 @@
-# Development stack — postgres + backend + frontend, one `docker compose up` with hot reload.
-# This is for local dev only. Production Docker (multi-stage, nginx, CI/CD) is a later phase.
+# Stack complète — application (postgres + backend + frontend) et observabilité
+# (GlitchTip + Umami), démarrées ensemble par un seul `docker compose up`.
+#
+# Ports hôte : frontend 3000 · API 3001 · Umami 3002 · Postgres 5432 · Adminer 8080 · GlitchTip 8000
 services:
   postgres:
     image: postgres:16-alpine
@@ -91,6 +93,8 @@ services:
       NUXT_SENTRY_DSN: ${NUXT_SENTRY_DSN:-}
       NUXT_PUBLIC_UMAMI_HOST: ${NUXT_PUBLIC_UMAMI_HOST:-}
       NUXT_PUBLIC_UMAMI_WEBSITE_ID: ${NUXT_PUBLIC_UMAMI_WEBSITE_ID:-}
+      # panne de paiement simulée (démo GlitchTip) — 0 pour la désactiver
+      NUXT_PUBLIC_PAYMENT_FAIL_RATE: ${NUXT_PUBLIC_PAYMENT_FAIL_RATE:-0.33}
     ports:
       - "3000:3000"
     volumes:
@@ -100,9 +104,94 @@ services:
     depends_on:
       - backend
 
+  # ---- GlitchTip : centralisation des erreurs (compatible SDK Sentry) -----------------------------
+  glitchtip:
+    image: glitchtip/glitchtip:6
+    environment:
+      SERVER_ROLE: all_in_one # web + worker + migrations dans un seul conteneur
+      DATABASE_URL: postgresql://glitchtip:${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in eztech/.env}@glitchtip-postgres:5432/glitchtip
+      REDIS_URL: redis://glitchtip-valkey:6379/0
+      VALKEY_URL: redis://glitchtip-valkey:6379/0
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?set GLITCHTIP_SECRET_KEY in eztech/.env}
+      PORT: "8080"
+      GLITCHTIP_DOMAIN: http://localhost:${GLITCHTIP_PORT:-8000}
+      EMAIL_URL: consolemail:// # dev : les emails sont écrits dans les logs du conteneur
+      DEFAULT_FROM_EMAIL: telemetry@eztech.local
+      ENABLE_OPEN_USER_REGISTRATION: "True" # permet de créer le premier compte à la volée
+    ports:
+      - "${GLITCHTIP_PORT:-8000}:8080"
+    volumes:
+      - glitchtip_uploads:/code/uploads
+    depends_on:
+      glitchtip-postgres:
+        condition: service_healthy
+      glitchtip-valkey:
+        condition: service_started
+    restart: unless-stopped
+
+  # Base dédiée à GlitchTip — aucun port hôte, isolée de celle de l'application.
+  glitchtip-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in eztech/.env}
+      POSTGRES_DB: glitchtip
+    volumes:
+      - glitchtip_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # File de tâches de fond de GlitchTip (Valkey = fork de Redis, même protocole).
+  glitchtip-valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+
+  # ---- Umami : analytique web sans cookies --------------------------------------------------------
+  umami:
+    image: ghcr.io/umami-software/umami:postgresql-latest
+    environment:
+      DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:?set UMAMI_DB_PASSWORD in eztech/.env}@umami-postgres:5432/umami
+      DATABASE_TYPE: postgresql
+      APP_SECRET: ${UMAMI_APP_SECRET:?set UMAMI_APP_SECRET in eztech/.env}
+    ports:
+      - "${UMAMI_PORT:-3002}:3000"
+    depends_on:
+      umami-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    init: true
+    restart: unless-stopped
+
+  # Base dédiée à Umami — aucun port hôte, isolée de celle de l'application.
+  umami-postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD:?set UMAMI_DB_PASSWORD in eztech/.env}
+    volumes:
+      - umami_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   backend_node_modules:
   backend_uploads:
   frontend_node_modules:
   frontend_nuxt:
+  glitchtip_postgres_data:
+  glitchtip_uploads:
+  umami_postgres_data:
