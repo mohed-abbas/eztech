@@ -266,8 +266,8 @@ const isDev = computed(() => useMock || import.meta.dev)
       </p>
       <div class="space-y-1 text-caption text-text-muted">
         <p><span class="font-medium text-text-secondary">Customer:</span> marie@example.com / password123</p>
-        <p><span class="font-medium text-text-secondary">Rider:</span> lucas@example.com / password123</p>
-        <p><span class="font-medium text-text-secondary">Admin:</span> admin@eztech.fr / admin123</p>
+        <p><span class="font-medium text-text-secondary">Rider:</span> rider@eztech.fr / riderpass123</p>
+        <p><span class="font-medium text-text-secondary">Admin:</span> admin@eztech.fr / change-me</p>
       </div>
     </Card>
     </template>
