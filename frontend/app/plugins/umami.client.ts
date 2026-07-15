@@ -1,8 +1,10 @@
-// Umami web analytics — injected client-side from runtime config so it's switchable per
-// environment (the demo wires it via docker-compose.observability.yml). Inert unless a website
-// id is configured, so normal dev/CI loads no analytics script.
+// Umami — analytique web sans cookies, auto-hébergée. Le script est injecté côté navigateur depuis
+// la runtime config, donc désactivable par environnement. Inerte tant qu'aucun website id n'est
+// configuré : un dev ou une CI ne charge alors aucun script d'analytique.
 export default defineNuxtPlugin(() => {
   const { umamiHost, umamiWebsiteId } = useRuntimeConfig().public
+
+  useTracking().captureTrafficSource()
 
   if (!umamiWebsiteId) return
 

@@ -46,7 +46,9 @@ export default defineNuxtConfig({
       // browser-facing Sentry DSN — reaches GlitchTip via its host port (localhost:8000). Inert if empty.
       sentryDsn: process.env.NUXT_PUBLIC_SENTRY_DSN || '',
       umamiHost: process.env.NUXT_PUBLIC_UMAMI_HOST || '',
-      umamiWebsiteId: process.env.NUXT_PUBLIC_UMAMI_WEBSITE_ID || ''
+      umamiWebsiteId: process.env.NUXT_PUBLIC_UMAMI_WEBSITE_ID || '',
+      // Panne de paiement simulée (démo GlitchTip) : proportion de tentatives qui échouent. 0 = désactivé.
+      paymentFailRate: Number(process.env.NUXT_PUBLIC_PAYMENT_FAIL_RATE ?? 0.33)
     }
   }
 })
