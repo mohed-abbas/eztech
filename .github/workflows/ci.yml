@@ -25,16 +25,15 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eztech_test
-      JWT_SECRET: ci-jwt-secret-au-moins-32-caracteres-long
+      JWT_SECRET: dummy-ci-value-not-a-secret-0000000000
       LOG_LEVEL: silent
       STRIPE_SECRET_KEY: sk_test_dummy
       STRIPE_PUBLISHABLE_KEY: pk_test_dummy
       STRIPE_WEBHOOK_SECRET: whsec_dummy
-      ADMIN_EMAIL: admin@eztech.fr
-      ADMIN_PASSWORD: adminpass123
 
     defaults:
       run:

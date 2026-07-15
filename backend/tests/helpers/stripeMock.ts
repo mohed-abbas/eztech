@@ -44,16 +44,16 @@ export function fakePaymentIntentSucceeded(orderId: string, paymentIntentId = 'p
 export function stripeMockFactory() {
   class FakeStripe {
     paymentIntents = {
-      create: vi.fn(async (params: unknown) => {
+      create: vi.fn((params: unknown) => {
         stripeMockState.paymentIntentsCreate.push(params);
-        return { id: 'pi_test', client_secret: 'cs_test' };
+        return Promise.resolve({ id: 'pi_test', client_secret: 'cs_test' });
       }),
     };
 
     refunds = {
-      create: vi.fn(async (params: unknown) => {
+      create: vi.fn((params: unknown) => {
         stripeMockState.refundsCreate.push(params);
-        return { id: 're_test' };
+        return Promise.resolve({ id: 're_test' });
       }),
     };
 
