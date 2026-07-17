@@ -9,6 +9,7 @@ import {
   revokeRefreshToken, verifyRefreshToken,
 } from '../lib/refresh-token.js';
 import { issueResetToken, consumeResetToken } from '../lib/reset-token.js';
+import { setAuthCookies, clearAuthCookies, getCookie, REFRESH_COOKIE } from '../lib/cookies.js';
 import { sendEmail } from '../lib/resend.js';
 import { passwordResetEmail } from '../lib/email/templates.js';
 import {
@@ -73,7 +74,8 @@ authRouter.post('/register', async (req, res, next) => {
 
   const token = signAccessToken({ sub: user.id, role: user.role });
   const refreshToken = await generateRefreshToken(user.id);
-  res.status(201).json({ user: buildUserResponse(user), token, refreshToken });
+  const csrfToken = setAuthCookies(res, { token, refreshToken });
+  res.status(201).json({ user: buildUserResponse(user), token, refreshToken, csrfToken });
 });
 
 // POST /api/auth/login
@@ -95,15 +97,18 @@ authRouter.post('/login', async (req, res, next) => {
 
   const token = signAccessToken({ sub: user.id, role: user.role });
   const refreshToken = await generateRefreshToken(user.id);
-  res.json({ user: buildUserResponse(user), token, refreshToken });
+  const csrfToken = setAuthCookies(res, { token, refreshToken });
+  res.json({ user: buildUserResponse(user), token, refreshToken, csrfToken });
 });
 
 // POST /api/auth/refresh
 authRouter.post('/refresh', async (req, res, next) => {
-  const result = RefreshSchema.safeParse(req.body);
-  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+  // the refresh token comes from the httpOnly ez_refresh cookie (browser) or the request body
+  // (native clients / tests). Cookie wins so a browser can refresh with an empty body.
+  const bodyResult = RefreshSchema.safeParse(req.body);
+  const raw = getCookie(req, REFRESH_COOKIE) ?? (bodyResult.success ? bodyResult.data.refreshToken : undefined);
+  if (!raw) return next(new HttpError(401, 'invalid_refresh_token'));
 
-  const { refreshToken: raw } = result.data;
   const payload = await verifyRefreshToken(raw);
   if (!payload) return next(new HttpError(401, 'invalid_refresh_token'));
 
@@ -114,15 +119,17 @@ authRouter.post('/refresh', async (req, res, next) => {
   if (!newRefreshToken) return next(new HttpError(401, 'invalid_refresh_token'));
 
   const token = signAccessToken({ sub: user.id, role: user.role });
-  res.json({ token, refreshToken: newRefreshToken });
+  const csrfToken = setAuthCookies(res, { token, refreshToken: newRefreshToken });
+  res.json({ token, refreshToken: newRefreshToken, csrfToken });
 });
 
 // POST /api/auth/logout
-authRouter.post('/logout', async (req, res, next) => {
-  const result = LogoutSchema.safeParse(req.body);
-  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
-
-  await revokeRefreshToken(result.data.refreshToken);
+authRouter.post('/logout', async (req, res, _next) => {
+  // revoke whichever refresh token we can find (cookie or body) and always clear the cookies.
+  const bodyResult = LogoutSchema.safeParse(req.body);
+  const raw = getCookie(req, REFRESH_COOKIE) ?? (bodyResult.success ? bodyResult.data.refreshToken : undefined);
+  if (raw) await revokeRefreshToken(raw);
+  clearAuthCookies(res);
   res.status(204).send();
 });
 
