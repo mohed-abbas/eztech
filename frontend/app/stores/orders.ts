@@ -217,7 +217,8 @@ export const useOrdersStore = defineStore('orders', {
         // Hitting the backend directly here returns string totals (breaks stats.spent.toFixed)
         // and the unmapped order shape.
         const orders = await $fetch<Order[]>('/api/orders', {
-          headers: { Authorization: `Bearer ${auth.token}` },
+          credentials: 'include',
+          headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
         })
         this.orders = orders
       }
@@ -310,9 +311,14 @@ export const useOrdersStore = defineStore('orders', {
     }): Promise<{ orderId: string }> {
       const config = useRuntimeConfig()
       const auth = useAuthStore()
+      const csrf = useCookie('ez_csrf').value
       const res = await $fetch<{ order: { id: string } }>(`${config.public.apiUrl}/orders`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${auth.token}` },
+        credentials: 'include',
+        headers: {
+          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+          ...(csrf ? { 'x-csrf-token': csrf } : {}),
+        },
         body: { items: payload.items, dropoff: payload.dropoff },
       })
       return { orderId: res.order.id }

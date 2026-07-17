@@ -169,11 +169,16 @@ export default defineEventHandler(async (event): Promise<TrackingOrder> => {
     return mock
   }
 
-  // forward the caller's bearer token so the backend scopes the order to the owner/rider/admin
+  // forward the caller's session so the backend scopes the order to the owner/rider/admin —
+  // the Bearer header (native/tests) AND the httpOnly session cookie (browser/SSR, Phase 7).
+  const headers: Record<string, string> = {}
   const auth = getRequestHeader(event, 'authorization')
+  if (auth) headers.authorization = auth
+  const cookie = getRequestHeader(event, 'cookie')
+  if (cookie) headers.cookie = cookie
   try {
     const res = await $fetch<{ order: ApiOrder }>(`${config.apiUrl}/orders/${encodeURIComponent(id)}`, {
-      headers: auth ? { authorization: auth } : {},
+      headers,
     })
     return remap(res.order)
   }

@@ -187,9 +187,17 @@ export const useRiderStore = defineStore('rider', {
       const config = useRuntimeConfig()
       const auth = this._auth()
       const url = `${config.public.apiUrl}${path}`
+      const csrf = useCookie('ez_csrf').value
+      // send the httpOnly session cookie (credentials) + CSRF token; only attach a Bearer header
+      // when a token actually exists so an empty one never shadows the cookie (Phase 7).
       const call = () => $fetch(url, {
         ...opts,
-        headers: { Authorization: `Bearer ${auth.token ?? ''}`, ...(opts.headers as object ?? {}) },
+        credentials: 'include',
+        headers: {
+          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+          ...(csrf ? { 'x-csrf-token': csrf } : {}),
+          ...(opts.headers as object ?? {}),
+        },
       })
       try {
         return await call()

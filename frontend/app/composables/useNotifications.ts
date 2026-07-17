@@ -54,9 +54,17 @@ export function useNotifications() {
     const config = useRuntimeConfig()
     auth.hydrate()
     const url = `${config.public.apiUrl}${path}`
+    const csrf = useCookie('ez_csrf').value
+    // credentials:'include' sends the httpOnly session cookie (works with no in-memory token);
+    // the Bearer header still carries the header-path token; x-csrf-token guards unsafe methods (Phase 7).
     return await $fetch(url, {
       ...opts,
-      headers: { Authorization: `Bearer ${auth.token ?? ''}`, ...(opts.headers as object ?? {}) },
+      credentials: 'include',
+      headers: {
+        ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+        ...(csrf ? { 'x-csrf-token': csrf } : {}),
+        ...(opts.headers as object ?? {}),
+      },
     }) as T
   }
 

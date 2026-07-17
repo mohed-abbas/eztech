@@ -29,6 +29,9 @@ function ensureSocket(): Socket | null {
     // rely on socket.io-client's BUILT-IN reconnection — do NOT hand-roll backoff
     autoConnect: true,
     transports: ['websocket', 'polling'],
+    // withCredentials sends the httpOnly ez_access cookie on the handshake so a cookie-only session
+    // (no in-memory token) still authenticates; the auth.token path stays for header-based clients (Phase 7).
+    withCredentials: true,
     auth: { token: auth.token },
   })
 

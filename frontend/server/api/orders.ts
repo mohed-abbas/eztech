@@ -73,12 +73,17 @@ export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   if (config.public.useMock) return fromMock()
 
-  // forward the caller's bearer token so the backend scopes orders to the user
+  // forward the caller's session so the backend scopes orders to the user — the Bearer header
+  // (native/tests) AND the httpOnly session cookie (browser/SSR, Phase 7).
+  const headers: Record<string, string> = {}
   const auth = getRequestHeader(event, 'authorization')
+  if (auth) headers.authorization = auth
+  const cookie = getRequestHeader(event, 'cookie')
+  if (cookie) headers.cookie = cookie
 
   try {
     const res = await $fetch<{ orders: ApiOrder[] }>(`${config.apiUrl}/orders`, {
-      headers: auth ? { authorization: auth } : {},
+      headers,
     })
     return res.orders.map(remap)
   }

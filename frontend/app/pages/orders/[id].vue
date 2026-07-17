@@ -19,9 +19,13 @@ useHead({ title: computed(() => `Commande #${orderId.value} - EzTech`) })
 // mock Pinia store — so the status vocabulary matches the backend enum and no display
 // lookup ever throws. The auth token is forwarded so the backend scopes the order.
 const auth = useAuthStore()
+// useRequestFetch forwards the incoming request's cookies to the BFF on SSR (Phase 7), so a
+// cookie-only session authenticates during server render — no more "introuvable" on first paint.
+// The Authorization header still carries the header-path token when present (native/tests).
 const { data: order, pending, error } = await useFetch<TrackingOrder>(
   () => `/api/orders/${orderId.value}`,
   {
+    $fetch: useRequestFetch(),
     headers: computed(() => (auth.token ? { Authorization: `Bearer ${auth.token}` } : {})),
   },
 )
