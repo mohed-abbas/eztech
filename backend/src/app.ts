@@ -9,6 +9,7 @@ import { webhooksRouter } from './routes/webhooks.js';
 import { uploadsRouter } from './routes/uploads.js';
 import { errorHandler } from './middleware/error.js';
 import { notFoundHandler } from './middleware/notFound.js';
+import { csrfProtection } from './middleware/csrf.js';
 
 export function buildApp() {
   const app = express();
@@ -51,6 +52,11 @@ export function buildApp() {
       },
     }),
   );
+
+  // CSRF guard runs after body parsing, before the API router. Cookie-authenticated unsafe
+  // requests must carry a matching x-csrf-token (double-submit). The Stripe webhook is mounted
+  // above (before express.json) and carries no session cookie, so it is unaffected.
+  app.use('/api', csrfProtection);
 
   app.use('/api', apiRouter);
 
