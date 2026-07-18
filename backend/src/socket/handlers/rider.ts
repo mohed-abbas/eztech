@@ -1,10 +1,11 @@
-import type { Socket } from 'socket.io';
+import type { AppSocket } from '../auth.js';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
 import { getMongo } from '../../lib/mongo.js';
 import { ensureMongo } from './mongo-ready.js';
 import { getIO } from '../../lib/socket.js';
 import { orderRoom } from '../rooms.js';
+import { RIDER_MOVED } from '../events.js';
 import { logger } from '../../lib/logger.js';
 
 // rider:position handler (D-06/D-12/D-14, Pattern 5, TRACK-01/03).
@@ -34,7 +35,7 @@ interface RiderPositionDoc {
   at: Date;
 }
 
-export function registerRiderHandler(socket: Socket): void {
+export function registerRiderHandler(socket: AppSocket): void {
   socket.on('rider:position', async (payload: unknown) => {
     const user = socket.data.user;
     if (!user || user.role !== 'rider') return;
@@ -81,7 +82,7 @@ export function registerRiderHandler(socket: Socket): void {
         );
 
       // broadcast ONLY after the write succeeds — named {lat,lng} (D-12), never a bare array.
-      getIO().to(orderRoom(orderId)).emit('rider-moved', { lat, lng, at: at.toISOString() });
+      getIO().to(orderRoom(orderId)).emit(RIDER_MOVED, { lat, lng, at: at.toISOString() });
     } catch (err) {
       // Mongo down / write failed → do NOT emit (Pitfall F). HTTP path is unaffected (D-14).
       logger.error({ err }, 'rider:position persist failed — broadcast suppressed');

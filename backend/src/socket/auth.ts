@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import type { Socket, ExtendedError } from 'socket.io';
+import type { DefaultEventsMap, ExtendedError, Socket } from 'socket.io';
 import { verifyAccessToken } from '../middleware/auth.js';
 import { ACCESS_COOKIE, parseCookieHeader } from '../lib/cookies.js';
 
@@ -8,14 +8,24 @@ import { ACCESS_COOKIE, parseCookieHeader } from '../lib/cookies.js';
 // A valid token's {sub,role} is stored on socket.data.user; an exp-based timeout force-disconnects
 // the socket at token expiry so a long-lived connection cannot outlive its access token.
 
-// Augment Socket.io's per-socket data bag with the authenticated user.
-declare module 'socket.io' {
-  interface SocketData {
-    user?: { sub: string; role: string };
-  }
+// The authenticated user this middleware attaches to socket.data.
+export interface AuthenticatedUser {
+  sub: string;
+  role: string;
 }
 
-export function socketAuth(socket: Socket, next: (err?: ExtendedError) => void): void {
+// Socket.io's per-socket `data` bag is a plain generic type parameter (default `any`) on Socket<>
+// — unlike Express's Request, there is no exported `SocketData` interface for `declare module
+// 'socket.io'` to merge into, so that pattern silently no-ops. Every handler that reads
+// socket.data.user must instead thread this shape through the Socket<> generic via this shared
+// alias (D-11).
+export interface AppSocketData {
+  user?: AuthenticatedUser;
+}
+
+export type AppSocket = Socket<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, AppSocketData>;
+
+export function socketAuth(socket: AppSocket, next: (err?: ExtendedError) => void): void {
   // cross-origin/native clients pass the token in handshake.auth; same-origin browsers rely on the
   // httpOnly ez_access cookie sent with the handshake request (Phase 7).
   const authToken = socket.handshake.auth['token'] as unknown;

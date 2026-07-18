@@ -1,4 +1,4 @@
-import type { Socket } from 'socket.io';
+import type { AppSocket } from '../auth.js';
 import { prisma } from '../../lib/prisma.js';
 import { getMongo } from '../../lib/mongo.js';
 import { ensureMongo } from './mongo-ready.js';
@@ -20,7 +20,7 @@ interface RiderPositionDoc {
   at: Date | string;
 }
 
-export function registerOrderHandler(socket: Socket): void {
+export function registerOrderHandler(socket: AppSocket): void {
   socket.on('subscribe:order', async (payload: unknown) => {
     try {
       // opaque-string guard: pull a string id, reject anything else (never an object/operator).
@@ -49,7 +49,7 @@ export function registerOrderHandler(socket: Socket): void {
         return;
       }
 
-      socket.join(orderRoom(orderId));
+      void socket.join(orderRoom(orderId));
 
       // last-known position from Mongo → immediate rider-moved (named fields, D-12). If Mongo is
       // unavailable the join still succeeds; the map simply stays blank until the first live fix.
@@ -62,7 +62,7 @@ export function registerOrderHandler(socket: Socket): void {
         if (doc) {
           const [lng, lat] = doc.location.coordinates;
           const at = doc.at instanceof Date ? doc.at.toISOString() : String(doc.at);
-          socket.emit('rider-moved', { lat, lng, at });
+          socket.emit(RIDER_MOVED, { lat, lng, at });
         }
       } catch (err) {
         logger.error({ err }, 'subscribe:order last-known lookup failed');
