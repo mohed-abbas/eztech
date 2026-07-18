@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { BackendOrderStatus } from '~/lib/orderStatus'
-import type { TrackingOrder } from '~/server/api/orders/[id].get'
+// '~~' (not '~') resolves to the frontend project root — '~' points at app/, which has no
+// server/ subtree — so this is the only alias that reaches the Nitro route's exported type.
+import type { TrackingOrder } from '~~/server/api/orders/[id].get'
 
 const route = useRoute()
 
@@ -25,8 +27,15 @@ const auth = useAuthStore()
 const { data: order, pending, error } = await useFetch<TrackingOrder>(
   () => `/api/orders/${orderId.value}`,
   {
-    $fetch: useRequestFetch(),
-    headers: computed(() => (auth.token ? { Authorization: `Bearer ${auth.token}` } : {})),
+    // useRequestFetch() is typed as `H3Event$Fetch | typeof $fetch`; useFetch's `$fetch` option only
+    // accepts the latter half of that union — the two are runtime-identical (ofetch instances), so
+    // this narrows a real type-only mismatch rather than papering over a behavioral difference.
+    $fetch: useRequestFetch() as typeof globalThis.$fetch,
+    headers: computed<Record<string, string>>(() => {
+      const headers: Record<string, string> = {}
+      if (auth.token) headers.Authorization = `Bearer ${auth.token}`
+      return headers
+    }),
   },
 )
 

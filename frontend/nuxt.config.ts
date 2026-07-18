@@ -23,6 +23,11 @@ export default defineNuxtConfig({
   },
   sourcemap: { client: 'hidden' },
   vite: {
+    // @ts-expect-error — vite is deduped to a single 7.3.1 install (verified via `npm ls vite --all`),
+    // but @tailwindcss/vite's `Plugin<any>[]` return type and Nuxt's `PluginOption` resolve to
+    // structurally-diverging `rollup`/`vite` type identities (vite's own PluginContextMeta.viteVersion
+    // augmentation isn't visible from both sides) — a known Vite 7 + Nitro type-checking quirk, not a
+    // real dependency mismatch. No override/resolution can fix a version skew that doesn't exist.
     plugins: [tailwindcss()]
   },
   shadcn: {
