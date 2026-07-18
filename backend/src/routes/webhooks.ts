@@ -31,8 +31,10 @@ webhooksRouter.post('/', async (req, res, next) => {
   let event: Stripe.Event;
   try {
     const stripe = await getStripe();
-    // req.body is a Buffer here (express.raw) — required for signature verification (Pitfall 1)
-    event = stripe.webhooks.constructEvent(req.body, sig as string, env.STRIPE_WEBHOOK_SECRET);
+    // req.body is a Buffer here (express.raw) — required for signature verification (Pitfall 1).
+    // Express types req.body as `any`; the cast documents the invariant express.raw() guarantees
+    // for this route instead of passing an `any` straight into the Stripe SDK.
+    event = stripe.webhooks.constructEvent(req.body as Buffer, sig as string, env.STRIPE_WEBHOOK_SECRET);
   } catch {
     // a forged/invalid signature changes NO state; 400 so Stripe surfaces the failure (D-09)
     return res.status(400).send('invalid signature');

@@ -74,6 +74,8 @@ export function startReturnReminders(): void {
 }
 
 export function stopReturnReminders(): void {
-  task?.stop();
+  // ScheduledTask#stop() is typed void | Promise<void> depending on the underlying scheduler —
+  // fire-and-forget on shutdown, same as before, just made explicit for no-floating-promises.
+  void task?.stop();
   task = null;
 }

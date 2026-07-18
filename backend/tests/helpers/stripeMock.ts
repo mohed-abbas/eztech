@@ -44,14 +44,16 @@ export function fakePaymentIntentSucceeded(orderId: string, paymentIntentId = 'p
 export function stripeMockFactory() {
   class FakeStripe {
     paymentIntents = {
-      create: vi.fn(async (params: unknown) => {
+      // no await needed — callers always `await` this call, and `await` on a plain value resolves
+      // immediately, so a sync return keeps the real SDK's Promise-returning call shape for callers.
+      create: vi.fn((params: unknown) => {
         stripeMockState.paymentIntentsCreate.push(params);
         return { id: 'pi_test', client_secret: 'cs_test' };
       }),
     };
 
     refunds = {
-      create: vi.fn(async (params: unknown) => {
+      create: vi.fn((params: unknown) => {
         stripeMockState.refundsCreate.push(params);
         return { id: 're_test' };
       }),

@@ -28,10 +28,15 @@ startReturnReminders();
 // graceful shutdown — give in-flight requests up to 10s to finish before forcing exit
 function shutdown(signal: NodeJS.Signals) {
   logger.info({ signal }, 'shutting down');
-  server.close(async () => {
-    stopReturnReminders();
-    await closeMongo();
-    process.exit(0);
+  server.close(() => {
+    // server.close() expects a sync (err?: Error) => void callback — the async shutdown work runs
+    // in a detached IIFE instead of making the callback itself async (which would return a Promise
+    // where http.Server expects void).
+    void (async () => {
+      stopReturnReminders();
+      await closeMongo();
+      process.exit(0);
+    })();
   });
   setTimeout(() => process.exit(1), 10_000).unref();
 }

@@ -10,13 +10,23 @@ export const notificationsRouter = Router();
 
 const DEFAULT_PAGE_SIZE = 20;
 
+// express's req.query values are `string | ParsedQs | (string | ParsedQs)[] | undefined` — only the
+// plain-string shape is a valid page/limit value, so a non-string (e.g. ?page[]=1) falls back rather
+// than being passed through String() (which would stringify an object/array as '[object Object]').
+function queryString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
 // GET /api/notifications?page=&limit=&unread= — newest first, paginated, plus unreadCount.
 notificationsRouter.get('/', requireAuth, async (req, res, next) => {
   try {
     const userId = req.user!.sub;
     const onlyUnread = req.query['unread'] === 'true';
-    const page = Math.max(1, Number.parseInt(String(req.query['page'] ?? '1'), 10) || 1);
-    const limit = Math.min(100, Math.max(1, Number.parseInt(String(req.query['limit'] ?? String(DEFAULT_PAGE_SIZE)), 10) || DEFAULT_PAGE_SIZE));
+    const page = Math.max(1, Number.parseInt(queryString(req.query['page'], '1'), 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(queryString(req.query['limit'], String(DEFAULT_PAGE_SIZE)), 10) || DEFAULT_PAGE_SIZE),
+    );
 
     const [notifications, unreadCount] = await Promise.all([
       prisma.notification.findMany({

@@ -13,7 +13,6 @@ const TTL_SECONDS = 86400;
 
 declare global {
   // reuse a single client across hot-reloads in dev; one per process in prod
-  // eslint-disable-next-line no-var
   var __mongo: MongoClient | undefined;
 }
 

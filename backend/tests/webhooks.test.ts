@@ -4,14 +4,17 @@ import { buildApp } from '../src/app.js';
 import { truncateRiderTables, truncateCatalogTables, testPrisma } from './helpers/db.js';
 import { stripeMockFactory, resetStripeMock, stripeMockState, fakePaymentIntentSucceeded } from './helpers/stripeMock.js';
 import { sendEmail } from '../src/lib/resend.js';
+import type * as ResendModule from '../src/lib/resend.js';
 
 // Mock the Stripe SDK so the suite runs with no live keys.
 vi.mock('stripe', () => stripeMockFactory());
 // Spy on sendEmail so low-stock opt-out suppression is observable — the real implementation is
 // already inert in tests (RESEND_API_KEY unset), this just lets us assert call args.
 vi.mock('../src/lib/resend.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/lib/resend.js')>();
-  return { ...actual, sendEmail: vi.fn(async () => ({ skipped: true as const })) };
+  const actual = await importOriginal<typeof ResendModule>();
+  // no await needed — callers always `await` this call, and `await` on a plain value resolves
+  // immediately, so a sync return keeps the real function's Promise-returning call shape.
+  return { ...actual, sendEmail: vi.fn(() => ({ skipped: true as const })) };
 });
 
 const app = buildApp();

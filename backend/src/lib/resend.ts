@@ -21,5 +21,5 @@ export async function sendEmail(opts: {
     text: opts.text,
   });
   if (error) return { error }; // SDK returns {data,error} -- it does NOT throw on API errors
-  return { id: data!.id };
+  return { id: data.id };
 }

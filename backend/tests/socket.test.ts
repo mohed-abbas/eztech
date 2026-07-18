@@ -27,7 +27,7 @@ let io: IOServer;
 let port: number;
 const openSockets: ClientSocket[] = [];
 
-async function track(socket: ClientSocket): Promise<ClientSocket> {
+function track(socket: ClientSocket): ClientSocket {
   openSockets.push(socket);
   return socket;
 }
@@ -70,7 +70,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (io) io.close();
+  if (io) await io.close();
   if (httpServer) await new Promise<void>((r) => httpServer.close(() => r()));
 });
 
@@ -88,8 +88,8 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
   it('broadcast reaches second client', async () => {
     // TRACK-01: rider:position broadcasts to a subscribed second client as {lat,lng}.
     const { customer, rider, order } = await seedAssignedOrder();
-    const customerSock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
-    const riderSock = await track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
+    const customerSock = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    const riderSock = track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
 
     customerSock.emit('subscribe:order', { orderId: order.id });
     await waitFor(customerSock, 'rider-moved').catch(() => undefined); // initial last-known (may be empty)
@@ -107,7 +107,7 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
     const intruder = await testPrisma.user.create({
       data: { email: `intruder-${Date.now()}-${Math.random()}@example.com`, passwordHash: 'x', name: 'X', role: 'customer' },
     });
-    const sock = await track(await connectWith(mintToken({ sub: intruder.id, role: 'customer' }), port));
+    const sock = track(await connectWith(mintToken({ sub: intruder.id, role: 'customer' }), port));
 
     const err = waitFor<{ code: string }>(sock, 'error');
     sock.emit('subscribe:order', { orderId: order.id });
@@ -128,7 +128,7 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
         riderApplicationStatus: 'approved',
       },
     });
-    const sock = await track(await connectWith(mintToken({ sub: otherRider.id, role: 'rider' }), port));
+    const sock = track(await connectWith(mintToken({ sub: otherRider.id, role: 'rider' }), port));
 
     sock.emit('rider:position', { orderId: order.id, lat: PARIS.lat, lng: PARIS.lng, accuracy: 5 });
     await new Promise((r) => setTimeout(r, 300));
@@ -147,7 +147,7 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
       accuracy: 5,
       at: new Date(),
     });
-    const sock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    const sock = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
 
     const moved = waitFor<{ lat: number; lng: number }>(sock, 'rider-moved');
     sock.emit('subscribe:order', { orderId: order.id });
@@ -160,14 +160,14 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
     await expect(connectWith('garbage-token', port)).rejects.toBeTruthy();
 
     const { customer } = await seedAssignedOrder();
-    const good = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    const good = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
     expect(good.connected).toBe(true);
   });
 
   it('exp disconnect', async () => {
     // Pitfall B: a token expiring ~1s triggers a server-side disconnect on the long-lived socket.
     const { customer } = await seedAssignedOrder();
-    const sock = await track(
+    const sock = track(
       await connectWith(mintToken({ sub: customer.id, role: 'customer' }, { expiresIn: '1s' }), port),
     );
     await waitFor(sock, 'disconnect', 3000);
@@ -177,8 +177,8 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
   it('paris round-trip', async () => {
     // Pitfall D: insert Paris [lng,lat] = [2.3522,48.8566]; emitted payload is {lat:48.8566,lng:2.3522}.
     const { customer, rider, order } = await seedAssignedOrder();
-    const customerSock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
-    const riderSock = await track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
+    const customerSock = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    const riderSock = track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
 
     customerSock.emit('subscribe:order', { orderId: order.id });
     const moved = waitFor<{ lat: number; lng: number }>(customerSock, 'rider-moved');
@@ -212,8 +212,8 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
   it('no emit on mongo failure', async () => {
     // Pitfall F / D-14: if the Mongo write throws, no order-status/rider-moved emit; Postgres unaffected.
     const { customer, rider, order } = await seedAssignedOrder();
-    const customerSock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
-    const riderSock = await track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
+    const customerSock = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    const riderSock = track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
     customerSock.emit('subscribe:order', { orderId: order.id });
     await waitFor(customerSock, 'rider-moved').catch(() => undefined);
 
@@ -234,7 +234,7 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
     expect(res.status).toBe(200);
   });
 
-  it('socket cors origins', async () => {
+  it('socket cors origins', () => {
     // Pitfall G / D-13: the Server's cors.origin comes from CORS_ORIGIN, never '*'.
     // @ts-expect-error engine.opts is untyped on the Server instance
     const corsOrigin = io.engine?.opts?.cors?.origin ?? (io as unknown as { _opts?: { cors?: { origin?: unknown } } })._opts?.cors?.origin;
@@ -245,7 +245,7 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
   it('own bell room membership, no cross-user leak', async () => {
     // T-06-07: an authed socket joins user:<its own sub> and is never a member of another user's room.
     const { customer, rider } = await seedAssignedOrder();
-    const customerSock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    const customerSock = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
     await waitFor(customerSock, '__never__', 200).catch(() => undefined); // settle time for the async join
 
     expect(roomMembers(io, `user:${customer.id}`)).toContain(customerSock.id);
@@ -256,7 +256,7 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
     // T-06-08: role==='rider' && riderApplicationStatus==='approved' && riderOnline=true → joined.
     const { rider } = await seedAssignedOrder();
     await testPrisma.user.update({ where: { id: rider.id }, data: { riderOnline: true } });
-    const riderSock = await track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
+    const riderSock = track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
     await waitFor(riderSock, '__never__', 200).catch(() => undefined);
 
     expect(roomMembers(io, 'riders:available')).toContain(riderSock.id);
@@ -265,9 +265,9 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
   it('unapproved/offline rider and non-rider do not join riders:available', async () => {
     const { customer, rider } = await seedAssignedOrder();
     // rider seeded approved but offline (riderOnline defaults false) — must NOT join.
-    const riderSock = await track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
+    const riderSock = track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
     // a non-rider (customer role) must never join riders:available either.
-    const customerSock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    const customerSock = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
     await waitFor(riderSock, '__never__', 200).catch(() => undefined);
 
     expect(roomMembers(io, 'riders:available')).not.toContain(riderSock.id);
@@ -277,8 +277,8 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
   it('throttle floor', async () => {
     // Pitfall H / D-06: 5 emits in <1s → at most 1 Mongo write + 1 broadcast.
     const { customer, rider, order } = await seedAssignedOrder();
-    const customerSock = await track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
-    const riderSock = await track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
+    const customerSock = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+    const riderSock = track(await connectWith(mintToken({ sub: rider.id, role: 'rider' }), port));
     customerSock.emit('subscribe:order', { orderId: order.id });
     await waitFor(customerSock, 'rider-moved').catch(() => undefined);
 
