@@ -10,6 +10,11 @@ export const authLimiter = rateLimit({
   max: 50, // generous ceiling — nginx enforces the real per-minute rate
   standardHeaders: true,
   legacyHeaders: false,
+  // The vitest suite reuses a single buildApp() instance across dozens of /api/auth/* calls per
+  // test file (e.g. tests/auth.test.ts's registerAndLogin helper), which would trip this window
+  // long before nginx ever would in production. Disabled only under NODE_ENV=test; every other
+  // environment (dev, staging, prod) keeps the backstop active.
+  skip: () => process.env['NODE_ENV'] === 'test',
   handler: (_req, res) => {
     res.status(429).json({ error: 'too_many_requests' });
   },
