@@ -23,15 +23,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl \
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
-# --omit=dev alone still installs `typescript` here: @prisma/client declares it as an OPTIONAL
-# peerDependency, and since it's also a root devDependency npm marks it "devOptional" in the
-# lockfile and installs it anyway to satisfy the peer, even under --omit=dev. Add --omit=optional
-# --omit=peer so no devDependency leaks into the runtime layer (verified: DEPLOY-01 proof).
-RUN npm ci --omit=dev --omit=optional --omit=peer
-# npm ci --omit=dev does NOT regenerate the Prisma client (no postinstall script) — copy the
-# already-generated client + query engine binary from the stage that ran `prisma generate`.
+# A plain `npm ci --omit=dev --omit=optional --omit=peer` is not enough here: deploy.sh (see
+# 08-VPS-CONTRACT.md) runs `docker compose run --rm --no-deps --entrypoint "npx prisma migrate
+# deploy" backend-<slot>` against this EXACT image before the new slot starts, so the `prisma`
+# CLI — itself a devDependency — has to stay, along with its full transitive graph (@prisma/config,
+# effect, etc). Rather than chase that graph by hand, copy the already-fully-resolved `deps`
+# node_modules wholesale, then delete only the specific devDependency packages we don't want in
+# the runtime layer, keeping `prisma` as the one deliberate exception.
+COPY --from=deps /app/node_modules ./node_modules
+# npm ci --omit=dev does NOT regenerate the Prisma client (no postinstall script) — the client's
+# generated output already lives under these two paths in the copied tree; re-stated explicitly
+# so a `deps` stage change that stops producing them fails the build loudly instead of silently.
 COPY --from=deps /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=deps /app/node_modules/@prisma ./node_modules/@prisma
+RUN rm -rf \
+  node_modules/@eslint node_modules/eslint node_modules/@types \
+  node_modules/typescript node_modules/typescript-eslint node_modules/prettier \
+  node_modules/tsx node_modules/mongodb-memory-server node_modules/pino-pretty \
+  node_modules/socket.io-client node_modules/supertest node_modules/vitest \
+  node_modules/.bin/eslint node_modules/.bin/prettier node_modules/.bin/tsx \
+  node_modules/.bin/tsc node_modules/.bin/tsserver node_modules/.bin/vitest
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma
 RUN useradd --system --uid 1001 nodeapp && chown -R nodeapp:nodeapp /app
