@@ -1,18 +1,6 @@
 {
   // https://nuxt.com/docs/guide/concepts/typescript
-  "files": [],
-  "references": [
-    {
-      "path": "./.nuxt/tsconfig.app.json"
-    },
-    {
-      "path": "./.nuxt/tsconfig.server.json"
-    },
-    {
-      "path": "./.nuxt/tsconfig.shared.json"
-    },
-    {
-      "path": "./.nuxt/tsconfig.node.json"
-    }
-  ]
+  // extends form (not project references) — nuxi typecheck runs vue-tsc --noEmit
+  // instead of the broken -b build mode (nuxt/nuxt#34212)
+  "extends": "./.nuxt/tsconfig.json"
 }
