@@ -50,7 +50,7 @@ beforeEach(() => {
 })
 
 describe('rider store — real API', () => {
-  it('fetchProfile sends a bearer token and stores the profile', async () => {
+  it('fetchProfile sends cookie credentials + CSRF header (and a bearer token when one is held)', async () => {
     routeFetch({ '/rider/profile': { profile: { id: 'rider-1', name: 'Lucas', email: 'l@test.io', phone: '0601', role: 'rider', vehicleType: 'scooter', licenseNumber: 'L1', insuranceNumber: 'I1', applicationStatus: 'approved', online: false, totalDeliveries: 3, createdAt: '2026-01-01' } } })
     const store = useRiderStore()
     await store.fetchProfile()
@@ -58,10 +58,24 @@ describe('rider store — real API', () => {
     expect(nuxtStubState.auth.hydrate).toHaveBeenCalled()
     expect(nuxtStubState.fetch).toHaveBeenCalledWith(
       'http://api.test/api/rider/profile',
-      expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-token' }) }),
+      expect.objectContaining({
+        credentials: 'include',
+        headers: expect.objectContaining({ Authorization: 'Bearer test-token', 'x-csrf-token': 'test-csrf' }),
+      }),
     )
     expect(store.profile?.name).toBe('Lucas')
     expect(store.profile?.totalDeliveries).toBe(3)
+  })
+
+  it('fetchProfile omits the Authorization header when no bearer token is held (cookie-only session)', async () => {
+    nuxtStubState.auth.token = null
+    routeFetch({ '/rider/profile': { profile: { id: 'rider-1', name: 'Lucas', email: 'l@test.io', phone: '0601', role: 'rider', vehicleType: 'scooter', licenseNumber: 'L1', insuranceNumber: 'I1', applicationStatus: 'approved', online: false, totalDeliveries: 3, createdAt: '2026-01-01' } } })
+    const store = useRiderStore()
+    await store.fetchProfile()
+
+    const call = nuxtStubState.fetch.mock.calls[0]!
+    expect(call[1]).toMatchObject({ credentials: 'include', headers: { 'x-csrf-token': 'test-csrf' } })
+    expect((call[1] as { headers: Record<string, unknown> }).headers).not.toHaveProperty('Authorization')
   })
 
   it('fetchProfile records an error message on failure', async () => {
