@@ -9,7 +9,11 @@ let _server: MongoMemoryServer | null = null;
 let _client: MongoClient | null = null;
 
 // Started in tests/globalSetup.ts; the helper guards against a missing URI like db.ts does.
+// When MONGODB_URI is already set (CI service container), this is a no-op that returns
+// the existing URI — mongodb-memory-server never starts.
 export async function startTestMongo(): Promise<string> {
+  const preset = process.env['MONGODB_URI'];
+  if (preset) return preset;
   if (_server) return _server.getUri();
   _server = await MongoMemoryServer.create();
   const uri = _server.getUri();

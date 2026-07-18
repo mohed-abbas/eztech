@@ -26,9 +26,14 @@ function persistMongoUri(uri: string) {
 
 // vitest globalSetup — runs once before the entire suite in the main process
 export async function setup() {
-  // start the in-memory test MongoDB and make its URI resolvable in the worker
-  const mongoUri = await startTestMongo();
-  persistMongoUri(mongoUri);
+  // CI supplies MONGODB_URI pointing at a service container — skip mongodb-memory-server
+  // entirely in that case and leave the pre-set URI in place. Local dev (no MONGODB_URI)
+  // still starts the in-memory server and persists its URI for the forked worker.
+  const startedInMemory = !process.env['MONGODB_URI'];
+  if (startedInMemory) {
+    const mongoUri = await startTestMongo();
+    persistMongoUri(mongoUri);
+  }
 
   // apply any pending migrations to test DB (non-destructive), then seed admin
   execSync('npx prisma migrate deploy', {
@@ -47,8 +52,10 @@ export async function setup() {
     stdio: 'inherit',
   });
 
-  // teardown — stop the in-memory MongoDB after the suite completes
+  // teardown — only stop the in-memory MongoDB if this process actually started it
   return async () => {
-    await stopTestMongo();
+    if (startedInMemory) {
+      await stopTestMongo();
+    }
   };
 }
