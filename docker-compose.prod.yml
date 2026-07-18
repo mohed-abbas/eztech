@@ -32,6 +32,11 @@ x-backend-base: &backend-base
     STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:?set STRIPE_PUBLISHABLE_KEY in .env.production}
     STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?set STRIPE_WEBHOOK_SECRET in .env.production}
     DELIVERY_FEE: ${DELIVERY_FEE:-4.99}
+    # consumed only by the idempotent admin seed (scripts/deploy.sh --seed, dist/seed/seed.js).
+    # Declared here so `docker compose run` inherits them from the sourced .env.production; set a
+    # strong ADMIN_PASSWORD there before the first --seed (the default is intentionally weak).
+    ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@eztech.fr}
+    ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
     SENTRY_DSN: ${SENTRY_DSN:-}
     RESEND_API_KEY: ${RESEND_API_KEY:-}
     RESEND_FROM: ${RESEND_FROM:-EzTech <no-reply@eztech.fr>}
