@@ -39,11 +39,21 @@ function getUri(): string {
 }
 
 // Lazy client bound to the test URI — used by tests to seed/assert riderPositions directly.
+// Self-healing: a failed connect() must NOT leave a poisoned client cached, or every remaining
+// test in the file instantly fails with MongoTopologyClosedError instead of retrying (this was the
+// root cause of a whole-suite cascade when the very first connection attempt hit a transient
+// hiccup). serverSelectionTimeoutMS bounds a bad connection to well under vitest's hook timeout
+// instead of hanging until the driver's default (~30s) and blowing through it.
 async function client(): Promise<MongoClient> {
-  if (!_client) {
-    _client = new MongoClient(getUri());
-    await _client.connect();
+  if (_client) return _client;
+  const candidate = new MongoClient(getUri(), { serverSelectionTimeoutMS: 5000 });
+  try {
+    await candidate.connect();
+  } catch (err) {
+    await candidate.close().catch(() => undefined);
+    throw err;
   }
+  _client = candidate;
   return _client;
 }
 
