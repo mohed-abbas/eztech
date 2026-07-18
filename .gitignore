@@ -23,3 +23,6 @@ logs
 .env
 .env.*
 !.env.example
+
+# Deploy state (blue-green slot, sha, lock, logs) — VPS-local, written by scripts/deploy.sh
+.deploy/
