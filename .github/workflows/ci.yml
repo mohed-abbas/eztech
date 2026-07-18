@@ -92,6 +92,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      # Install the host-side test runner BEFORE docker compose runs: the frontend service mounts a
+      # named volume at /app/node_modules, so docker (as root) would otherwise create a root-owned
+      # frontend/node_modules on the host that a later `npm ci` can't write into.
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
       - name: Write CI env files for docker compose
         run: |
           cat > .env <<'EOF'
@@ -134,10 +141,6 @@ jobs:
           echo "::error::backend never became healthy"
           docker compose logs
           exit 1
-      - name: Install frontend deps
-        run: cd frontend && npm ci
-      - name: Install Playwright browsers
-        run: cd frontend && npx playwright install --with-deps chromium
       - name: Run Playwright smoke test
         env:
           E2E_BASE_URL: http://localhost:3000
