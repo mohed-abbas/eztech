@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Stripe, StripeCardElement, StripeElements } from '@stripe/stripe-js'
 import { loadStripe } from '@stripe/stripe-js'
+import * as Sentry from '@sentry/nuxt'
 import type { Address } from '~/stores/auth'
 
 definePageMeta({ layout: 'default', middleware: 'auth' })
@@ -9,6 +10,7 @@ const cart = useCartStore()
 cart.hydrate()
 const { items, subtotal, deliveryFee, total, isEmpty } = storeToRefs(cart)
 const { clearCart, linePrice } = cart
+const { track, trafficSource } = useTracking()
 const auth = useAuthStore()
 const { user } = storeToRefs(auth)
 const { check: checkZone } = useServiceZone()
@@ -244,7 +246,18 @@ async function mountStripe() {
 }
 
 onMounted(() => {
-  if (!isEmpty.value) void mountStripe()
+  if (isEmpty.value) return
+  // Tunnel 3/4 — arrivée sur le formulaire de livraison/paiement.
+  track('checkout_start', {
+    items_count: cart.count,
+    cart_total: Number(total.value.toFixed(2)),
+  })
+  // Suivi de performance : temps de mise en place du module de paiement, composant clé de la page
+  // de validation de commande.
+  void Sentry.startSpan(
+    { name: 'checkout.payment_form.ready', op: 'ui.load' },
+    () => mountStripe(),
+  )
 })
 
 onBeforeUnmount(() => {
@@ -289,11 +302,22 @@ function createMockOrder() {
   return order.id
 }
 
+// Tunnel 4/4 — paiement réussi. Le montant part en propriété d'événement (panier moyen) avec
+// l'origine du trafic ; le panier est vidé juste après, d'où la mesure prise ici.
+function trackCheckoutSuccess() {
+  track('checkout_success', {
+    amount: Number(total.value.toFixed(2)),
+    items_count: cart.count,
+    traffic_source: trafficSource(),
+  })
+}
+
 function submitMockPayment() {
   paymentState.value = 'loading'
   setTimeout(() => {
     paymentState.value = 'success'
     const orderId = createMockOrder()
+    trackCheckoutSuccess()
     clearCart()
     setTimeout(() => navigateTo(`/orders/${orderId}`), 1200)
   }, 2000)
@@ -386,6 +410,7 @@ async function submitLivePayment() {
   // refetch so the new order is present on the list/detail rather than hidden behind a stale
   // hydrated=true, then redirect to the order.
   paymentState.value = 'success'
+  trackCheckoutSuccess()
   clearCart()
   void ordersStore.hydrate(true)
   setTimeout(() => navigateTo(`/orders/${orderId}`), 1200)
@@ -394,7 +419,13 @@ async function submitLivePayment() {
 function submitPayment() {
   if (!formComplete.value || paymentState.value === 'loading') return
   if (isMock.value) submitMockPayment()
-  else void submitLivePayment()
+  else {
+    // Suivi de performance : durée réelle du paiement (création de commande, PaymentIntent, Stripe).
+    void Sentry.startSpan(
+      { name: 'checkout.payment.submit', op: 'http.client' },
+      () => submitLivePayment(),
+    )
+  }
 }
 
 function retryPayment() {
