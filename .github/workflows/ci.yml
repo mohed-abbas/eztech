@@ -141,6 +141,27 @@ jobs:
           echo "::error::backend never became healthy"
           docker compose logs
           exit 1
+      - name: Wait for frontend ready and warm routes
+        run: |
+          # The frontend service runs the Nuxt DEV server, which compiles each route on first request.
+          # The backend-health wait above says nothing about the frontend, so poll /login until it
+          # serves, then warm every route the smoke test visits so their first in-test navigation
+          # doesn't pay the cold-compile cost (which otherwise blows Playwright's timeout).
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:3000/login; then
+              echo "frontend up"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "::error::frontend never became ready"
+              docker compose logs frontend
+              exit 1
+            fi
+            sleep 2
+          done
+          for path in /login /products /cart /checkout /profile; do
+            curl -sf -o /dev/null "http://localhost:3000$path" || true
+          done
       - name: Run Playwright smoke test
         env:
           E2E_BASE_URL: http://localhost:3000
