@@ -155,12 +155,11 @@ run_seed() {
     if [[ "${slot}" == "none" ]]; then
         error "No active slot to seed — deploy first"; exit 1
     fi
-    warn "Seeding requires the prisma/tsx toolchain in the runtime image."
-    warn "The current backend runtime image strips node_modules/tsx (see backend/Dockerfile)"
-    warn "— this will fail until that image keeps tsx the same way it keeps the prisma CLI."
     log "Seeding admin user on backend-${slot} (idempotent)..."
+    # The prod image strips tsx (see backend/Dockerfile); the admin seed is precompiled to
+    # dist/seed/seed.js during `npm run build` (tsconfig.seed.json) so it runs on plain node.
     docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
-        --entrypoint "npx tsx prisma/seed.ts" \
+        --entrypoint "node dist/seed/seed.js" \
         "backend-${slot}" 2>&1 | tee -a "${LOG_FILE}"
     success "Seed completed"
 }
