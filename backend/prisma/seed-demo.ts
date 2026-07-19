@@ -1,21 +1,42 @@
-// Demo data for the rider flow — run with: npm run seed:demo
-// Creates one approved rider (rider@eztech.fr / riderpass123), a handful of
-// pending delivery jobs, a scheduled return pickup, and a couple of notifications.
-import { PrismaClient, Prisma } from '@prisma/client';
+// Demo data for the showcase flow — run with: npm run seed:demo
+// Creates a small roster of customers and riders (mix of approved / pending so the
+// admin approval flow is demoable), a handful of pending delivery jobs, a scheduled
+// return pickup, and a couple of notifications.
+import { PrismaClient, Prisma, VehicleType, RiderApplicationStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
 
 const prisma = new PrismaClient();
 
-const RIDER_EMAIL = 'rider@eztech.fr';
 const RIDER_PASSWORD = 'riderpass123';
 
-// Demo customers — match the frontend's documented test accounts so login works against the live API.
+// Demo customers — password123. The first two match the frontend's documented test accounts.
 const CUSTOMERS = [
   { email: 'marie@example.com', name: 'Marie Dubois', phone: '+33 6 11 22 33 44' },
   { email: 'thomas@example.com', name: 'Thomas Bernard', phone: '+33 6 55 66 77 88' },
+  { email: 'sophie@example.com', name: 'Sophie Lefèvre', phone: '+33 6 24 68 13 57' },
 ];
 const CUSTOMER_PASSWORD = 'password123';
+
+// Demo riders — riderpass123. Two approved (can take jobs), one pending (shows the
+// admin approval flow), one per vehicle type.
+const RIDERS = [
+  {
+    email: 'rider@eztech.fr', name: 'Lucas Martin', phone: '+33 6 12 34 56 78',
+    vehicleType: VehicleType.scooter, licenseNumber: 'PARIS-2026-0042', insuranceNumber: 'AXA-77-998877',
+    status: RiderApplicationStatus.approved,
+  },
+  {
+    email: 'rider2@eztech.fr', name: 'Emma Petit', phone: '+33 6 98 76 54 32',
+    vehicleType: VehicleType.bicycle, licenseNumber: 'PARIS-2026-0088', insuranceNumber: 'MAIF-75-112233',
+    status: RiderApplicationStatus.approved,
+  },
+  {
+    email: 'rider3@eztech.fr', name: 'Hugo Moreau', phone: '+33 6 45 67 89 01',
+    vehicleType: VehicleType.car, licenseNumber: 'PARIS-2026-0129', insuranceNumber: 'GMF-92-445566',
+    status: RiderApplicationStatus.pending,
+  },
+];
 
 const SAMPLE_JOBS = [
   {
@@ -49,23 +70,28 @@ async function main() {
   }
   console.log(`demo customers: ${CUSTOMERS.map((c) => c.email).join(', ')} / ${CUSTOMER_PASSWORD}`);
 
-  const passwordHash = await bcrypt.hash(RIDER_PASSWORD, 12);
-  const rider = await prisma.user.upsert({
-    where: { email: RIDER_EMAIL },
-    update: { riderApplicationStatus: 'approved' },
-    create: {
-      email: RIDER_EMAIL,
-      passwordHash,
-      name: 'Lucas Martin',
-      phone: '+33 6 12 34 56 78',
-      role: 'rider',
-      vehicleType: 'scooter',
-      licenseNumber: 'PARIS-2026-0042',
-      insuranceNumber: 'AXA-77-998877',
-      riderApplicationStatus: 'approved',
-    },
-  });
-  console.log('demo rider:', RIDER_EMAIL, '/', RIDER_PASSWORD, `(id=${rider.id})`);
+  const riderHash = await bcrypt.hash(RIDER_PASSWORD, 12);
+  let primaryRider: { id: string } | null = null;
+  for (const r of RIDERS) {
+    const rider = await prisma.user.upsert({
+      where: { email: r.email },
+      update: { riderApplicationStatus: r.status },
+      create: {
+        email: r.email,
+        passwordHash: riderHash,
+        name: r.name,
+        phone: r.phone,
+        role: 'rider',
+        vehicleType: r.vehicleType,
+        licenseNumber: r.licenseNumber,
+        insuranceNumber: r.insuranceNumber,
+        riderApplicationStatus: r.status,
+      },
+    });
+    if (!primaryRider) primaryRider = rider;
+  }
+  const rider = primaryRider!;
+  console.log(`demo riders: ${RIDERS.map((r) => `${r.email} (${r.status})`).join(', ')} / ${RIDER_PASSWORD}`);
 
   const existingPending = await prisma.order.count({ where: { status: 'pending_assignment' } });
   if (existingPending >= SAMPLE_JOBS.length) {
