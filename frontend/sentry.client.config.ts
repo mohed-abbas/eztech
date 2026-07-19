@@ -19,8 +19,7 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: import.meta.env.MODE || 'development',
-    // 100 % : le volume est faible et la démo doit voir chaque mesure de performance.
-    tracesSampleRate: 1.0,
+    tracesSampleRate: 0.1,
     beforeBreadcrumb: scrubGeocodeUrl,
   })
 }

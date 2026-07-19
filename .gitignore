@@ -6,6 +6,10 @@
 .cache
 dist
 
+# Playwright e2e artifacts
+test-results
+playwright-report
+
 # Node dependencies
 node_modules
 
@@ -23,3 +27,6 @@ logs
 .env
 .env.*
 !.env.example
+
+# Deploy state (blue-green slot, sha, lock, logs) — VPS-local, written by scripts/deploy.sh
+.deploy/

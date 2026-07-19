@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
 import { truncateAuthTables, testPrisma } from './helpers/db.js';
+import { issueResetToken, consumeResetToken } from '../src/lib/reset-token.js';
 
 const app = buildApp();
 
@@ -182,5 +183,107 @@ describe('GET /api/auth/me', () => {
     expect(res.status).toBe(200);
     const body = res.body as { user: Record<string, unknown> };
     expect(body.user).not.toHaveProperty('passwordHash');
+  });
+});
+
+describe('reset-token lib (single-use, expiring)', () => {
+  beforeEach(truncateAuthTables);
+
+  it('resets: consumeResetToken resolves a fresh token to the userId once, then null on reuse (single-use)', async () => {
+    const { user } = await registerAndLogin();
+    const raw = await issueResetToken(user.id as string);
+
+    const first = await consumeResetToken(raw);
+    expect(first).toBe(user.id);
+
+    const second = await consumeResetToken(raw);
+    expect(second).toBeNull();
+  });
+
+  it('resets: consumeResetToken returns null for an expired token', async () => {
+    const { user } = await registerAndLogin();
+    const raw = await issueResetToken(user.id as string);
+    await testPrisma.$executeRaw`UPDATE "PasswordResetToken" SET "expiresAt" = NOW() - INTERVAL '1 second'`;
+
+    const result = await consumeResetToken(raw);
+    expect(result).toBeNull();
+  });
+
+  it('resets: consumeResetToken returns null for an unknown token', async () => {
+    const result = await consumeResetToken('a'.repeat(64));
+    expect(result).toBeNull();
+  });
+});
+
+describe('POST /api/auth/forgot-password', () => {
+  beforeEach(truncateAuthTables);
+
+  it('returns the identical response for an existing and a non-existing email (no enumeration)', async () => {
+    await request(app).post('/api/auth/register').send(VALID_USER);
+
+    const known = await request(app).post('/api/auth/forgot-password').send({ email: VALID_USER.email });
+    const unknown = await request(app).post('/api/auth/forgot-password').send({ email: 'nobody@nowhere.com' });
+
+    expect(known.status).toBe(200);
+    expect(unknown.status).toBe(200);
+    expect(known.body).toEqual(unknown.body);
+  });
+
+  it('issues a consumable reset token for a known email', async () => {
+    const { user } = await registerAndLogin();
+    await request(app).post('/api/auth/forgot-password').send({ email: VALID_USER.email });
+
+    const row = await testPrisma.passwordResetToken.findFirst({ where: { userId: user.id as string } });
+    expect(row).toBeTruthy();
+  });
+
+  it('returns 422 for a malformed email', async () => {
+    const res = await request(app).post('/api/auth/forgot-password').send({ email: 'not-an-email' });
+    expect(res.status).toBe(422);
+  });
+});
+
+describe('POST /api/auth/reset-password', () => {
+  beforeEach(truncateAuthTables);
+
+  it('resets the password with a valid token and allows login with the new password', async () => {
+    const { user } = await registerAndLogin();
+    const raw = await issueResetToken(user.id as string);
+
+    const res = await request(app).post('/api/auth/reset-password').send({ token: raw, password: 'newpassword456' });
+    expect(res.status).toBe(200);
+
+    const loginRes = await request(app).post('/api/auth/login').send({
+      email: VALID_USER.email, password: 'newpassword456',
+    });
+    expect(loginRes.status).toBe(200);
+
+    const oldLoginRes = await request(app).post('/api/auth/login').send({
+      email: VALID_USER.email, password: VALID_USER.password,
+    });
+    expect(oldLoginRes.status).toBe(401);
+  });
+
+  it('returns 400 for a reused token', async () => {
+    const { user } = await registerAndLogin();
+    const raw = await issueResetToken(user.id as string);
+
+    await request(app).post('/api/auth/reset-password').send({ token: raw, password: 'newpassword456' });
+    const res = await request(app).post('/api/auth/reset-password').send({ token: raw, password: 'anotherpassword789' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for an expired token', async () => {
+    const { user } = await registerAndLogin();
+    const raw = await issueResetToken(user.id as string);
+    await testPrisma.$executeRaw`UPDATE "PasswordResetToken" SET "expiresAt" = NOW() - INTERVAL '1 second'`;
+
+    const res = await request(app).post('/api/auth/reset-password').send({ token: raw, password: 'newpassword456' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 400 for an unknown token', async () => {
+    const res = await request(app).post('/api/auth/reset-password').send({ token: 'a'.repeat(64), password: 'newpassword456' });
+    expect(res.status).toBe(400);
   });
 });

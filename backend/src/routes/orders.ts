@@ -6,12 +6,33 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { CreateCommerceOrderSchema, CreateDeliveryJobSchema, UpdateOrderStatusSchema } from '../schemas/order.js';
 import { generateOrderReference, canRiderTransition } from '../lib/orders.js';
-import { notify, notifyOnlineRiders } from '../lib/notifications.js';
+import { notify, notifyOnlineRiders, dispatch } from '../lib/notifications.js';
+import { orderPickedUpEmail, orderDeliveredEmail } from '../lib/email/templates.js';
 import { computeLineTotal, computeOrderTotals } from '../lib/pricing.js';
 import { pointInAnyZone } from '../lib/zones.js';
 import { getStripe } from '../lib/stripe.js';
+import { getIO } from '../lib/socket.js';
+import { orderRoom } from '../socket/rooms.js';
 
 export const ordersRouter = Router();
+
+// base frontend origin for CTA links in transactional email — mirrors app.ts's CORS_ORIGIN
+// parsing (first entry is the primary frontend origin); no dedicated FRONTEND_URL env exists.
+const FRONTEND_ORIGIN = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000').split(',')[0]!.trim();
+
+// N-05: rental duration -> ms, per line-item durationUnit. `flat` contributes no duration
+// (excluded from the max); an all-flat order therefore computes no rentalEndsAt (Pitfall 1).
+const DURATION_MS: Record<string, number> = { hourly: 3_600_000, daily: 86_400_000, weekly: 604_800_000 };
+
+// rentalEndsAt = deliveredAt + max(perItem durationMs) across non-flat lines; null when every
+// line is flat-priced (RESEARCH §N-05 CONCLUSION). Never call with a null deliveredAt (Pitfall 1).
+function computeRentalEndsAt(deliveredAt: Date, items: { durationUnit: string; durationValue: number }[]): Date | null {
+  const durationsMs = items
+    .filter((item) => item.durationUnit !== 'flat')
+    .map((item) => item.durationValue * (DURATION_MS[item.durationUnit] ?? 0));
+  if (durationsMs.length === 0) return null;
+  return new Date(deliveredAt.getTime() + Math.max(...durationsMs));
+}
 
 // POST /api/orders — create an order (customer or admin). Two shapes share this entry point:
 //  • commerce (body carries items[]): server-priced, zone-gated, awaiting_payment, OUT of the
@@ -315,27 +336,92 @@ ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req,
     }
 
     const order = await prisma.$transaction(async (tx) => {
-      const current = await tx.order.findUnique({ where: { id: orderId } });
+      const current = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
       if (!current) throw new HttpError(404, 'order_not_found');
       if (current.riderId !== riderId) throw new HttpError(403, 'not_your_delivery');
       if (!canRiderTransition(current.status, nextStatus)) {
         throw new HttpError(409, 'invalid_transition', { from: current.status, to: nextStatus });
       }
+
+      // deliveredAt is set HERE, inside the txn — rentalEndsAt is only ever computed from this
+      // freshly-set value, never read before it exists (Pitfall 1).
+      const deliveredAt = nextStatus === 'delivered' ? new Date() : null;
+      const rentalEndsAt = deliveredAt ? computeRentalEndsAt(deliveredAt, current.items) : null;
+
       const updated = await tx.order.update({
         where: { id: orderId },
         data: {
           status: nextStatus,
-          ...(nextStatus === 'delivered' ? { deliveredAt: new Date() } : {}),
+          ...(deliveredAt ? { deliveredAt } : {}),
+          ...(nextStatus === 'delivered' ? { rentalEndsAt } : {}),
         },
       });
       await tx.orderEvent.create({
         data: { orderId, status: nextStatus, ...(note !== undefined ? { note } : {}) },
       });
+
+      // N-05: a mixed/timed order gets exactly one return_reminder row (sentAt=null, scheduledAt
+      // = rentalEndsAt - 2h); an all-flat order (rentalEndsAt=null) gets NO reminder row.
+      if (nextStatus === 'delivered' && rentalEndsAt && current.customerId) {
+        await tx.notification.create({
+          data: {
+            userId: current.customerId,
+            type: 'return_reminder',
+            event: 'return_reminder',
+            channel: 'in_app',
+            orderId,
+            title: 'Pensez à retourner votre location',
+            body: `La période de location de la commande ${current.reference} se termine le ${rentalEndsAt.toISOString()}.`,
+            scheduledAt: new Date(rentalEndsAt.getTime() - 2 * 3_600_000),
+          },
+        });
+      }
+
       return updated;
     });
+    // broadcast the transition to the per-order room (D-15). getIO() throws before the socket layer
+    // is initialised (e.g. in HTTP-only tests) — swallow so the HTTP path is never coupled to it,
+    // mirroring the notify().catch(()=>{}) idiom below. Emit on every transition (cheap, future-proof).
+    try {
+      getIO().to(orderRoom(orderId)).emit('order-status', { orderId, status: order.status });
+    } catch {
+      // socket layer not initialised — realtime is best-effort, the HTTP response is authoritative
+    }
     if (order.status === 'delivered') {
       // awaited so the notification is durable by the time we respond, but errors are swallowed
       await notify(riderId, 'earning_credited', 'Livraison complétée', `Commande ${order.reference} : ${Number(order.riderFee).toFixed(2)} € crédités`).catch(() => {});
+    }
+    // customer-facing lifecycle emails (NOTIF-01) — idempotent on (orderId,event,channel); a
+    // repeated transition never re-sends. Only commerce orders carry a customerId.
+    if (order.customerId && (order.status === 'picked_up' || order.status === 'delivered')) {
+      const orderUrl = `${FRONTEND_ORIGIN}/orders/${order.id}`;
+      if (order.status === 'picked_up') {
+        const { subject, html, text } = orderPickedUpEmail({ orderReference: order.reference, orderUrl });
+        await dispatch({
+          userId: order.customerId,
+          type: 'order_picked_up',
+          event: 'order_picked_up',
+          orderId: order.id,
+          title: 'Commande récupérée',
+          body: `Votre commande ${order.reference} a été récupérée et est en route.`,
+          email: { subject, html, text },
+          essential: true,
+          socketPush: true,
+        }).catch(() => {});
+      } else {
+        const { subject, html, text } = orderDeliveredEmail({ orderReference: order.reference, orderUrl });
+        await dispatch({
+          userId: order.customerId,
+          type: 'order_delivered',
+          event: 'order_delivered',
+          orderId: order.id,
+          title: 'Commande livrée',
+          body: `Votre commande ${order.reference} a été livrée.`,
+          email: { subject, html, text },
+          essential: true,
+          socketPush: true,
+        }).catch(() => {});
+      }
     }
     res.json({ order });
   } catch (err) {

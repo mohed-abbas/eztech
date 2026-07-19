@@ -1,15 +1,17 @@
 name: CI
 
 on:
-  push:
   pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NODE_VERSION: "22.12.0"
 
 jobs:
   backend:
-    name: Backend — lint, typecheck, tests
     runs-on: ubuntu-latest
-
-    # Base Postgres dédiée aux tests : les tests appliquent les migrations puis seedent cette base.
     services:
       postgres:
         image: postgres:16-alpine
@@ -17,59 +19,202 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: eztech_test
-        ports:
-          - 5432:5432
+        ports: ["5432:5432"]
         options: >-
-          --health-cmd "pg_isready -U postgres -d eztech_test"
+          --health-cmd pg_isready
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
-
-
-    env:
-      NODE_ENV: test
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eztech_test
-      JWT_SECRET: dummy-ci-value-not-a-secret-0000000000
-      LOG_LEVEL: silent
-      STRIPE_SECRET_KEY: sk_test_dummy
-      STRIPE_PUBLISHABLE_KEY: pk_test_dummy
-      STRIPE_WEBHOOK_SECRET: whsec_dummy
-
+      mongo:
+        image: mongo:8
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\")'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     defaults:
       run:
         working-directory: backend
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: backend/package-lock.json
-
       - run: npm ci
-      - run: npx prisma generate
       - run: npm run lint
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run build
+      - name: Run backend tests against service containers
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/eztech_test
+          MONGODB_URI: mongodb://localhost:27017/eztech_test
+          JWT_SECRET: ci-test-secret-minimum-32-characters-long
+          STRIPE_SECRET_KEY: sk_test_dummy
+          STRIPE_PUBLISHABLE_KEY: pk_test_dummy
+          STRIPE_WEBHOOK_SECRET: whsec_dummy
+        run: npm test
 
   frontend:
-    name: Frontend — tests
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: frontend
-
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - run: npm ci
+      - run: npm run lint
+      - run: npx nuxi typecheck
       - run: npm test
+      - run: npm run build
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke-build backend image (no push)
+        run: docker build -t eztech-backend:ci ./backend
+      - name: Smoke-build frontend image (no push)
+        run: docker build -t eztech-frontend:ci ./frontend
+
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # Install the host-side test runner BEFORE docker compose runs: the frontend service mounts a
+      # named volume at /app/node_modules, so docker (as root) would otherwise create a root-owned
+      # frontend/node_modules on the host that a later `npm ci` can't write into.
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
+      - name: Write CI env files for docker compose
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=eztech_dev
+          JWT_SECRET=ci-test-secret-minimum-32-characters-long
+          JWT_ACCESS_TTL=15m
+          JWT_REFRESH_TTL=30d
+          LOG_LEVEL=info
+          CORS_ORIGIN=http://localhost:3000
+          ADMIN_EMAIL=admin@eztech.fr
+          ADMIN_PASSWORD=change-me
+          SEED_CATALOG=true
+          SEED_DEMO=true
+          VITE_API_URL=http://localhost:3001/api
+          VITE_USE_MOCK=false
+          EOF
+          cat > backend/.env <<'EOF'
+          STRIPE_SECRET_KEY=sk_test_dummy
+          STRIPE_PUBLISHABLE_KEY=pk_test_dummy
+          STRIPE_WEBHOOK_SECRET=whsec_dummy
+          DELIVERY_FEE=4.99
+          EOF
+          cat > frontend/.env <<'EOF'
+          VITE_STRIPE_PUBLISHABLE_KEY=pk_test_dummy
+          NUXT_DELIVERY_FEE=4.99
+          EOF
+      - name: Boot full stack
+        run: docker compose up -d --build
+      - name: Wait for backend health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3001/api/health; then
+              echo "backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::backend never became healthy"
+          docker compose logs
+          exit 1
+      - name: Wait for frontend ready and warm routes
+        run: |
+          # The frontend service runs the Nuxt DEV server, which compiles each route on first request.
+          # The backend-health wait above says nothing about the frontend, so poll /login until it
+          # serves, then warm every route the smoke test visits so their first in-test navigation
+          # doesn't pay the cold-compile cost (which otherwise blows Playwright's timeout).
+          for i in $(seq 1 60); do
+            if curl -sf -o /dev/null http://localhost:3000/login; then
+              echo "frontend up"
+              break
+            fi
+            if [ "$i" -eq 60 ]; then
+              echo "::error::frontend never became ready"
+              docker compose logs frontend
+              exit 1
+            fi
+            sleep 2
+          done
+          for path in /login /products /cart /checkout /profile; do
+            curl -sf -o /dev/null "http://localhost:3000$path" || true
+          done
+      - name: Run Playwright smoke test
+        env:
+          E2E_BASE_URL: http://localhost:3000
+          E2E_EMAIL: marie@example.com
+          E2E_PASSWORD: password123
+        run: cd frontend && npx playwright test
+      - if: always()
+        name: Dump logs and tear down stack
+        run: docker compose logs && docker compose down -v
+
+  migration-safety:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Fail PR on destructive Prisma migration (ADR-016 D-08)
+        run: |
+          set -e
+          git fetch origin main
+          NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A origin/main...HEAD -- prisma/migrations | grep 'migration\.sql$' || true)
+          if [ -z "$NEW_MIGRATIONS" ]; then
+            echo "No new migrations in this PR."
+            exit 0
+          fi
+          FAIL=0
+          for f in $NEW_MIGRATIONS; do
+            echo "Checking $f"
+            # Strip SQL comment lines so header prose never self-triggers.
+            CLEAN=$(grep -v '^[[:space:]]*--' "$f" || true)
+
+            # Shape (1): column/table/index drop + rename.
+            if printf '%s' "$CLEAN" | grep -Eiq '(DROP TABLE|DROP COLUMN|DROP INDEX|RENAME (TO|COLUMN))'; then
+              echo "::error file=$f::Destructive statement (DROP/RENAME). Per ADR-016 expand/contract: add new -> dual-write/backfill -> remove old in a LATER deploy."
+              FAIL=1
+            fi
+
+            # Shape (3): type narrowing / SET NOT NULL on an existing column.
+            if printf '%s' "$CLEAN" | grep -Eiq 'ALTER COLUMN .* (SET NOT NULL|TYPE )'; then
+              echo "::error file=$f::Destructive ALTER COLUMN (SET NOT NULL / TYPE narrowing). Per ADR-016 expand/contract, split across two deploys."
+              FAIL=1
+            fi
+
+            # Shape (2): new required column with no default. Evaluated PER-STATEMENT
+            # (split on ';') so an additive `ADD COLUMN ... NOT NULL DEFAULT ...` passes
+            # while a bare `ADD COLUMN ... NOT NULL` (no DEFAULT anywhere in that statement)
+            # fails — a flat multiline grep would let an unrelated later DEFAULT mask it.
+            VIOLATION=$(printf '%s' "$CLEAN" | tr '\n' ' ' | awk 'BEGIN{RS=";"} /[Aa][Dd][Dd] [Cc][Oo][Ll][Uu][Mm][Nn]/ && /[Nn][Oo][Tt] [Nn][Uu][Ll][Ll]/ && !/[Dd][Ee][Ff][Aa][Uu][Ll][Tt]/ {print "VIOLATION:" $0}')
+            if [ -n "$VIOLATION" ]; then
+              echo "::error file=$f::ADD COLUMN NOT NULL without DEFAULT — a new required column breaks the still-serving colour during blue-green overlap. Ship it as ADD COLUMN ... NOT NULL DEFAULT <x> (or nullable + backfill), per ADR-016."
+              FAIL=1
+            fi
+          done
+          exit $FAIL

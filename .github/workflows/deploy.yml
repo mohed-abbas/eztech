@@ -1,0 +1,31 @@
+# Continuous deployment — runs only after the "CI" workflow finishes green on main.
+# Build happens on the VPS itself (scripts/deploy.sh does `git pull` + `docker compose build`);
+# this workflow does NOT build or push any image. See 08-VPS-CONTRACT.md.
+#
+# Required repository secrets:
+#   SSH_HOST    - VPS hostname/IP
+#   SSH_USER    - SSH user with access to DEPLOY_PATH
+#   SSH_KEY     - private key for SSH_USER (deploy-scoped, not a personal key)
+#   DEPLOY_PATH - absolute path to the eztech checkout on the VPS (e.g. /home/murx/apps/eztech)
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd ${{ secrets.DEPLOY_PATH }}
+            ./scripts/deploy.sh

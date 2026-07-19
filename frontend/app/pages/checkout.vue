@@ -416,18 +416,8 @@ async function submitLivePayment() {
   setTimeout(() => navigateTo(`/orders/${orderId}`), 1200)
 }
 
-// Panne volontaire (démo d'observabilité) : une tentative de paiement sur trois lève une TypeError
-// non capturée, pour vérifier qu'elle remonte bien dans GlitchTip avec sa stack trace. Le taux est
-function simulateGatewayFailure() {
-  const failRate = Number(runtimeConfig.public.paymentFailRate)
-  if (Math.random() >= failRate) return
-  const gateway = null as unknown as { charge: () => void }
-  gateway.charge()
-}
-
 function submitPayment() {
   if (!formComplete.value || paymentState.value === 'loading') return
-  simulateGatewayFailure()
   if (isMock.value) submitMockPayment()
   else {
     // Suivi de performance : durée réelle du paiement (création de commande, PaymentIntent, Stripe).

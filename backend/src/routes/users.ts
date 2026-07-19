@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
-import { PatchUserSchema, ReviewRiderApplicationSchema } from '../schemas/user.js';
+import { PatchUserSchema, ReviewRiderApplicationSchema, NotificationPrefsSchema } from '../schemas/user.js';
 
 export const usersRouter = Router();
 
@@ -12,6 +12,24 @@ function buildUserResponse(user: User) {
   const { passwordHash: _h, ...rest } = user;
   return rest;
 }
+
+// PATCH /api/users/me/notifications — owner-scoped email opt-out toggle (NOTIF-07, T-06-10).
+// Registered ABOVE /:id so 'me' is never captured as an :id param; keyed on req.user!.sub, never
+// req.params.id, so a caller can only ever toggle their own preference.
+usersRouter.patch('/me/notifications', requireAuth, async (req, res, next) => {
+  const result = NotificationPrefsSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  try {
+    const user = await prisma.user.update({
+      where: { id: req.user!.sub },
+      data: { emailOptOut: result.data.emailOptOut },
+    });
+    res.json({ user: buildUserResponse(user) });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /api/users — admin only; optional ?role= and ?applicationStatus= filters (rider onboarding queue)
 usersRouter.get('/', requireAuth, requireRole('admin'), async (req, res, next) => {

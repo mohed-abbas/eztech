@@ -3,6 +3,7 @@ import jwt, { type SignOptions } from 'jsonwebtoken';
 import { z } from 'zod';
 import { env } from '../config/env.js';
 import { HttpError } from './error.js';
+import { ACCESS_COOKIE, getCookie } from '../lib/cookies.js';
 
 const JwtPayloadSchema = z.object({
   sub: z.string().min(1),
@@ -26,10 +27,15 @@ export function verifyAccessToken(token: string): JwtPayload {
 }
 
 export const requireAuth: RequestHandler = (req, _res, next) => {
+  // Prefer a non-empty Authorization header (native/mobile clients, tests); otherwise fall back to
+  // the httpOnly ez_access cookie so SSR, the Nuxt BFF, and same-origin browser calls authenticate
+  // too (Phase 7). An empty "Bearer " must NOT shadow the cookie.
   const header = req.header('authorization');
-  if (!header?.startsWith('Bearer ')) return next(new HttpError(401, 'missing_token'));
+  const bearer = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  const token = bearer || getCookie(req, ACCESS_COOKIE);
+  if (!token) return next(new HttpError(401, 'missing_token'));
   try {
-    req.user = verifyAccessToken(header.slice('Bearer '.length));
+    req.user = verifyAccessToken(token);
     next();
   } catch {
     next(new HttpError(401, 'invalid_token'));

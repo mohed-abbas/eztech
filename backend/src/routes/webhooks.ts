@@ -3,9 +3,21 @@ import type Stripe from 'stripe';
 import { prisma } from '../lib/prisma.js';
 import { getStripe } from '../lib/stripe.js';
 import { env } from '../config/env.js';
-import { notifyOnlineRiders } from '../lib/notifications.js';
+import { notifyOnlineRiders, dispatch } from '../lib/notifications.js';
+import { orderConfirmedEmail, lowStockEmail } from '../lib/email/templates.js';
+import { getIO } from '../lib/socket.js';
+import { RIDERS_AVAILABLE } from '../socket/rooms.js';
+import { ORDER_NEW } from '../socket/events.js';
 
 export const webhooksRouter = Router();
+
+// base frontend origin for CTA links in transactional email — mirrors app.ts's CORS_ORIGIN
+// parsing (first entry is the primary frontend origin); no dedicated FRONTEND_URL env exists.
+const FRONTEND_ORIGIN = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000').split(',')[0]!.trim();
+
+// NOTIF-06: fire a low-stock admin alert once a warehouse decrement leaves this many units or
+// fewer. Small named constant, overridable via env (RESEARCH §Open Q2).
+const LOW_STOCK_THRESHOLD = Number(process.env['LOW_STOCK_THRESHOLD'] ?? 3);
 
 // POST /api/webhooks/stripe — the SOLE authority for flipping an order to paid.
 //
@@ -19,7 +31,9 @@ webhooksRouter.post('/', async (req, res, next) => {
   let event: Stripe.Event;
   try {
     const stripe = await getStripe();
-    // req.body is a Buffer here (express.raw) — required for signature verification (Pitfall 1)
+    // req.body is a Buffer here (express.raw) — required for signature verification (Pitfall 1).
+    // Express types req.body as `any`; the cast documents the invariant express.raw() guarantees
+    // for this route instead of passing an `any` straight into the Stripe SDK.
     event = stripe.webhooks.constructEvent(req.body as Buffer, sig as string, env.STRIPE_WEBHOOK_SECRET);
   } catch {
     // a forged/invalid signature changes NO state; 400 so Stripe surfaces the failure (D-09)
@@ -102,6 +116,9 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
   const warehouseId = order.warehouseId;
 
   let stockConflict = false;
+  // populated inside the txn on a successful decrement that crosses the low-stock threshold;
+  // only acted on AFTER the txn commits without conflict (a rolled-back txn discards these too).
+  const lowStockItems: { name: string; quantity: number }[] = [];
   try {
     await prisma.$transaction(async (tx) => {
       // re-read the gate inside the tx so two concurrent webhooks can't both decrement (TOCTOU)
@@ -118,6 +135,11 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
         if (r.count !== 1) {
           stockConflict = true;
           throw new Error('stock_conflict'); // unwinds the decrements done so far in this tx
+        }
+        // NOTIF-06: authoritative decrement point — check the post-decrement quantity here only.
+        const stock = await tx.warehouseStock.findFirst({ where: { warehouseId, productId: item.productId } });
+        if (stock && stock.quantity <= LOW_STOCK_THRESHOLD) {
+          lowStockItems.push({ name: item.name, quantity: stock.quantity });
         }
       }
 
@@ -150,6 +172,60 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
     return;
   }
 
-  // order is now paid and in the rider pool — fan a notification out to online riders
+  // customer-facing payment confirmation (NOTIF-01) — essential, idempotent on
+  // (orderId,event,channel); a webhook replay never reaches here (paid-guard above).
+  if (order.customerId) {
+    const orderUrl = `${FRONTEND_ORIGIN}/orders/${order.id}`;
+    const { subject, html, text } = orderConfirmedEmail({
+      orderReference: order.reference,
+      total: Number(order.total ?? 0),
+      orderUrl,
+    });
+    await dispatch({
+      userId: order.customerId,
+      type: 'order_confirmed',
+      event: 'order_confirmed',
+      orderId: order.id,
+      title: 'Commande confirmée',
+      body: `Votre commande ${order.reference} est confirmée.`,
+      email: { subject, html, text },
+      essential: true,
+      socketPush: true,
+    }).catch(() => {});
+  }
+
+  // rider real-time alert (NOTIF-05) — best-effort emit; getIO() throws before the socket layer
+  // is initialised (e.g. HTTP-only tests), mirroring the orders.ts:341 swallow idiom.
+  try {
+    getIO().to(RIDERS_AVAILABLE).emit(ORDER_NEW, { orderId: order.id, reference: order.reference });
+  } catch {
+    // socket layer not initialised — realtime is best-effort
+  }
+
+  // order is now paid and in the rider pool — fan a notification (DB-persisted) out to online riders
   await notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`).catch(() => {});
+
+  // low-stock admin alert (NOTIF-06) — non-essential (opt-out gated). Fan-out rows persist with
+  // orderId=null (Pitfall 2) so N admins × N low-stock products never collide on the
+  // (orderId,event,channel) unique key and silently drop all but the first alert.
+  if (lowStockItems.length > 0) {
+    const admins = await prisma.user.findMany({ where: { role: 'admin' } });
+    const adminUrl = `${FRONTEND_ORIGIN}/admin/products`;
+    for (const item of lowStockItems) {
+      const { subject, html, text } = lowStockEmail({ productName: item.name, quantity: item.quantity, adminUrl });
+      for (const admin of admins) {
+        await dispatch({
+          userId: admin.id,
+          type: 'low_stock',
+          event: 'low_stock',
+          orderId: null,
+          title: 'Alerte stock bas',
+          body: `${item.name} : ${item.quantity} unité(s) restante(s).`,
+          email: { subject, html, text },
+          essential: false,
+          socketPush: true,
+        }).catch(() => {});
+      }
+    }
+  }
 }

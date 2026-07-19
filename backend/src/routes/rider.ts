@@ -13,9 +13,14 @@ import {
   UploadRiderDocumentSchema,
   MAX_DOC_BYTES,
 } from '../schemas/rider.js';
-import { notify } from '../lib/notifications.js';
+import { notify, dispatch } from '../lib/notifications.js';
+import { riderAssignedEmail } from '../lib/email/templates.js';
 
 export const riderRouter = Router();
+
+// base frontend origin for CTA links in transactional email — mirrors app.ts's CORS_ORIGIN
+// parsing (first entry is the primary frontend origin); no dedicated FRONTEND_URL env exists.
+const FRONTEND_ORIGIN = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000').split(',')[0]!.trim();
 
 // every route here is rider-only
 riderRouter.use(requireAuth, requireRole('rider'));
@@ -286,6 +291,24 @@ riderRouter.post('/orders/:id/accept', async (req, res, next) => {
     );
 
     if (!order) return next(new HttpError(409, 'order_unavailable'));
+    // customer-facing lifecycle email (NOTIF-01) — the order enters status='rider_assigned' HERE
+    // (the accept claim above), not via PATCH /orders/:id/status, so this is the correct hook
+    // point for that specific transition. Idempotent on (orderId,event,channel); best-effort.
+    if (order.customerId) {
+      const orderUrl = `${FRONTEND_ORIGIN}/orders/${order.id}`;
+      const { subject, html, text } = riderAssignedEmail({ orderReference: order.reference, orderUrl });
+      await dispatch({
+        userId: order.customerId,
+        type: 'rider_assigned',
+        event: 'rider_assigned',
+        orderId: order.id,
+        title: 'Livreur assigné',
+        body: `Un livreur a été assigné à votre commande ${order.reference}.`,
+        email: { subject, html, text },
+        essential: true,
+        socketPush: true,
+      }).catch(() => {});
+    }
     res.json({ order });
   } catch (err) {
     // P2034: serializable conflict (SSI aborts one of two concurrent transactions);

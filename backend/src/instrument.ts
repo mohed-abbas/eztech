@@ -9,7 +9,7 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env['NODE_ENV'] ?? 'development',
-    // 100% : faible volume, et la démo doit voir chaque mesure de performance
-    tracesSampleRate: 1.0,
+    // low trace sample rate — error events are always captured; this only governs performance spans
+    tracesSampleRate: 0.1,
   });
 }

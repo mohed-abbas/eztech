@@ -1,0 +1,136 @@
+# Production app stack — blue-green backend/frontend pairs + app-owned Mongo.
+# Per ADR-016 D-01, this file holds ONLY eztech services: nginx/certbot/postgres/redis are
+# shared infra managed outside this repo. proxy-net and data-net are created there too.
+#
+# Built and run on the VPS by scripts/deploy.sh (see 08-VPS-CONTRACT.md) — never pulled from a
+# registry. deploy.sh sources .env.production into its own shell before calling
+# `docker compose build/up`, so every ${VAR} below is expected to already be exported, not read
+# from an env_file here.
+#
+# deploy.sh boots one color at a time (`backend-<slot>` + `frontend-<slot>`), waits for both
+# containers to report `healthy` via the HEALTHCHECK below, flips the nginx upstream, then stops
+# the other color. It also runs `docker compose run --rm --no-deps --entrypoint "npx prisma
+# migrate deploy" backend-<slot>` against the idle slot before starting it — the backend image
+# deliberately still ships the prisma CLI for exactly that (see backend/Dockerfile).
+
+x-backend-base: &backend-base
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  environment:
+    NODE_ENV: production
+    PORT: "3001"
+    DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env.production}
+    MONGODB_URI: mongodb://eztech-mongo:27017/eztech_prod
+    JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env.production}
+    JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+    JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-30d}
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    CORS_ORIGIN: https://eztech.thecodeman.cloud
+    STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:?set STRIPE_SECRET_KEY in .env.production}
+    STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:?set STRIPE_PUBLISHABLE_KEY in .env.production}
+    STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?set STRIPE_WEBHOOK_SECRET in .env.production}
+    DELIVERY_FEE: ${DELIVERY_FEE:-4.99}
+    # consumed only by the idempotent admin seed (scripts/deploy.sh --seed, dist/seed/seed.js).
+    # Declared here so `docker compose run` inherits them from the sourced .env.production; set a
+    # strong ADMIN_PASSWORD there before the first --seed (the default is intentionally weak).
+    ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@eztech.fr}
+    ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+    SENTRY_DSN: ${SENTRY_DSN:-}
+    RESEND_API_KEY: ${RESEND_API_KEY:-}
+    RESEND_FROM: ${RESEND_FROM:-EzTech <no-reply@eztech.fr>}
+  networks:
+    - proxy-net
+    - data-net
+  depends_on:
+    eztech-mongo:
+      condition: service_healthy
+  # deploy.sh gates the traffic flip on this — must resolve .State.Health.Status.
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://localhost:3001/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 15s
+
+x-frontend-base: &frontend-base
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile
+    # non-secret, public-facing values baked at build time (see frontend/Dockerfile) — the
+    # publishable Stripe key is client-safe by design, never the secret key.
+    args:
+      VITE_API_URL: https://eztech.thecodeman.cloud/api
+      VITE_SOCKET_URL: https://eztech.thecodeman.cloud
+      VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:?set STRIPE_PUBLISHABLE_KEY in .env.production}
+  restart: unless-stopped
+  networks:
+    - proxy-net
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 15s
+
+x-frontend-env: &frontend-env
+  NODE_ENV: production
+  NUXT_HOST: 0.0.0.0
+  NUXT_PORT: "3000"
+  NUXT_DELIVERY_FEE: ${DELIVERY_FEE:-4.99}
+  NUXT_SENTRY_DSN: ${NUXT_SENTRY_DSN:-}
+  NUXT_PUBLIC_SENTRY_DSN: ${NUXT_PUBLIC_SENTRY_DSN:-}
+  NUXT_PUBLIC_UMAMI_HOST: ${NUXT_PUBLIC_UMAMI_HOST:-}
+  NUXT_PUBLIC_UMAMI_WEBSITE_ID: ${NUXT_PUBLIC_UMAMI_WEBSITE_ID:-}
+
+services:
+  backend-blue:
+    <<: *backend-base
+    container_name: eztech-backend-blue
+
+  backend-green:
+    <<: *backend-base
+    container_name: eztech-backend-green
+
+  # each frontend talks to its same-color backend over the BFF (server-only) runtimeConfig, so a
+  # deploy of one pair never depends on the other color's container being up.
+  frontend-blue:
+    <<: *frontend-base
+    container_name: eztech-frontend-blue
+    environment:
+      <<: *frontend-env
+      NUXT_API_URL: http://eztech-backend-blue:3001/api
+
+  frontend-green:
+    <<: *frontend-base
+    container_name: eztech-frontend-green
+    environment:
+      <<: *frontend-env
+      NUXT_API_URL: http://eztech-backend-green:3001/api
+
+  # app-owned, ephemeral GPS store (D-01/DEPLOY-08) — NOT shared infra. ensureIndexes() in
+  # backend/src/lib/mongo.ts creates the 24h TTL + 2dsphere indexes on first successful connect;
+  # this service just needs to exist, be reachable, and persist its named volume across deploys.
+  eztech-mongo:
+    image: mongo:8
+    container_name: eztech-mongo
+    restart: unless-stopped
+    volumes:
+      - eztech_mongo_data:/data/db
+    networks:
+      - data-net
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand('ping')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+networks:
+  proxy-net:
+    external: true
+  data-net:
+    external: true
+
+volumes:
+  eztech_mongo_data:

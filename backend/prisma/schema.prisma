@@ -76,16 +76,21 @@ model User {
   riderApplicationStatus RiderApplicationStatus @default(pending)
   riderOnline            Boolean                @default(false)
 
-  refreshTokens     RefreshToken[]
-  riderDocuments    RiderDocument[]
-  assignedOrders    Order[]         @relation("RiderOrders")
-  customerOrders    Order[]         @relation("CustomerOrders")
-  declinedOrders    OrderDecline[]
-  assignedReturns   Return[]        @relation("RiderReturns")
-  customerReturns   Return[]        @relation("CustomerReturns")
-  notifications     Notification[]
-  addresses         Address[]
-  managedWarehouses Warehouse[]     @relation("ManagedWarehouses")
+  // global email opt-out (N-06) — checked before non-essential Resend sends; essential mail
+  // (password reset, order/payment confirmation, lifecycle, return reminder) always sends
+  emailOptOut Boolean @default(false)
+
+  refreshTokens       RefreshToken[]
+  riderDocuments      RiderDocument[]
+  assignedOrders      Order[]              @relation("RiderOrders")
+  customerOrders      Order[]              @relation("CustomerOrders")
+  declinedOrders      OrderDecline[]
+  assignedReturns     Return[]             @relation("RiderReturns")
+  customerReturns     Return[]             @relation("CustomerReturns")
+  notifications       Notification[]
+  addresses           Address[]
+  managedWarehouses   Warehouse[]          @relation("ManagedWarehouses")
+  passwordResetTokens PasswordResetToken[]
 }
 
 // a customer's saved delivery address — captured at registration, editable later
@@ -108,6 +113,17 @@ model RefreshToken {
   tokenHash String    @unique
   expiresAt DateTime
   revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// single-use, expiring password-reset token — mirrors RefreshToken's hashed-at-rest, single-use shape
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique // sha256 of the raw token; raw is emailed, never stored
+  expiresAt DateTime
+  usedAt    DateTime? // single-use: set on first successful reset
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -156,6 +172,9 @@ model Order {
   total                 Decimal?       @db.Decimal(10, 2) // subtotal + deliveryFee
   warehouseId           String? // single fulfillment warehouse picked at create (D-11)
   stripePaymentIntentId String? // anchors the order to its Stripe PaymentIntent
+  // computed at the `delivered` transition = deliveredAt + max(perItem rental duration); null when
+  // every line is flat-priced (no rental clock) — drives return-reminder scheduling (N-05)
+  rentalEndsAt          DateTime?
 
   customer User?          @relation("CustomerOrders", fields: [customerId], references: [id])
   rider    User?          @relation("RiderOrders", fields: [riderId], references: [id])
@@ -261,19 +280,35 @@ enum NotificationType {
   new_order // a new delivery job is available
   return_scheduled // a return pickup has been scheduled
   earning_credited // a completed delivery/return credited the rider
+  order_confirmed // payment succeeded — customer-facing order confirmation
+  rider_assigned // a rider accepted the delivery
+  order_picked_up // parcel collected from the warehouse
+  order_delivered // delivery completed
+  return_reminder // scheduled reminder to return a rented item
+  low_stock // admin alert — warehouse stock crossed the low-stock threshold
 }
 
 model Notification {
-  id        String           @id @default(uuid())
-  userId    String
-  type      NotificationType
-  title     String
-  body      String           @default("")
-  read      Boolean          @default(false)
-  createdAt DateTime         @default(now())
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String           @id @default(uuid())
+  userId      String
+  type        NotificationType
+  // idempotency discriminators (Pitfall 3) — event/channel drive @@unique below; defaulted so
+  // existing notify()/notifyOnlineRiders() call sites keep compiling and existing rows backfill cleanly
+  event       String           @default("")
+  channel     String           @default("in_app")
+  orderId     String? // null for fan-out rows (rider alerts, low-stock) so they never collide (Pitfall 2)
+  title       String
+  body        String           @default("")
+  read        Boolean          @default(false)
+  readAt      DateTime?
+  scheduledAt DateTime? // future send (e.g. return reminder)
+  sentAt      DateTime? // cron claim guard — set in the same txn as the claim (Pitfall 4)
+  createdAt   DateTime         @default(now())
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([orderId, event, channel])
   @@index([userId, read])
+  @@index([event, sentAt])
 }
 
 // ── Catalog ─────────────────────────────────────────────────────────────────

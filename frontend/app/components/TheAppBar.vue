@@ -146,6 +146,9 @@ watch(() => route.path, () => {
           </Transition>
         </NuxtLink>
 
+        <!-- Notification bell (customers + riders; no admin bell this phase, N-03) -->
+        <NotificationsNotificationBell v-if="isAuthenticated && role !== 'admin'" />
+
         <!-- Desktop avatar dropdown -->
         <div v-if="isAuthenticated" ref="dropdownRef" class="relative hidden md:block">
           <button

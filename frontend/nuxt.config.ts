@@ -23,6 +23,11 @@ export default defineNuxtConfig({
   },
   sourcemap: { client: 'hidden' },
   vite: {
+    // @ts-expect-error — vite is deduped to a single 7.3.1 install (verified via `npm ls vite --all`),
+    // but @tailwindcss/vite's `Plugin<any>[]` return type and Nuxt's `PluginOption` resolve to
+    // structurally-diverging `rollup`/`vite` type identities (vite's own PluginContextMeta.viteVersion
+    // augmentation isn't visible from both sides) — a known Vite 7 + Nitro type-checking quirk, not a
+    // real dependency mismatch. No override/resolution can fix a version skew that doesn't exist.
     plugins: [tailwindcss()]
   },
   shadcn: {
@@ -41,14 +46,15 @@ export default defineNuxtConfig({
       useMock: process.env.VITE_USE_MOCK === 'true',
       // browser-facing: client stores hit the backend via the host port mapping
       apiUrl: process.env.VITE_API_URL || 'http://localhost:3001/api',
+      // browser-facing Socket.io endpoint — the realtime client connects to the backend
+      // ROOT (NOT apiUrl, which ends in /api). Separate var so the two never drift (RESEARCH A1).
+      socketUrl: process.env.VITE_SOCKET_URL || 'http://localhost:3001',
       // Stripe publishable key — public by design; the secret key never leaves the backend
       stripePublishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || '',
       // browser-facing Sentry DSN — reaches GlitchTip via its host port (localhost:8000). Inert if empty.
       sentryDsn: process.env.NUXT_PUBLIC_SENTRY_DSN || '',
       umamiHost: process.env.NUXT_PUBLIC_UMAMI_HOST || '',
-      umamiWebsiteId: process.env.NUXT_PUBLIC_UMAMI_WEBSITE_ID || '',
-      // Panne de paiement simulée (démo GlitchTip) : proportion de tentatives qui échouent. 0 = désactivé.
-      paymentFailRate: Number(process.env.NUXT_PUBLIC_PAYMENT_FAIL_RATE ?? 0.33)
+      umamiWebsiteId: process.env.NUXT_PUBLIC_UMAMI_WEBSITE_ID || ''
     }
   }
 })

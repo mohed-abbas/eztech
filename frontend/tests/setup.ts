@@ -29,6 +29,7 @@ const state = {
   isMock: false,
   auth: makeAuth(),
   fetch: vi.fn(),
+  csrf: 'test-csrf',
 }
 
 // exported so tests can tweak behaviour
@@ -39,4 +40,7 @@ g.$fetch = (...args: unknown[]) => state.fetch(...args)
 g.useRuntimeConfig = () => ({ public: { apiUrl: state.apiUrl } })
 g.useMock = () => ({ isMock: { value: state.isMock } })
 g.useAuthStore = () => state.auth
+// mimics Nuxt's useCookie() — the rider/auth stores only ever read `.value` for the
+// CSRF cookie, so a plain ref-like object is enough (Phase 7 cookie/CSRF auth).
+g.useCookie = (_name: string) => ({ value: state.csrf })
 Object.assign(g, { ref, computed, reactive, watch, onMounted, onBeforeUnmount })

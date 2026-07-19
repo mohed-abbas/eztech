@@ -18,6 +18,13 @@
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["src/**/*", "tests/**/*", "prisma/**/*", "vitest.config.ts", "eslint.config.js"],
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "prisma/**/*",
+    "scripts/**/*",
+    "vitest.config.ts",
+    "eslint.config.js"
+  ],
   "exclude": ["node_modules", "dist"]
 }
