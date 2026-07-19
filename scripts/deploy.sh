@@ -155,6 +155,14 @@ run_seed() {
     if [[ "${slot}" == "none" ]]; then
         error "No active slot to seed — deploy first"; exit 1
     fi
+    # Standalone --seed doesn't go through build_images(), so source .env.production here too —
+    # `docker compose run` still parses the whole file and needs the required ${STRIPE_*} vars
+    # (frontend build args) resolved even though we only run the backend service.
+    if [[ -f "${PROJECT_DIR}/.env.production" ]]; then
+        set -a; source "${PROJECT_DIR}/.env.production"; set +a
+    else
+        error ".env.production not found at ${PROJECT_DIR}/.env.production"; exit 1
+    fi
     log "Seeding admin user on backend-${slot} (idempotent)..."
     # The prod image strips tsx (see backend/Dockerfile); the admin seed is precompiled to
     # dist/seed/seed.js during `npm run build` (tsconfig.seed.json) so it runs on plain node.
