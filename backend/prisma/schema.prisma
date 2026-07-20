@@ -90,6 +90,7 @@ model User {
   notifications       Notification[]
   addresses           Address[]
   managedWarehouses   Warehouse[]          @relation("ManagedWarehouses")
+  stockAdjustments    StockAdjustment[]    @relation("StockAdjustments")
   passwordResetTokens PasswordResetToken[]
 }
 
@@ -372,10 +373,11 @@ model Product {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  category   Category         @relation(fields: [categoryId], references: [id])
-  brand      Brand?           @relation(fields: [brandId], references: [id])
-  stocks     WarehouseStock[]
-  orderItems OrderItem[]
+  category         Category          @relation(fields: [categoryId], references: [id])
+  brand            Brand?            @relation(fields: [brandId], references: [id])
+  stocks           WarehouseStock[]
+  orderItems       OrderItem[]
+  stockAdjustments StockAdjustment[]
 
   @@index([categoryId])
   @@index([brandId])
@@ -398,8 +400,9 @@ model Warehouse {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  manager User?            @relation("ManagedWarehouses", fields: [managerId], references: [id])
-  stocks  WarehouseStock[]
+  manager     User?             @relation("ManagedWarehouses", fields: [managerId], references: [id])
+  stocks      WarehouseStock[]
+  adjustments StockAdjustment[]
 
   @@index([managerId])
 }
@@ -416,5 +419,23 @@ model WarehouseStock {
   product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([warehouseId, productId])
+  @@index([productId])
+}
+
+// journal des ajustements de stock (qui / quand / delta) — audit + demo
+model StockAdjustment {
+  id          String   @id @default(uuid())
+  warehouseId String
+  productId   String
+  actorId     String // utilisateur ayant fait l'ajustement
+  delta       Int // variation appliquee (+/-)
+  reason      String?
+  createdAt   DateTime @default(now())
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  actor     User      @relation("StockAdjustments", fields: [actorId], references: [id])
+
+  @@index([warehouseId])
   @@index([productId])
 }
