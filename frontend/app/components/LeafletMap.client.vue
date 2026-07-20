@@ -16,6 +16,7 @@ interface Props {
   riderPos?: RiderPos | null
   autoCenter?: boolean      // recentre la carte sur le livreur à chaque déplacement
   height?: string
+  delivered?: boolean       // état final figé : marqueur vert (check), pas de halo
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -24,6 +25,7 @@ const props = withDefaults(defineProps<Props>(), {
   riderPos: null,
   autoCenter: true,
   height: '400px',
+  delivered: false,
 })
 
 const mapContainer = ref<HTMLElement | null>(null)
@@ -63,6 +65,30 @@ function createRiderIcon(L: typeof import('leaflet')) {
           background:#10B981;border:2px solid white;
           border-radius:50%;
         "></div>
+      </div>
+    `,
+    className: '',
+    iconSize: [46, 46],
+    iconAnchor: [23, 23],
+    popupAnchor: [0, -25],
+  })
+}
+
+// ─── Marqueur livraison terminée : cercle vert figé avec check ─────
+function createDeliveredIcon(L: typeof import('leaflet')) {
+  return L.divIcon({
+    html: `
+      <div style="
+        width:46px;height:46px;
+        background:linear-gradient(135deg,#10B981,#059669);
+        border:3px solid white;
+        border-radius:50%;
+        box-shadow:0 4px 16px rgba(16,185,129,.45);
+        display:flex;align-items:center;justify-content:center;
+      ">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
       </div>
     `,
     className: '',
@@ -201,9 +227,13 @@ function placeRider(pos: RiderPos) {
   const target = L.latLng(pos.lat, pos.lng)
 
   if (!riderMarker) {
-    riderMarker = L.marker(target, { icon: createRiderIcon(L) })
+    const icon = props.delivered ? createDeliveredIcon(L) : createRiderIcon(L)
+    const popup = props.delivered
+      ? '<strong>Livraison terminée</strong><br>Commande livrée ✓'
+      : '<strong>Livreur EzTech</strong><br>En route vers vous ⚡'
+    riderMarker = L.marker(target, { icon })
       .addTo(mapInstance)
-      .bindPopup('<strong>Livreur EzTech</strong><br>En route vers vous ⚡')
+      .bindPopup(popup)
     recenter(target)
     return
   }

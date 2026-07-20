@@ -142,7 +142,7 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
           <p>Aucune commande disponible pour le moment. Restez en ligne, on vous préviendra.</p>
         </CardContent>
       </Card>
-      <Card v-for="o in rider.available" :key="o.id">
+      <Card v-for="o in rider.available" :key="o.id" data-testid="available-order">
         <CardHeader>
           <CardTitle class="flex items-center justify-between text-base">
             <span>{{ o.reference }}</span>

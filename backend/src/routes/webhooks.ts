@@ -8,6 +8,7 @@ import { orderConfirmedEmail, lowStockEmail } from '../lib/email/templates.js';
 import { getIO } from '../lib/socket.js';
 import { RIDERS_AVAILABLE } from '../socket/rooms.js';
 import { ORDER_NEW } from '../socket/events.js';
+import { nextAssignmentExpiry } from '../lib/assignment.js';
 
 export const webhooksRouter = Router();
 
@@ -145,7 +146,7 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
 
       await tx.order.update({
         where: { id: orderId },
-        data: { paymentStatus: 'paid', status: 'pending_assignment' },
+        data: { paymentStatus: 'paid', status: 'pending_assignment', assignmentExpiresAt: nextAssignmentExpiry() },
       });
       await tx.orderEvent.create({
         data: { orderId, status: 'pending_assignment', note: 'payment confirmed' },

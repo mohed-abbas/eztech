@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { estimateEtaSeconds, formatEta } from '~/lib/eta'
 import type { BackendOrderStatus } from '~/lib/orderStatus'
 // '~~' (not '~') resolves to the frontend project root — '~' points at app/, which has no
 // server/ subtree — so this is the only alias that reaches the Nitro route's exported type.
@@ -120,6 +121,24 @@ const mapCenter = computed<[number, number]>(() => {
   if (riderPos.value) return [riderPos.value.lat, riderPos.value.lng]
   if (order.value?.dropoff) return [order.value.dropoff.lat, order.value.dropoff.lng]
   return [48.8566, 2.3522]
+})
+
+// ─── État final « Livré » : carte figée + marqueur vert ─────────────────────
+const isDelivered = computed(() => currentStatus.value === 'delivered')
+const showMapCard = computed(() => showMap.value || isDelivered.value)
+const mapCollapsed = ref(false)
+// Position figée une fois livré : dernière position connue, sinon la destination
+const frozenPos = computed<{ lat: number, lng: number } | null>(() => {
+  if (riderPos.value) return riderPos.value
+  if (order.value?.dropoff) return { lat: order.value.dropoff.lat, lng: order.value.dropoff.lng }
+  return null
+})
+
+// ETA live : position livreur → destination (heuristique distance / vitesse moyenne)
+const etaLabel = computed<string | null>(() => {
+  if (isDelivered.value || !riderPos.value || !order.value?.dropoff) return null
+  const secs = estimateEtaSeconds(riderPos.value, { lat: order.value.dropoff.lat, lng: order.value.dropoff.lng })
+  return formatEta(secs)
 })
 </script>
 
@@ -285,41 +304,81 @@ const mapCenter = computed<[number, number]>(() => {
 
         <!-- Right Column -->
         <div class="lg:col-span-7 space-y-4">
-          <!-- Map Card (only when rider is physically in transit — live showMap) -->
-          <Card v-if="showMap" class="overflow-hidden">
+          <!-- Map Card (en transit : live · livrée : figée) -->
+          <Card v-if="showMapCard" class="overflow-hidden">
             <div class="flex items-center justify-between border-b border-neutral-100 px-6 py-4">
               <div>
-                <h2 class="text-h4 font-semibold text-text-primary">Localisation en direct</h2>
-                <p class="mt-0.5 text-body-sm text-text-muted">Mise à jour en temps réel</p>
+                <h2 class="text-h4 font-semibold text-text-primary">
+                  {{ isDelivered ? 'Trajet de livraison' : 'Localisation en direct' }}
+                </h2>
+                <p class="mt-0.5 text-body-sm text-text-muted">
+                  {{ isDelivered ? 'Commande livrée à destination' : 'Mise à jour en temps réel' }}
+                </p>
               </div>
-              <!-- Connection / reconnecting hint (D-05) -->
-              <div class="flex items-center gap-2 rounded-full px-3 py-1.5" :class="reconnecting ? 'bg-amber-50' : 'bg-emerald-50'">
-                <span
-                  class="size-2 rounded-full"
-                  :class="reconnecting ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'"
-                />
-                <span class="text-caption font-medium" :class="reconnecting ? 'text-amber-700' : 'text-emerald-700'">
-                  {{ reconnecting ? 'reconnexion…' : 'en direct' }}
-                </span>
+
+              <div class="flex items-center gap-2">
+                <!-- ETA live (arrivée estimée) -->
+                <div v-if="etaLabel" class="flex items-center gap-1.5 rounded-full bg-primary-50 px-3 py-1.5">
+                  <Icon name="ph:clock-countdown" class="size-4 text-primary-600" />
+                  <span class="text-caption font-medium text-primary-700">Arrivée ~{{ etaLabel }}</span>
+                </div>
+
+                <!-- Livré : chip vert · sinon indicateur de connexion (D-05) -->
+                <div v-if="isDelivered" class="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5">
+                  <Icon name="ph:check-circle-fill" class="size-4 text-emerald-600" />
+                  <span class="text-caption font-medium text-emerald-700">Livré</span>
+                </div>
+                <div v-else class="flex items-center gap-2 rounded-full px-3 py-1.5" :class="reconnecting ? 'bg-amber-50' : 'bg-emerald-50'">
+                  <span
+                    class="size-2 rounded-full"
+                    :class="reconnecting ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'"
+                  />
+                  <span class="text-caption font-medium" :class="reconnecting ? 'text-amber-700' : 'text-emerald-700'">
+                    {{ reconnecting ? 'reconnexion…' : 'en direct' }}
+                  </span>
+                </div>
+
+                <!-- Bouton replier/déplier (mobile) -->
+                <button
+                  type="button"
+                  class="flex size-9 items-center justify-center rounded-full border border-neutral-200 text-text-muted transition-colors hover:bg-neutral-50 lg:hidden"
+                  :aria-expanded="!mapCollapsed"
+                  :aria-label="mapCollapsed ? 'Déplier la carte' : 'Replier la carte'"
+                  @click="mapCollapsed = !mapCollapsed"
+                >
+                  <Icon :name="mapCollapsed ? 'ph:caret-down' : 'ph:caret-up'" class="size-4" />
+                </button>
               </div>
             </div>
 
-            <LeafletMap
-              :center="mapCenter"
-              :zoom="14"
-              :rider-pos="riderPos"
-              :warehouse-pos="warehousePos"
-              :destination-pos="destinationPos"
-              height="380px"
-            />
+            <div v-show="!mapCollapsed">
+              <!-- Bannière de confirmation (livré) -->
+              <div v-if="isDelivered" class="flex items-center gap-2 border-b border-emerald-100 bg-emerald-50/60 px-6 py-3">
+                <Icon name="ph:seal-check-fill" class="size-5 text-emerald-600" />
+                <p class="text-body-sm font-medium text-text-primary">
+                  Votre commande a été livrée avec succès. Merci d'avoir choisi EzTech !
+                </p>
+              </div>
 
-            <!-- Last-known timestamp bar under map (never blank — last-known shows on load, D-05) -->
-            <div class="flex items-center gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-3">
-              <Icon name="ph:map-pin-line" class="size-4 text-primary-600" />
-              <p class="text-body-sm text-text-muted">
-                <template v-if="lastUpdateLabel">Dernière position à {{ lastUpdateLabel }}</template>
-                <template v-else>En attente de la position du livreur…</template>
-              </p>
+              <LeafletMap
+                :center="mapCenter"
+                :zoom="14"
+                :rider-pos="isDelivered ? frozenPos : riderPos"
+                :warehouse-pos="warehousePos"
+                :destination-pos="destinationPos"
+                :delivered="isDelivered"
+                height="380px"
+              />
+
+              <!-- Barre horodatage (jamais vide — last-known au chargement, D-05) -->
+              <div class="flex items-center gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-3">
+                <Icon name="ph:map-pin-line" class="size-4 text-primary-600" />
+                <p class="text-body-sm text-text-muted">
+                  <template v-if="isDelivered">Commande livrée à destination</template>
+                  <template v-else-if="lastUpdateLabel">Dernière position à {{ lastUpdateLabel }}</template>
+                  <template v-else>En attente de la position du livreur…</template>
+                </p>
+              </div>
             </div>
           </Card>
 

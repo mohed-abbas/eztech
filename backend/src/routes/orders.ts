@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { CreateCommerceOrderSchema, CreateDeliveryJobSchema, UpdateOrderStatusSchema } from '../schemas/order.js';
 import { generateOrderReference, canRiderTransition } from '../lib/orders.js';
+import { nextAssignmentExpiry } from '../lib/assignment.js';
 import { notify, notifyOnlineRiders, dispatch } from '../lib/notifications.js';
 import { orderPickedUpEmail, orderDeliveredEmail } from '../lib/email/templates.js';
 import { computeLineTotal, computeOrderTotals } from '../lib/pricing.js';
@@ -192,6 +193,7 @@ async function createDeliveryJob(req: Request, res: Response, next: NextFunction
         ...data,
         reference: generateOrderReference(),
         customerId: effectiveCustomerId,
+        assignmentExpiresAt: nextAssignmentExpiry(),
         ...(riderFee !== undefined ? { riderFee: new Prisma.Decimal(riderFee) } : {}),
         events: { create: { status: 'pending_assignment', note: 'order created' } },
       },
