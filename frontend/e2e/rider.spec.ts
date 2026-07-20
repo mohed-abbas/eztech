@@ -60,8 +60,11 @@ test('parcours livreur : connexion → en ligne → acceptation → livraison �
   await waitForHydration(page)
   await expect(page.getByRole('heading', { name: 'Tableau de bord livreur' })).toBeVisible()
 
-  // 3. Passage en ligne (idempotent : ne clique que si hors ligne)
+  // 3. Passage en ligne (idempotent). On attend que le bouton soit ACTIVÉ (profil chargé + livreur
+  // approuvé) avant de lire son état — sinon on lit « Hors ligne » (état par défaut avant hydratation)
+  // et on risque de re-basculer hors ligne un livreur déjà en ligne (course).
   const onlineToggle = page.getByRole('button', { name: /Hors ligne|En ligne/ })
+  await expect(onlineToggle).toBeEnabled()
   if (((await onlineToggle.textContent()) ?? '').includes('Hors ligne')) {
     await onlineToggle.click()
   }

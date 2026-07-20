@@ -1,5 +1,15 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// Chromium par défaut (le CI n'installe que chromium). Cross-navigateur opt-in : firefox + webkit
+// uniquement si E2E_ALL_BROWSERS=true, après `npx playwright install firefox webkit`.
+const projects = [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }]
+if (process.env.E2E_ALL_BROWSERS === 'true') {
+  projects.push(
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+  )
+}
+
 // DEPLOY-10 smoke gate config. Runs against the already-running stack (dev or CI's
 // docker-compose target) — no webServer block here, the CI e2e-smoke job (plan 08-08)
 // owns starting the stack before invoking `playwright test`.
@@ -22,9 +32,5 @@ export default defineConfig({
     navigationTimeout: 30_000,
     actionTimeout: 15_000,
   },
-  projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
-  ],
+  projects,
 })
