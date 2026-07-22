@@ -2,6 +2,7 @@
 const links = [
   { to: '/warehouse/dashboard', label: 'Tableau de bord', icon: 'ph:gauge' },
   { to: '/warehouse/inventory', label: 'Inventaire', icon: 'ph:package' },
+  { to: '/warehouse/returns', label: 'Retours', icon: 'ph:arrow-u-down-left' },
 ]
 </script>
 

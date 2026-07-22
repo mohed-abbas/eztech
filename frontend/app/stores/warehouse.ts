@@ -23,6 +23,20 @@ export interface StockLine {
   }
 }
 
+export interface ReturnItem {
+  id: string
+  reference: string
+  status: string
+  pickupAddress: string
+  completedAt: string | null
+  inspectionResult: 'available' | 'damaged' | null
+  inspectionNote: string | null
+  inspectedAt: string | null
+  orderId: string | null
+  customerId: string | null
+  riderFee: number
+}
+
 export const LOW_STOCK_THRESHOLD = 3
 
 export const useWarehouseStore = defineStore('warehouse', {
@@ -30,6 +44,8 @@ export const useWarehouseStore = defineStore('warehouse', {
     warehouses: [] as WarehouseSummary[],
     selectedId: null as string | null,
     stock: [] as StockLine[],
+    returnsToInspect: [] as ReturnItem[],
+    returnsProcessed: [] as ReturnItem[],
     loading: false,
     error: null as string | null,
   }),
@@ -126,6 +142,31 @@ export const useWarehouseStore = defineStore('warehouse', {
       }) as { stock: StockLine }
       const line = this.stock.find(s => s.productId === productId)
       if (line) line.quantity = res.stock.quantity
+    },
+
+    async fetchReturns() {
+      this.loading = true
+      this.error = null
+      try {
+        const res = await this._api('/returns') as { toInspect: ReturnItem[], processed: ReturnItem[] }
+        this.returnsToInspect = res.toInspect
+        this.returnsProcessed = res.processed
+      }
+      catch (e) {
+        this.error = e instanceof Error ? e.message : 'Chargement des retours impossible'
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
+    // inspection d'un retour collecte : available (remis en stock) ou damaged
+    async processReturn(id: string, result: 'available' | 'damaged', note?: string) {
+      await this._api(`/returns/${id}/process`, {
+        method: 'PATCH',
+        body: { result, ...(note ? { note } : {}) },
+      })
+      await this.fetchReturns()
     },
 
     select(warehouseId: string) {
