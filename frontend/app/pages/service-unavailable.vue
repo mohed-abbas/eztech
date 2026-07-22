@@ -1,26 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'default' })
 useHead({ title: 'Service non disponible dans votre zone - EzTech' })
-
-const email = ref('')
-const submitting = ref(false)
-const subscribed = ref(false)
-const error = ref('')
-
-const emailValid = computed(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value))
-
-async function notifyMe() {
-  error.value = ''
-  if (!emailValid.value) {
-    error.value = 'Adresse email invalide.'
-    return
-  }
-  submitting.value = true
-  // Enregistrement simulé de la demande de notification
-  await new Promise((r) => setTimeout(r, 900))
-  submitting.value = false
-  subscribed.value = true
-}
 </script>
 
 <template>
@@ -45,46 +25,16 @@ async function notifyMe() {
         Paris Centre et Paris Est, et nous étendons notre couverture rapidement.
       </p>
 
-      <!-- Notification par email -->
-      <Card class="mt-8 p-6 text-left">
-        <div v-if="!subscribed">
-          <div class="mb-3 flex items-center gap-2">
-            <Icon name="ph:bell-ringing" class="size-5 text-primary-600" />
-            <h2 class="text-body font-semibold text-text-primary">
-              Me notifier quand le service arrive dans ma zone
-            </h2>
+      <!-- Message d'attente (sans capture d'email tant que la liste d'attente n'est pas branchée) -->
+      <Card class="mt-8 p-6">
+        <div class="flex items-center justify-center gap-3 text-left">
+          <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-purple">
+            <Icon name="ph:rocket-launch" class="size-5 text-primary-600" />
           </div>
-          <form class="flex flex-col gap-3 sm:flex-row" @submit.prevent="notifyMe">
-            <Input
-              v-model="email"
-              type="email"
-              placeholder="vous@exemple.com"
-              class="flex-1"
-              :aria-invalid="!!error"
-            />
-            <Button type="submit" variant="gradient" class="font-semibold" :disabled="submitting">
-              <Icon v-if="submitting" name="ph:spinner-gap" class="size-4 animate-spin" />
-              <Icon v-else name="ph:paper-plane-tilt" class="size-4" />
-              {{ submitting ? 'Envoi...' : 'Me notifier' }}
-            </Button>
-          </form>
-          <p v-if="error" class="mt-2 text-body-sm text-error flex items-center gap-1.5">
-            <Icon name="ph:warning-circle" class="size-4 shrink-0" />
-            {{ error }}
+          <p class="text-body-sm text-text-muted">
+            De nouvelles zones ouvrent régulièrement. Repassez bientôt pour voir si
+            la livraison est disponible chez vous.
           </p>
-        </div>
-
-        <!-- Confirmation -->
-        <div v-else class="flex items-center gap-3">
-          <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-success/10">
-            <Icon name="ph:check-circle-fill" class="size-6 text-success" />
-          </div>
-          <div>
-            <p class="text-body font-medium text-text-primary">C'est noté !</p>
-            <p class="text-body-sm text-text-muted">
-              Nous vous préviendrons dès que la livraison sera disponible chez vous.
-            </p>
-          </div>
         </div>
       </Card>
 

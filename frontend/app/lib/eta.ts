@@ -1,6 +1,6 @@
 // ETA (temps estimé d'arrivée) du livreur vers la destination.
 // Heuristique locale : distance à vol d'oiseau (haversine) / vitesse moyenne urbaine.
-// L'ETA « routier » exact via OpenRouteService reste côté backend temps réel.
+// TODO(D4): l'ETA routier exact via OpenRouteService n'est pas encore implémenté côté backend (D4, murx).
 export interface LatLng {
   lat: number
   lng: number
