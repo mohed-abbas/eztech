@@ -58,7 +58,11 @@ warehousesRouter.post('/', requireAuth, requireRole('admin'), async (req, res, n
   const parsed = CreateWarehouseSchema.safeParse(req.body);
   if (!parsed.success) return next(new HttpError(422, 'validation_failed', { issues: parsed.error.issues }));
   try {
-    const warehouse = await prisma.warehouse.create({ data: parsed.data });
+    // exactOptionalPropertyTypes : retirer les clés `undefined` avant Prisma
+    const data = Object.fromEntries(
+      Object.entries(parsed.data).filter(([, v]) => v !== undefined),
+    ) as unknown as Prisma.WarehouseUncheckedCreateInput;
+    const warehouse = await prisma.warehouse.create({ data });
     res.status(201).json({ warehouse });
   } catch (err) {
     next(err);
@@ -71,7 +75,11 @@ warehousesRouter.patch('/:id', requireAuth, requireRole('admin'), async (req, re
   if (!parsed.success) return next(new HttpError(422, 'validation_failed', { issues: parsed.error.issues }));
   const id = String(req.params['id']);
   try {
-    const warehouse = await prisma.warehouse.update({ where: { id }, data: parsed.data });
+    // exactOptionalPropertyTypes : retirer les clés `undefined` avant Prisma
+    const data = Object.fromEntries(
+      Object.entries(parsed.data).filter(([, v]) => v !== undefined),
+    ) as unknown as Prisma.WarehouseUncheckedUpdateInput;
+    const warehouse = await prisma.warehouse.update({ where: { id }, data });
     res.json({ warehouse });
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {

@@ -116,15 +116,18 @@ returnsRouter.patch('/:id/process', requireAuth, requireRole('warehouse_manager'
 
       // remise en stock des articles de la commande liee (si presente)
       if (parsed.data.result === 'available' && warehouseId && r.orderId) {
+        const wid = warehouseId; // narrowed to string par le garde ci-dessus
         const items = await tx.orderItem.findMany({ where: { orderId: r.orderId }, select: { productId: true, quantity: true } });
         for (const item of items) {
+          // productId est nullable (produit supprimé après achat) — pas de remise en stock possible
+          if (!item.productId) continue;
           await tx.warehouseStock.upsert({
-            where: { warehouseId_productId: { warehouseId, productId: item.productId } },
-            create: { warehouseId, productId: item.productId, quantity: item.quantity },
+            where: { warehouseId_productId: { warehouseId: wid, productId: item.productId } },
+            create: { warehouseId: wid, productId: item.productId, quantity: item.quantity },
             update: { quantity: { increment: item.quantity } },
           });
           await tx.stockAdjustment.create({
-            data: { warehouseId, productId: item.productId, actorId: sub, delta: item.quantity, reason: `retour ${r.reference}` },
+            data: { warehouseId: wid, productId: item.productId, actorId: sub, delta: item.quantity, reason: `retour ${r.reference}` },
           });
         }
       }
