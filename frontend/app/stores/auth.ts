@@ -14,7 +14,7 @@ export interface User {
   name: string
   email: string
   phone: string
-  role: 'customer' | 'rider' | 'admin'
+  role: 'customer' | 'rider' | 'warehouse_manager' | 'admin'
   avatar?: string
   addresses: Address[]
   vehicleType?: 'bicycle' | 'scooter' | 'car'

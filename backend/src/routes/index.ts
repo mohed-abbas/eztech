@@ -9,6 +9,8 @@ import { productsRouter } from './products.js';
 import { categoriesRouter } from './categories.js';
 import { brandsRouter } from './brands.js';
 import { zonesRouter } from './zones.js';
+import { warehousesRouter } from './warehouses.js';
+import { inventoryRouter } from './inventory.js';
 import { paymentsRouter } from './payments.js';
 import { notificationsRouter } from './notifications.js';
 
@@ -25,4 +27,6 @@ apiRouter.use('/products', productsRouter);
 apiRouter.use('/categories', categoriesRouter);
 apiRouter.use('/brands', brandsRouter);
 apiRouter.use('/zones', zonesRouter);
+apiRouter.use('/warehouses', warehousesRouter);
+apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/payments', paymentsRouter);

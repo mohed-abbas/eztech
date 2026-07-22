@@ -8,6 +8,7 @@ import { orderConfirmedEmail, lowStockEmail } from '../lib/email/templates.js';
 import { getIO } from '../lib/socket.js';
 import { RIDERS_AVAILABLE } from '../socket/rooms.js';
 import { ORDER_NEW } from '../socket/events.js';
+import { nextAssignmentExpiry } from '../lib/assignment.js';
 
 export const webhooksRouter = Router();
 
@@ -145,7 +146,7 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
 
       await tx.order.update({
         where: { id: orderId },
-        data: { paymentStatus: 'paid', status: 'pending_assignment' },
+        data: { paymentStatus: 'paid', status: 'pending_assignment', assignmentExpiresAt: nextAssignmentExpiry() },
       });
       await tx.orderEvent.create({
         data: { orderId, status: 'pending_assignment', note: 'payment confirmed' },
@@ -205,17 +206,20 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
   // order is now paid and in the rider pool — fan a notification (DB-persisted) out to online riders
   await notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`).catch(() => {});
 
-  // low-stock admin alert (NOTIF-06) — non-essential (opt-out gated). Fan-out rows persist with
-  // orderId=null (Pitfall 2) so N admins × N low-stock products never collide on the
-  // (orderId,event,channel) unique key and silently drop all but the first alert.
+  // low-stock alert (NOTIF-06) — non-essential (opt-out gated). Destinataires : tous les admins +
+  // le manager de l'entrepot concerne. Fan-out rows persist with orderId=null (Pitfall 2) so N
+  // recipients × N low-stock products never collide on the (orderId,event,channel) unique key.
   if (lowStockItems.length > 0) {
-    const admins = await prisma.user.findMany({ where: { role: 'admin' } });
-    const adminUrl = `${FRONTEND_ORIGIN}/admin/products`;
+    const admins = await prisma.user.findMany({ where: { role: 'admin' }, select: { id: true } });
+    const wh = await prisma.warehouse.findUnique({ where: { id: warehouseId }, select: { managerId: true } });
+    const recipientIds = new Set<string>(admins.map((a) => a.id));
+    if (wh?.managerId) recipientIds.add(wh.managerId);
+    const inventoryUrl = `${FRONTEND_ORIGIN}/warehouse/inventory`;
     for (const item of lowStockItems) {
-      const { subject, html, text } = lowStockEmail({ productName: item.name, quantity: item.quantity, adminUrl });
-      for (const admin of admins) {
+      const { subject, html, text } = lowStockEmail({ productName: item.name, quantity: item.quantity, adminUrl: inventoryUrl });
+      for (const userId of recipientIds) {
         await dispatch({
-          userId: admin.id,
+          userId,
           type: 'low_stock',
           event: 'low_stock',
           orderId: null,

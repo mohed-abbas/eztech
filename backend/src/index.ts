@@ -8,6 +8,7 @@ import { logger } from './lib/logger.js';
 import { initMongo, closeMongo } from './lib/mongo.js';
 import { initSocket } from './lib/socket.js';
 import { startReturnReminders, stopReturnReminders } from './jobs/return-reminders.js';
+import { startAssignmentExpiry, stopAssignmentExpiry } from './jobs/assignment-expiry.js';
 
 const app = buildApp();
 
@@ -24,6 +25,8 @@ initMongo(env.MONGODB_URI).catch((e) => logger.error({ e }, 'mongo init failed �
 initSocket(server);
 // Return-reminder cron (NOTIF-03) — boots after the server is built, normal import graph.
 startReturnReminders();
+// Assignment-offer cron — ré-arme la fenêtre d'offre des commandes non prises (assignmentExpiresAt).
+startAssignmentExpiry();
 
 // graceful shutdown — give in-flight requests up to 10s to finish before forcing exit
 function shutdown(signal: NodeJS.Signals) {
@@ -34,6 +37,7 @@ function shutdown(signal: NodeJS.Signals) {
     // where http.Server expects void).
     void (async () => {
       stopReturnReminders();
+      stopAssignmentExpiry();
       await closeMongo();
       process.exit(0);
     })();

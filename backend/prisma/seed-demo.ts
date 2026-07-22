@@ -38,6 +38,10 @@ const RIDERS = [
   },
 ];
 
+// Demo warehouse manager — warehousepass123. Assigné à un entrepôt pour démontrer la gestion de stock.
+const WAREHOUSE_MANAGER = { email: 'warehouse@eztech.fr', name: 'Claire Dubois', phone: '+33 6 33 44 55 66' };
+const WAREHOUSE_MANAGER_PASSWORD = 'warehousepass123';
+
 const SAMPLE_JOBS = [
   {
     pickup: 'Entrepôt EzTech, 12 Rue du Faubourg Saint-Antoine, 75011 Paris',
@@ -92,6 +96,25 @@ async function main() {
   }
   const rider = primaryRider!;
   console.log(`demo riders: ${RIDERS.map((r) => `${r.email} (${r.status})`).join(', ')} / ${RIDER_PASSWORD}`);
+
+  // Warehouse manager + assignation à un entrepôt existant (seedé par seed-catalog)
+  const managerHash = await bcrypt.hash(WAREHOUSE_MANAGER_PASSWORD, 12);
+  const manager = await prisma.user.upsert({
+    where: { email: WAREHOUSE_MANAGER.email },
+    update: {},
+    create: {
+      email: WAREHOUSE_MANAGER.email,
+      passwordHash: managerHash,
+      name: WAREHOUSE_MANAGER.name,
+      phone: WAREHOUSE_MANAGER.phone,
+      role: 'warehouse_manager',
+    },
+  });
+  const warehouse = await prisma.warehouse.findFirst({ orderBy: { name: 'asc' } });
+  if (warehouse && warehouse.managerId !== manager.id) {
+    await prisma.warehouse.update({ where: { id: warehouse.id }, data: { managerId: manager.id } });
+  }
+  console.log(`demo warehouse manager: ${WAREHOUSE_MANAGER.email} / ${WAREHOUSE_MANAGER_PASSWORD}${warehouse ? ` (entrepôt: ${warehouse.name})` : ''}`);
 
   const existingPending = await prisma.order.count({ where: { status: 'pending_assignment' } });
   if (existingPending >= SAMPLE_JOBS.length) {

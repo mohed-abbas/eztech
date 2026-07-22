@@ -3,9 +3,9 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
-import { CreateReturnSchema } from '../schemas/return.js';
+import { CreateReturnSchema, ProcessReturnSchema } from '../schemas/return.js';
 import { generateReturnReference } from '../lib/orders.js';
-import { notifyOnlineRiders } from '../lib/notifications.js';
+import { notifyOnlineRiders, notify } from '../lib/notifications.js';
 
 export const returnsRouter = Router();
 
@@ -56,6 +56,93 @@ returnsRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (re
     });
     await notifyOnlineRiders('return_scheduled', 'Nouveau retour à récupérer', `Retour ${ret.reference} planifié`).catch(() => {});
     res.status(201).json({ return: { ...ret, riderFee: Number(ret.riderFee) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/returns — file d'inspection entrepot : retours collectes (a inspecter) + traites recents
+returnsRouter.get('/', requireAuth, requireRole('warehouse_manager', 'admin'), async (_req, res, next) => {
+  try {
+    const [toInspect, processed] = await Promise.all([
+      prisma.return.findMany({ where: { status: 'completed', inspectionResult: null }, orderBy: { completedAt: 'asc' } }),
+      prisma.return.findMany({ where: { inspectionResult: { not: null } }, orderBy: { inspectedAt: 'desc' }, take: 20 }),
+    ]);
+    const serialize = (r: { riderFee: unknown }) => ({ ...r, riderFee: Number(r.riderFee) });
+    res.json({ toInspect: toInspect.map(serialize), processed: processed.map(serialize) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/returns/:id/process — inspection entrepot d'un retour collecte (available/damaged).
+// available → remet les articles de la commande liee en stock dans l'entrepot du manager (+ journal).
+returnsRouter.patch('/:id/process', requireAuth, requireRole('warehouse_manager', 'admin'), async (req, res, next) => {
+  const parsed = ProcessReturnSchema.safeParse(req.body);
+  if (!parsed.success) return next(new HttpError(422, 'validation_failed', { issues: parsed.error.issues }));
+  const id = String(req.params['id']);
+  const { sub, role } = req.user!;
+  try {
+    const ret = await prisma.return.findUnique({ where: { id } });
+    if (!ret) return next(new HttpError(404, 'return_not_found'));
+    if (ret.status !== 'completed') return next(new HttpError(422, 'return_not_collected'));
+    if (ret.inspectionResult !== null) return next(new HttpError(409, 'return_already_processed'));
+
+    // entrepot cible pour la remise en stock : celui du manager, sinon celui fourni par l'admin
+    let warehouseId: string | null = null;
+    if (parsed.data.result === 'available') {
+      if (role === 'warehouse_manager') {
+        const wh = await prisma.warehouse.findFirst({ where: { managerId: sub }, select: { id: true } });
+        if (!wh) return next(new HttpError(403, 'no_managed_warehouse'));
+        warehouseId = wh.id;
+      } else if (parsed.data.warehouseId) {
+        const wh = await prisma.warehouse.findUnique({ where: { id: parsed.data.warehouseId }, select: { id: true } });
+        if (!wh) return next(new HttpError(422, 'invalid_warehouse'));
+        warehouseId = wh.id;
+      } else {
+        return next(new HttpError(422, 'warehouse_required'));
+      }
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const r = await tx.return.update({
+        where: { id },
+        data: {
+          inspectionResult: parsed.data.result,
+          inspectedAt: new Date(),
+          ...(parsed.data.note ? { inspectionNote: parsed.data.note } : {}),
+        },
+      });
+
+      // remise en stock des articles de la commande liee (si presente)
+      if (parsed.data.result === 'available' && warehouseId && r.orderId) {
+        const wid = warehouseId; // narrowed to string par le garde ci-dessus
+        const items = await tx.orderItem.findMany({ where: { orderId: r.orderId }, select: { productId: true, quantity: true } });
+        for (const item of items) {
+          // productId est nullable (produit supprimé après achat) — pas de remise en stock possible
+          if (!item.productId) continue;
+          await tx.warehouseStock.upsert({
+            where: { warehouseId_productId: { warehouseId: wid, productId: item.productId } },
+            create: { warehouseId: wid, productId: item.productId, quantity: item.quantity },
+            update: { quantity: { increment: item.quantity } },
+          });
+          await tx.stockAdjustment.create({
+            data: { warehouseId: wid, productId: item.productId, actorId: sub, delta: item.quantity, reason: `retour ${r.reference}` },
+          });
+        }
+      }
+      return r;
+    });
+
+    // notification client (best-effort, hors transaction)
+    if (updated.customerId) {
+      const msg = parsed.data.result === 'available'
+        ? 'Votre article retourne a ete verifie et remis en stock.'
+        : 'Votre article retourne a ete verifie : il est endommage.';
+      await notify(updated.customerId, 'return_processed', `Retour ${updated.reference} traite`, msg).catch(() => {});
+    }
+
+    res.json({ return: { ...updated, riderFee: Number(updated.riderFee) } });
   } catch (err) {
     next(err);
   }

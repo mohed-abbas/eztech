@@ -674,6 +674,9 @@ const steps = [
                 <ZoneBadge :in-zone="zoneResult.inZone" :zone-name="zoneResult.zoneName" />
                 <p v-if="!zoneResult.inZone" class="text-xs text-text-muted mt-2 ml-5">
                   Nous couvrons actuellement Paris Centre et Paris Est.
+                  <NuxtLink to="/service-unavailable" class="font-medium text-primary-600 hover:underline">
+                    Me notifier quand le service arrive chez moi
+                  </NuxtLink>
                 </p>
               </div>
             </div>
