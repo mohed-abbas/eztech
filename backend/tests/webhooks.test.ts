@@ -30,7 +30,7 @@ async function customerToken(email = 'hook-cust@example.com'): Promise<string> {
 
 const INSIDE = { address: 'Paris', lat: 48.85, lng: 2.35 };
 
-async function seedOrder(token: string) {
+async function seedOrder(token: string, managerId?: string) {
   await testPrisma.zone.create({
     data: {
       name: 'Paris',
@@ -53,7 +53,7 @@ async function seedOrder(token: string) {
   const product = await testPrisma.product.create({
     data: { name: 'P', slug: 'hook-prod', categoryId: cat.id, pricingType: 'flat', flatPrice: 3.5, sortPrice: 3.5, stock: 10 },
   });
-  const wh = await testPrisma.warehouse.create({ data: { name: 'WH', address: '1 Quai', lat: 48.85, lng: 2.35 } });
+  const wh = await testPrisma.warehouse.create({ data: { name: 'WH', address: '1 Quai', lat: 48.85, lng: 2.35, ...(managerId ? { managerId } : {}) } });
   await testPrisma.warehouseStock.create({ data: { warehouseId: wh.id, productId: product.id, quantity: 5 } });
 
   const create = await request(app)
@@ -164,5 +164,21 @@ describe('stripe webhook', () => {
     const emailedAddresses = vi.mocked(sendEmail).mock.calls.map((call) => call[0]?.to);
     expect(emailedAddresses).toContain('admin-b@eztech.fr');
     expect(emailedAddresses).not.toContain('admin-c@eztech.fr');
+  });
+
+  it('alerte stock bas : notifie aussi le manager de l\'entrepot concerne', async () => {
+    const token = await customerToken();
+    const manager = await testPrisma.user.create({
+      data: { email: 'wh-mgr@eztech.fr', name: 'Mgr', passwordHash: 'x', role: 'warehouse_manager' },
+    });
+    const { orderId } = await seedOrder(token, manager.id);
+
+    stripeMockState.nextEvent = fakePaymentIntentSucceeded(orderId);
+    const res = await postHook();
+    expect(res.status).toBe(200);
+
+    const rows = await testPrisma.notification.findMany({ where: { event: 'low_stock' } });
+    const recipientIds = new Set(rows.map((r) => r.userId));
+    expect(recipientIds.has(manager.id)).toBe(true);
   });
 });
