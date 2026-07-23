@@ -14,7 +14,7 @@ import { sendEmail } from '../lib/resend.js';
 import { passwordResetEmail } from '../lib/email/templates.js';
 import {
   RegisterSchema, LoginSchema, RefreshSchema, LogoutSchema,
-  ForgotPasswordSchema, ResetPasswordSchema,
+  ForgotPasswordSchema, ResetPasswordSchema, ChangePasswordSchema,
 } from '../schemas/auth.js';
 
 export const authRouter = Router();
@@ -171,4 +171,26 @@ authRouter.post('/reset-password', async (req, res, next) => {
   const passwordHash = await hashPassword(password);
   await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
   res.status(200).json({ message: 'password reset successfully' });
+});
+
+// POST /api/auth/change-password — authenticated rotation. Verifies the current password before
+// setting the new one (H5). requireAuth ensures we rotate only the caller's own credential.
+authRouter.post('/change-password', requireAuth, async (req, res, next) => {
+  const result = ChangePasswordSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  const { currentPassword, newPassword } = result.data;
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!user) return next(new HttpError(404, 'user_not_found'));
+
+    const ok = await verifyPassword(currentPassword, user.passwordHash);
+    if (!ok) return next(new HttpError(400, 'invalid_current_password'));
+
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    res.status(200).json({ message: 'password changed successfully' });
+  } catch (err) {
+    next(err);
+  }
 });

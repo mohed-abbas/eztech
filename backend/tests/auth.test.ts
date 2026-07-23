@@ -287,3 +287,60 @@ describe('POST /api/auth/reset-password', () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe('POST /api/auth/change-password', () => {
+  beforeEach(truncateAuthTables);
+
+  it('rotates the password when the current one is correct, then allows login with the new one', async () => {
+    const { token } = await registerAndLogin();
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: VALID_USER.password, newPassword: 'brandnewpass789' });
+    expect(res.status).toBe(200);
+
+    const newLogin = await request(app).post('/api/auth/login').send({
+      email: VALID_USER.email, password: 'brandnewpass789',
+    });
+    expect(newLogin.status).toBe(200);
+
+    const oldLogin = await request(app).post('/api/auth/login').send({
+      email: VALID_USER.email, password: VALID_USER.password,
+    });
+    expect(oldLogin.status).toBe(401);
+  });
+
+  it('returns 400 and does not rotate when the current password is wrong', async () => {
+    const { token } = await registerAndLogin();
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: 'notmypassword', newPassword: 'brandnewpass789' });
+    expect(res.status).toBe(400);
+    expect((res.body as ErrorResponse).error).toBe('invalid_current_password');
+
+    // original password still works
+    const stillLogin = await request(app).post('/api/auth/login').send({
+      email: VALID_USER.email, password: VALID_USER.password,
+    });
+    expect(stillLogin.status).toBe(200);
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .send({ currentPassword: VALID_USER.password, newPassword: 'brandnewpass789' });
+    expect(res.status).toBe(401);
+  });
+
+  it('returns 422 when the new password is too short', async () => {
+    const { token } = await registerAndLogin();
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: VALID_USER.password, newPassword: 'short' });
+    expect(res.status).toBe(422);
+  });
+});
