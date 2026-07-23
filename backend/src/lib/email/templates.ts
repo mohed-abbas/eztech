@@ -94,6 +94,36 @@ export function returnReminderEmail(params: { orderReference: string; rentalEnds
   return { subject: 'Rappel : retour de votre location', html, text };
 }
 
+export function lateFeePendingEmail(params: { orderReference: string; amount: number; orderUrl: string }): EmailContent {
+  const ref = escapeHtml(params.orderReference);
+  const amount = escapeHtml(`${params.amount.toFixed(2)} €`);
+  const { html, text } = renderEmail({
+    heading: 'Frais de retard sur votre location',
+    bodyHtml:
+      `<p>La periode de location de votre commande <strong>${ref}</strong> est depassee.</p>` +
+      `<p>Des frais de retard de <strong>${amount}</strong> vont etre preleves sur votre carte enregistree.</p>`,
+    ctaLabel: 'Voir la commande',
+    ctaUrl: params.orderUrl,
+    unsubscribe: false,
+  });
+  return { subject: 'Frais de retard sur votre location', html, text };
+}
+
+export function lateFeeChargedEmail(params: { orderReference: string; amount: number; orderUrl: string }): EmailContent {
+  const ref = escapeHtml(params.orderReference);
+  const amount = escapeHtml(`${params.amount.toFixed(2)} €`);
+  const { html, text } = renderEmail({
+    heading: 'Frais de retard preleves',
+    bodyHtml:
+      `<p>Des frais de retard de <strong>${amount}</strong> ont ete preleves pour votre commande <strong>${ref}</strong>.</p>` +
+      `<p>Retournez le materiel au plus vite pour eviter des frais supplementaires.</p>`,
+    ctaLabel: 'Planifier le retour',
+    ctaUrl: params.orderUrl,
+    unsubscribe: false,
+  });
+  return { subject: 'Frais de retard preleves', html, text };
+}
+
 export function lowStockEmail(params: { productName: string; quantity: number; adminUrl: string }): EmailContent {
   const name = escapeHtml(params.productName);
   const { html, text } = renderEmail({
