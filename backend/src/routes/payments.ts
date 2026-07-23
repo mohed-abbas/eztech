@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { getStripe } from '../lib/stripe.js';
+import { ensureStripeCustomer } from '../lib/stripe-customer.js';
 import { CreateIntentSchema } from '../schemas/payment.js';
 
 export const paymentsRouter = Router();
@@ -27,8 +28,12 @@ paymentsRouter.post('/create-intent', requireAuth, async (req, res, next) => {
     // only an unpaid order can be charged — already-paid/refunded/failed orders are not payable
     if (order.paymentStatus !== 'awaiting_payment') return next(new HttpError(409, 'not_payable'));
 
-    // idempotencyKey keyed on the order id — a double-submit reuses the same intent (no double charge, D-08)
+    // attach a Stripe customer and save the card off_session so an overdue rental can be charged a
+    // late fee later without the customer present (Module 9). Guests (no customerId) can't be saved.
     const stripe = await getStripe();
+    const customerId = order.customerId ? await ensureStripeCustomer(order.customerId) : undefined;
+
+    // idempotencyKey keyed on the order id — a double-submit reuses the same intent (no double charge, D-08)
     const intent = await stripe.paymentIntents.create(
       {
         // Decimal → integer cents via exact Decimal arithmetic (no IEEE-754 float error, WR-05)
@@ -36,6 +41,7 @@ paymentsRouter.post('/create-intent', requireAuth, async (req, res, next) => {
         currency: 'eur',
         metadata: { orderId: order.id },
         automatic_payment_methods: { enabled: true },
+        ...(customerId ? { customer: customerId, setup_future_usage: 'off_session' as const } : {}),
       },
       { idempotencyKey: `intent_${order.id}` },
     );
