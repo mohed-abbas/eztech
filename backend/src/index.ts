@@ -9,6 +9,7 @@ import { initMongo, closeMongo } from './lib/mongo.js';
 import { initSocket } from './lib/socket.js';
 import { startReturnReminders, stopReturnReminders } from './jobs/return-reminders.js';
 import { startAssignmentExpiry, stopAssignmentExpiry } from './jobs/assignment-expiry.js';
+import { startLateFees, stopLateFees } from './jobs/late-fees.js';
 
 const app = buildApp();
 
@@ -27,6 +28,8 @@ initSocket(server);
 startReturnReminders();
 // Assignment-offer cron — ré-arme la fenêtre d'offre des commandes non prises (assignmentExpiresAt).
 startAssignmentExpiry();
+// Late-fee cron (Module 9) — auto-charges overdue rentals off_session.
+startLateFees();
 
 // graceful shutdown — give in-flight requests up to 10s to finish before forcing exit
 function shutdown(signal: NodeJS.Signals) {
@@ -38,6 +41,7 @@ function shutdown(signal: NodeJS.Signals) {
     void (async () => {
       stopReturnReminders();
       stopAssignmentExpiry();
+      stopLateFees();
       await closeMongo();
       process.exit(0);
     })();
