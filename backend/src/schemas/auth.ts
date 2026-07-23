@@ -39,3 +39,10 @@ export const ResetPasswordSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(8).max(200),
 });
+
+// POST /api/auth/change-password — authenticated self-service rotation (H5). Distinct from
+// reset-password (which consumes an emailed token); this verifies the current password instead.
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(200),
+});

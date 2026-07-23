@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
-import { PatchUserSchema, ReviewRiderApplicationSchema, NotificationPrefsSchema } from '../schemas/user.js';
+import { PatchUserSchema, PatchMeSchema, ReviewRiderApplicationSchema, NotificationPrefsSchema } from '../schemas/user.js';
 
 export const usersRouter = Router();
 
@@ -25,6 +25,26 @@ usersRouter.patch('/me/notifications', requireAuth, async (req, res, next) => {
       where: { id: req.user!.sub },
       data: { emailOptOut: result.data.emailOptOut },
     });
+    res.json({ user: buildUserResponse(user) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/users/me — owner-scoped self-service profile update (H5). Registered ABOVE /:id so
+// 'me' is never captured as an :id param. Keyed on req.user!.sub, never req.params, so a caller can
+// only ever edit their own record. Cannot touch email or role (see PatchMeSchema).
+usersRouter.patch('/me', requireAuth, async (req, res, next) => {
+  const result = PatchMeSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  // filter undefined to satisfy exactOptionalPropertyTypes (mirrors the admin PATCH /:id handler)
+  const data = Object.fromEntries(
+    Object.entries(result.data).filter(([, v]) => v !== undefined),
+  ) as { name?: string; phone?: string; vehicleType?: 'bicycle' | 'scooter' | 'car'; licenseNumber?: string; insuranceNumber?: string };
+
+  try {
+    const user = await prisma.user.update({ where: { id: req.user!.sub }, data });
     res.json({ user: buildUserResponse(user) });
   } catch (err) {
     next(err);

@@ -150,3 +150,68 @@ describe('PATCH /api/users/me/notifications', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('PATCH /api/users/me', () => {
+  beforeEach(truncateAuthTables);
+
+  it('updates the caller\'s own name/phone and returns the sanitized user', async () => {
+    const { token } = await createCustomer();
+
+    const res = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'Renamed User', phone: '0611223344' });
+
+    expect(res.status).toBe(200);
+    const body = res.body as { user: { name: string; phone: string } & Record<string, unknown> };
+    expect(body.user.name).toBe('Renamed User');
+    expect(body.user.phone).toBe('0611223344');
+    expect(body.user).not.toHaveProperty('passwordHash');
+  });
+
+  it('updates rider vehicle fields', async () => {
+    const { token } = await createCustomer();
+
+    const res = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ vehicleType: 'scooter', licenseNumber: 'AB-123', insuranceNumber: 'INS-9' });
+
+    expect(res.status).toBe(200);
+    const body = res.body as { user: { vehicleType: string; licenseNumber: string } };
+    expect(body.user.vehicleType).toBe('scooter');
+    expect(body.user.licenseNumber).toBe('AB-123');
+  });
+
+  it('cannot escalate role or change email (fields rejected by the schema, ignored)', async () => {
+    const { id, token } = await createCustomer();
+
+    const res = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ role: 'admin', email: 'hacker@evil.com', name: 'Legit Name' });
+    expect(res.status).toBe(200);
+
+    // role/email untouched — verify via the admin read
+    const adminToken = await getAdminToken();
+    const check = await request(app).get(`/api/users/${id}`).set('Authorization', `Bearer ${adminToken}`);
+    const checked = (check.body as { user: { role: string; email: string; name: string } }).user;
+    expect(checked.role).toBe('customer');
+    expect(checked.email).toBe(CUSTOMER.email);
+    expect(checked.name).toBe('Legit Name');
+  });
+
+  it('returns 422 for an empty name', async () => {
+    const { token } = await createCustomer();
+    const res = await request(app)
+      .patch('/api/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: '' });
+    expect(res.status).toBe(422);
+  });
+
+  it('returns 401 without a token', async () => {
+    const res = await request(app).patch('/api/users/me').send({ name: 'x' });
+    expect(res.status).toBe(401);
+  });
+});
