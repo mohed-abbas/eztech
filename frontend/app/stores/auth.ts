@@ -221,6 +221,29 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    // Exchanges a Google Identity Services ID token for our own session (POST /api/auth/google).
+    // The backend verifies the token, upserts the user, and sets the same httpOnly cookies as
+    // password login — so from here on the session is indistinguishable from a normal login.
+    async loginWithGoogle(credential: string): Promise<User> {
+      this.loading = true
+      try {
+        const config = useRuntimeConfig()
+        const response = await $fetch<{ user: User, token: string, refreshToken?: string }>(`${config.public.apiUrl}/auth/google`, {
+          method: 'POST',
+          body: { credential },
+          credentials: 'include',
+        })
+        this.user = response.user
+        this.token = response.token
+        this.refreshToken = response.refreshToken ?? null
+        this.persist()
+        return this.user!
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
     async register(payload: RegisterPayload): Promise<User> {
       this.loading = true
       try {

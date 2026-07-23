@@ -32,6 +32,9 @@ x-backend-base: &backend-base
     STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:?set STRIPE_PUBLISHABLE_KEY in .env.production}
     STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:?set STRIPE_WEBHOOK_SECRET in .env.production}
     DELIVERY_FEE: ${DELIVERY_FEE:-4.99}
+    # Google OAuth client id — verifies GIS ID tokens (POST /api/auth/google). Empty ⇒ the endpoint
+    # returns 503 and the sign-in button hides itself, so Google login is simply off until set.
+    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     # consumed only by the idempotent admin seed (scripts/deploy.sh --seed, dist/seed/seed.js).
     # Declared here so `docker compose run` inherits them from the sourced .env.production; set a
     # strong ADMIN_PASSWORD there before the first --seed (the default is intentionally weak).
@@ -64,6 +67,8 @@ x-frontend-base: &frontend-base
       VITE_API_URL: https://eztech.thecodeman.cloud/api
       VITE_SOCKET_URL: https://eztech.thecodeman.cloud
       VITE_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:?set STRIPE_PUBLISHABLE_KEY in .env.production}
+      # same client id, baked into the browser bundle (public by design). Empty ⇒ button hidden.
+      VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
   restart: unless-stopped
   networks:
     - proxy-net
