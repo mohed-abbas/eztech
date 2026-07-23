@@ -15,6 +15,9 @@ import {
 } from '../schemas/rider.js';
 import { notify, dispatch } from '../lib/notifications.js';
 import { riderAssignedEmail } from '../lib/email/templates.js';
+import { getIO } from '../lib/socket.js';
+import { orderRoom } from '../socket/rooms.js';
+import { ORDER_STATUS } from '../socket/events.js';
 
 export const riderRouter = Router();
 
@@ -291,6 +294,16 @@ riderRouter.post('/orders/:id/accept', async (req, res, next) => {
     );
 
     if (!order) return next(new HttpError(409, 'order_unavailable'));
+
+    // La transition vers rider_assigned se fait ICI (claim), pas via PATCH /orders/:id/status :
+    // il faut donc diffuser order-status a la room de la commande pour que le suivi client se
+    // mette a jour en direct (D-15). Best-effort : getIO() leve tant que le socket n'est pas init.
+    try {
+      getIO().to(orderRoom(order.id)).emit(ORDER_STATUS, { orderId: order.id, status: order.status });
+    } catch {
+      // couche socket non initialisee (tests HTTP) — le temps reel est best-effort
+    }
+
     // customer-facing lifecycle email (NOTIF-01) — the order enters status='rider_assigned' HERE
     // (the accept claim above), not via PATCH /orders/:id/status, so this is the correct hook
     // point for that specific transition. Idempotent on (orderId,event,channel); best-effort.

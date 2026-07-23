@@ -167,13 +167,13 @@ const etaLabel = computed<string | null>(() => {
           </div>
 
           <!-- Live status badge (active orders) -->
-          <div v-if="order && isActive" class="flex items-center gap-3 rounded-full bg-primary-500/20 border border-primary-400/30 px-5 py-2.5 backdrop-blur-sm">
+          <div v-if="order && isActive" data-testid="order-status-badge" class="flex items-center gap-3 rounded-full bg-primary-500/20 border border-primary-400/30 px-5 py-2.5 backdrop-blur-sm">
             <span class="size-2.5 rounded-full bg-primary-400 animate-pulse" />
             <span class="text-body-sm font-semibold text-white">{{ statusMeta(currentStatus).label }}</span>
           </div>
 
           <!-- Delivered / Cancelled badge -->
-          <div v-else-if="order" class="flex items-center gap-2 rounded-full px-5 py-2.5 backdrop-blur-sm" :class="statusMeta(currentStatus).bg">
+          <div v-else-if="order" data-testid="order-status-badge" class="flex items-center gap-2 rounded-full px-5 py-2.5 backdrop-blur-sm" :class="statusMeta(currentStatus).bg">
             <Icon :name="statusMeta(currentStatus).icon" class="size-4" :class="statusMeta(currentStatus).color" />
             <span class="text-body-sm font-semibold" :class="statusMeta(currentStatus).color">{{ statusMeta(currentStatus).label }}</span>
           </div>
