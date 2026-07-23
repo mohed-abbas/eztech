@@ -264,6 +264,22 @@ describe('POST /api/auth/reset-password', () => {
     expect(oldLoginRes.status).toBe(401);
   });
 
+  it('revokes existing sessions so a pre-reset refresh token can no longer refresh', async () => {
+    const { user, refreshToken } = await registerAndLogin();
+    // the refresh token issued at login must still work before the reset
+    const before = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    expect(before.status).toBe(200);
+
+    const raw = await issueResetToken(user.id as string);
+    await request(app).post('/api/auth/reset-password').send({ token: raw, password: 'newpassword456' });
+
+    // the rotated refresh token from `before` must now be dead (all sessions evicted on reset)
+    const after = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: (before.body as AuthResponse).refreshToken });
+    expect(after.status).toBe(401);
+  });
+
   it('returns 400 for a reused token', async () => {
     const { user } = await registerAndLogin();
     const raw = await issueResetToken(user.id as string);
@@ -309,6 +325,28 @@ describe('POST /api/auth/change-password', () => {
       email: VALID_USER.email, password: VALID_USER.password,
     });
     expect(oldLogin.status).toBe(401);
+  });
+
+  it('evicts other sessions but keeps the calling device logged in', async () => {
+    const { token, refreshToken } = await registerAndLogin();
+    // a second, independent session (e.g. another device) exists via a rotation
+    const other = await request(app).post('/api/auth/refresh').send({ refreshToken });
+    const otherRefresh = (other.body as AuthResponse).refreshToken;
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: VALID_USER.password, newPassword: 'brandnewpass789' });
+    expect(res.status).toBe(200);
+
+    // the other device's refresh token is now dead
+    const otherAfter = await request(app).post('/api/auth/refresh').send({ refreshToken: otherRefresh });
+    expect(otherAfter.status).toBe(401);
+
+    // the caller received a fresh refresh token that still works
+    const freshRefresh = (res.body as AuthResponse).refreshToken;
+    const callerAfter = await request(app).post('/api/auth/refresh').send({ refreshToken: freshRefresh });
+    expect(callerAfter.status).toBe(200);
   });
 
   it('returns 400 and does not rotate when the current password is wrong', async () => {

@@ -6,7 +6,7 @@ import { HttpError } from '../middleware/error.js';
 import { hashPassword, verifyPassword, DUMMY_HASH } from '../lib/password.js';
 import {
   generateRefreshToken, rotateRefreshToken,
-  revokeRefreshToken, verifyRefreshToken,
+  revokeRefreshToken, revokeAllRefreshTokens, verifyRefreshToken,
 } from '../lib/refresh-token.js';
 import { issueResetToken, consumeResetToken } from '../lib/reset-token.js';
 import { issueVerificationToken, consumeVerificationToken } from '../lib/verification-token.js';
@@ -197,6 +197,9 @@ authRouter.post('/reset-password', async (req, res, next) => {
 
   const passwordHash = await hashPassword(password);
   await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  // a reset must evict every existing session — otherwise an attacker holding a stolen refresh
+  // token keeps access for the full TTL after the legitimate owner resets (06-REVIEW blocker).
+  await revokeAllRefreshTokens(userId);
   res.status(200).json({ message: 'password reset successfully' });
 });
 
@@ -242,7 +245,14 @@ authRouter.post('/change-password', requireAuth, async (req, res, next) => {
 
     const passwordHash = await hashPassword(newPassword);
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-    res.status(200).json({ message: 'password changed successfully' });
+
+    // evict every existing session, then re-issue one for the current device so the caller stays
+    // logged in while any other (possibly stolen) session is invalidated (06-REVIEW blocker).
+    await revokeAllRefreshTokens(user.id);
+    const token = signAccessToken({ sub: user.id, role: user.role });
+    const refreshToken = await generateRefreshToken(user.id);
+    const csrfToken = setAuthCookies(res, { token, refreshToken });
+    res.status(200).json({ message: 'password changed successfully', token, refreshToken, csrfToken });
   } catch (err) {
     next(err);
   }

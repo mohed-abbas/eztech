@@ -63,6 +63,16 @@ export async function revokeRefreshToken(raw: string): Promise<void> {
   });
 }
 
+// Revoke every live session for a user. Called on any credential change (password reset/change) so
+// that resetting a password evicts an attacker who already holds a stolen session, rather than
+// leaving their refresh token valid for the full TTL.
+export async function revokeAllRefreshTokens(userId: string): Promise<void> {
+  await prisma.refreshToken.updateMany({
+    where: { userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+}
+
 export async function verifyRefreshToken(
   raw: string,
 ): Promise<{ userId: string } | null> {
