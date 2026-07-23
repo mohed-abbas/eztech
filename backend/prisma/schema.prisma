@@ -311,6 +311,8 @@ enum NotificationType {
   return_processed // customer-facing — a returned item was inspected (restocked or damaged)
   late_fee_pending // customer-facing — rental is overdue, a late fee is about to be charged
   late_fee_charged // customer-facing — the late fee was charged to the saved card
+  rider_near_warehouse // customer-facing — the rider reached the warehouse to collect the order
+  rider_near_customer // customer-facing — the rider is arriving at the delivery address
 }
 
 model Notification {
