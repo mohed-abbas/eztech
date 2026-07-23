@@ -21,6 +21,8 @@ export interface User {
   licenseNumber?: string
   insuranceNumber?: string
   createdAt: string
+  // ISO timestamp once the email is confirmed (Module 1); null/undefined until then
+  emailVerifiedAt?: string | null
 }
 
 export interface RegisterCustomerPayload {
@@ -348,6 +350,62 @@ export const useAuthStore = defineStore('auth', {
           }
           throw err
         }
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
+    // Confirms the account email from the link token (Module 1). Throws a friendly message on an
+    // invalid/expired token so the page can show a resend affordance.
+    async verifyEmail(token: string): Promise<void> {
+      this.loading = true
+      try {
+        const { isMock } = useMock()
+        if (isMock.value) {
+          await new Promise(r => setTimeout(r, 600))
+          return
+        }
+
+        const config = useRuntimeConfig()
+        try {
+          await $fetch(`${config.public.apiUrl}/auth/verify-email`, {
+            method: 'POST',
+            body: { token },
+          })
+        }
+        catch (err) {
+          const code = (err as { data?: { error?: string }, response?: { _data?: { error?: string } } })?.data?.error
+            ?? (err as { response?: { _data?: { error?: string } } })?.response?._data?.error
+          if (code === 'invalid_or_expired_token') {
+            throw new Error('Ce lien de confirmation est invalide ou a expiré.')
+          }
+          throw err
+        }
+
+        // reflect verification locally without a round-trip so the order gate lifts immediately
+        if (this.user) this.user.emailVerifiedAt = new Date().toISOString()
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
+    // Re-requests the confirmation link. Always resolves (the backend is enumeration-safe).
+    async resendVerification(email: string): Promise<void> {
+      this.loading = true
+      try {
+        const { isMock } = useMock()
+        if (isMock.value) {
+          await new Promise(r => setTimeout(r, 600))
+          return
+        }
+
+        const config = useRuntimeConfig()
+        await $fetch(`${config.public.apiUrl}/auth/resend-verification`, {
+          method: 'POST',
+          body: { email },
+        })
       }
       finally {
         this.loading = false

@@ -52,3 +52,13 @@ export const ChangePasswordSchema = z.object({
 export const GoogleAuthSchema = z.object({
   credential: z.string().min(1),
 });
+
+// POST /api/auth/verify-email — the raw single-use token from the confirmation link (Module 1).
+export const VerifyEmailSchema = z.object({
+  token: z.string().min(1),
+});
+
+// POST /api/auth/resend-verification — re-request the confirmation link for an address.
+export const ResendVerificationSchema = z.object({
+  email: z.string().email(),
+});

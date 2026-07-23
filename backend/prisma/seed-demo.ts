@@ -68,8 +68,9 @@ async function main() {
   for (const c of CUSTOMERS) {
     await prisma.user.upsert({
       where: { email: c.email },
-      update: {},
-      create: { email: c.email, passwordHash: customerHash, name: c.name, phone: c.phone, role: 'customer' },
+      update: { emailVerifiedAt: new Date() },
+      // demo customers are pre-verified so the checkout flow works out of the box (Module 1 gate)
+      create: { email: c.email, passwordHash: customerHash, name: c.name, phone: c.phone, role: 'customer', emailVerifiedAt: new Date() },
     });
   }
   console.log(`demo customers: ${CUSTOMERS.map((c) => c.email).join(', ')} / ${CUSTOMER_PASSWORD}`);

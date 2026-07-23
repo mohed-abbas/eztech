@@ -335,6 +335,8 @@ function describeOrderError(err: unknown): string {
       return 'Un produit de votre panier n’est plus disponible.'
     case 'validation_failed':
       return 'Votre panier contient des articles invalides ou périmés. Videz-le puis rajoutez les produits.'
+    case 'email_not_verified':
+      return 'Confirmez votre adresse email avant de passer votre première commande. Vérifiez votre boîte de réception (ou renvoyez le lien depuis la page de confirmation).'
     default:
       return 'La création de la commande a échoué. Veuillez réessayer.'
   }
