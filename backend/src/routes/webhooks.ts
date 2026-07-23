@@ -109,6 +109,12 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
   const orderId = orderIdOf(event);
   if (!orderId) return;
 
+  // capture the saved card (setup_future_usage=off_session at checkout) so an overdue rental can be
+  // charged a late fee later without the customer present (Module 9). String id or expanded object.
+  const pi = event.data.object as { payment_method?: string | { id?: string } | null };
+  const paymentMethodId =
+    typeof pi.payment_method === 'string' ? pi.payment_method : pi.payment_method?.id ?? null;
+
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: { items: true } });
   if (!order) return;
   // idempotency guard: a replayed event finds the order already paid → no-op (Pitfall 4)
@@ -146,7 +152,12 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
 
       await tx.order.update({
         where: { id: orderId },
-        data: { paymentStatus: 'paid', status: 'pending_assignment', assignmentExpiresAt: nextAssignmentExpiry() },
+        data: {
+          paymentStatus: 'paid',
+          status: 'pending_assignment',
+          assignmentExpiresAt: nextAssignmentExpiry(),
+          ...(paymentMethodId ? { stripePaymentMethodId: paymentMethodId } : {}),
+        },
       });
       await tx.orderEvent.create({
         data: { orderId, status: 'pending_assignment', note: 'payment confirmed' },

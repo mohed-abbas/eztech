@@ -80,6 +80,10 @@ model User {
   // (password reset, order/payment confirmation, lifecycle, return reminder) always sends
   emailOptOut Boolean @default(false)
 
+  // Stripe customer for off-session charges (late fees). Created lazily at first checkout so the
+  // saved card can be charged later without the customer present (Module 9).
+  stripeCustomerId String?
+
   refreshTokens       RefreshToken[]
   riderDocuments      RiderDocument[]
   assignedOrders      Order[]              @relation("RiderOrders")
@@ -176,6 +180,13 @@ model Order {
   // computed at the `delivered` transition = deliveredAt + max(perItem rental duration); null when
   // every line is flat-priced (no rental clock) — drives return-reminder scheduling (N-05)
   rentalEndsAt          DateTime?
+
+  // ── late-fee fields (Module 9) — additive/nullable. Saved card captured on the paid webhook so
+  // an overdue rental can be auto-charged off_session; the *ChargedAt guard makes the charge idempotent.
+  stripePaymentMethodId       String? // the card saved at checkout, reused for the off_session late charge
+  lateFeeAmount               Decimal?  @db.Decimal(10, 2) // amount actually charged for going overdue
+  lateFeeChargedAt            DateTime? // set once the off_session charge succeeds — guards against double-charge
+  lateFeeStripePaymentIntentId String?  // the PaymentIntent id of the late-fee charge
 
   customer User?          @relation("CustomerOrders", fields: [customerId], references: [id])
   rider    User?          @relation("RiderOrders", fields: [riderId], references: [id])
@@ -298,6 +309,8 @@ enum NotificationType {
   return_reminder // scheduled reminder to return a rented item
   low_stock // admin alert — warehouse stock crossed the low-stock threshold
   return_processed // customer-facing — a returned item was inspected (restocked or damaged)
+  late_fee_pending // customer-facing — rental is overdue, a late fee is about to be charged
+  late_fee_charged // customer-facing — the late fee was charged to the saved card
 }
 
 model Notification {
