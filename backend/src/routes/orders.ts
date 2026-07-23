@@ -65,6 +65,14 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
     else {
       // customers may not spoof another customerId — always anchor to the authenticated user
       effectiveCustomerId = req.user!.sub;
+
+      // email-confirmation gate (Module 1): a customer must verify their address before their first
+      // order. Admins placing on behalf of a customer are trusted and skip this.
+      const self = await prisma.user.findUnique({
+        where: { id: req.user!.sub },
+        select: { emailVerifiedAt: true },
+      });
+      if (!self?.emailVerifiedAt) return next(new HttpError(403, 'email_not_verified'));
     }
 
     // authoritative zone gate — reject a dropoff outside every active zone before any write (D-14)

@@ -11,7 +11,11 @@ async function customerToken(email = 'cust@example.com'): Promise<string> {
   const res = await request(app)
     .post('/api/auth/register')
     .send({ email, password: 'password123', name: 'Cust', phone: '' });
-  return (res.body as AuthResponse).token;
+  const body = res.body as AuthResponse & { user: { id: string } };
+  // verify the email so the customer passes the Module 1 order gate (mirrors the real flow where a
+  // customer confirms their address before their first order)
+  await testPrisma.user.update({ where: { id: body.user.id }, data: { emailVerifiedAt: new Date() } });
+  return body.token;
 }
 
 // A dropoff point known to sit inside the seeded zone (a 1x1 degree box around Paris).
@@ -93,6 +97,8 @@ type FullAuthResponse = { user: { id: string }; token: string };
 async function registerCustomerFull(email: string): Promise<{ id: string; token: string }> {
   const res = await request(app).post('/api/auth/register').send({ email, password: 'password123', name: 'Cust', phone: '' });
   const body = res.body as FullAuthResponse;
+  // pass the Module 1 order gate (see customerToken)
+  await testPrisma.user.update({ where: { id: body.user.id }, data: { emailVerifiedAt: new Date() } });
   return { id: body.user.id, token: body.token };
 }
 

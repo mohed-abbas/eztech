@@ -15,6 +15,8 @@ async function customerToken(email = 'pay-cust@example.com'): Promise<string> {
   const res = await request(app)
     .post('/api/auth/register')
     .send({ email, password: 'password123', name: 'Cust', phone: '' });
+  // verify the email so the customer clears the Module 1 order gate
+  await testPrisma.user.update({ where: { email }, data: { emailVerifiedAt: new Date() } });
   return (res.body as AuthResponse).token;
 }
 

@@ -136,6 +136,19 @@ export function lowStockEmail(params: { productName: string; quantity: number; a
   return { subject: 'Alerte stock bas', html, text };
 }
 
+export function verifyEmailEmail(params: { verifyUrl: string }): EmailContent {
+  const { html, text } = renderEmail({
+    heading: 'Confirmez votre adresse email',
+    bodyHtml:
+      `<p>Bienvenue chez EzTech ! Confirmez votre adresse email pour pouvoir passer votre premiere commande.</p>` +
+      `<p>Ce lien expire dans 24 heures. Si vous n'etes pas a l'origine de cette inscription, ignorez cet email.</p>`,
+    ctaLabel: 'Confirmer mon email',
+    ctaUrl: params.verifyUrl,
+    unsubscribe: false,
+  });
+  return { subject: 'Confirmez votre adresse email', html, text };
+}
+
 export function passwordResetEmail(params: { resetUrl: string }): EmailContent {
   const { html, text } = renderEmail({
     heading: 'Reinitialisation de votre mot de passe',

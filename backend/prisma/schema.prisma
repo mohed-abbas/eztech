@@ -80,6 +80,11 @@ model User {
   // (password reset, order/payment confirmation, lifecycle, return reminder) always sends
   emailOptOut Boolean @default(false)
 
+  // email confirmation (Module 1) — null until the user clicks the verification link. A customer
+  // must have a non-null value before their first order (gated in POST /api/orders). Google-OAuth
+  // users are set at first sign-in (Google already asserts email_verified).
+  emailVerifiedAt DateTime?
+
   // Stripe customer for off-session charges (late fees). Created lazily at first checkout so the
   // saved card can be charged later without the customer present (Module 9).
   stripeCustomerId String?
@@ -96,6 +101,7 @@ model User {
   managedWarehouses   Warehouse[]          @relation("ManagedWarehouses")
   stockAdjustments    StockAdjustment[]    @relation("StockAdjustments")
   passwordResetTokens PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
 }
 
 // a customer's saved delivery address — captured at registration, editable later
@@ -129,6 +135,18 @@ model PasswordResetToken {
   tokenHash String    @unique // sha256 of the raw token; raw is emailed, never stored
   expiresAt DateTime
   usedAt    DateTime? // single-use: set on first successful reset
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Email confirmation token (Module 1) — same hashed single-use shape as PasswordResetToken. The
+// raw token is emailed; only its sha256 is stored. Consumed once to stamp User.emailVerifiedAt.
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique // sha256 of the raw token; raw is emailed, never stored
+  expiresAt DateTime
+  usedAt    DateTime? // single-use: set on first successful verification
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

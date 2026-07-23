@@ -32,6 +32,8 @@ async function registerCustomer(email = 'cust1@example.com'): Promise<AuthRespon
   await request(app).post('/api/auth/register').send({
     email, password: 'password123', name: 'Cust One', phone: '0600000002',
   });
+  // verify the email so the customer clears the Module 1 order gate
+  await testPrisma.user.update({ where: { email }, data: { emailVerifiedAt: new Date() } });
   const res = await request(app).post('/api/auth/login').send({ email, password: 'password123' });
   return res.body as AuthResponse;
 }
