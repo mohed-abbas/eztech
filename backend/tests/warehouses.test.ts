@@ -39,7 +39,16 @@ async function stockAProduct(warehouseId: string, quantity = 5) {
   return product;
 }
 
+let orderSeq = 0;
+async function createOrder(warehouseId: string, status: 'pending_assignment' | 'rider_assigned' | 'delivered' = 'pending_assignment') {
+  orderSeq += 1;
+  return testPrisma.order.create({
+    data: { reference: `EZ-PREP-${orderSeq}`, status, warehouseId, pickupAddress: 'Entrepot', dropoffAddress: 'Client', riderFee: 5 },
+  });
+}
+
 beforeEach(async () => {
+  orderSeq = 0;
   await testPrisma.stockAdjustment.deleteMany();
   await testPrisma.warehouseStock.deleteMany();
   await testPrisma.warehouse.deleteMany();
@@ -97,6 +106,40 @@ describe('warehouses API — stock scoping', () => {
     const mgr = await createManager('scoped-mgr@example.com');
     const other = await createWarehouse(); // aucun manager
     const res = await request(app).get(`/api/warehouses/${other.id}/stock`).set('Authorization', `Bearer ${mgr.token}`);
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('warehouses API — commandes a preparer', () => {
+  it('liste les commandes a preparer de SON entrepot', async () => {
+    const mgr = await createManager('prep-mgr@example.com');
+    const wh = await createWarehouse(mgr.id);
+    await createOrder(wh.id, 'pending_assignment');
+    await createOrder(wh.id, 'delivered'); // ne doit PAS apparaitre
+
+    const res = await request(app).get(`/api/warehouses/${wh.id}/orders`).set('Authorization', `Bearer ${mgr.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.orders.length).toBe(1);
+    expect(res.body.orders[0].status).toBe('pending_assignment');
+  });
+
+  it('un manager marque une commande prete pour le ramassage', async () => {
+    const mgr = await createManager('prep-mgr2@example.com');
+    const wh = await createWarehouse(mgr.id);
+    const order = await createOrder(wh.id);
+
+    const res = await request(app).patch(`/api/warehouses/${wh.id}/orders/${order.id}/prepare`).set('Authorization', `Bearer ${mgr.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.order.preparedAt).not.toBeNull();
+  });
+
+  it('un manager ne peut pas preparer une commande d\'un autre entrepot (403)', async () => {
+    const mgr = await createManager('prep-mgr3@example.com');
+    await createWarehouse(mgr.id); // son entrepot
+    const other = await createWarehouse(); // autre entrepot, sans manager
+    const order = await createOrder(other.id);
+
+    const res = await request(app).patch(`/api/warehouses/${other.id}/orders/${order.id}/prepare`).set('Authorization', `Bearer ${mgr.token}`);
     expect(res.status).toBe(403);
   });
 });
