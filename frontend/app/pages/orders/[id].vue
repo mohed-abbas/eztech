@@ -134,10 +134,18 @@ const frozenPos = computed<{ lat: number, lng: number } | null>(() => {
   return null
 })
 
-// ETA live : position livreur → destination (heuristique distance / vitesse moyenne)
+// ETA live : itinéraire routier réel (livreur → destination) via /api/directions, avec repli sur
+// l'heuristique distance/vitesse moyenne tant que la route n'est pas encore chargée (D4).
+const dropoffPos = computed<{ lat: number, lng: number } | null>(() =>
+  order.value?.dropoff ? { lat: order.value.dropoff.lat, lng: order.value.dropoff.lng } : null,
+)
+const { etaSeconds: routedEtaSeconds } = useRouteEta(riderPos, dropoffPos)
+
 const etaLabel = computed<string | null>(() => {
   if (isDelivered.value || !riderPos.value || !order.value?.dropoff) return null
-  const secs = estimateEtaSeconds(riderPos.value, { lat: order.value.dropoff.lat, lng: order.value.dropoff.lng })
+  // prefer the real routed duration; fall back to the straight-line estimate until it arrives
+  const secs = routedEtaSeconds.value
+    ?? estimateEtaSeconds(riderPos.value, { lat: order.value.dropoff.lat, lng: order.value.dropoff.lng })
   return formatEta(secs)
 })
 </script>
