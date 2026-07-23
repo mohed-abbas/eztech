@@ -1,20 +1,35 @@
 // GET /api/directions?from=lat,lng&to=lat,lng  → driving route polyline + distance + duration.
 //
-// Proxied server-side (D4) so the OpenRouteService key never reaches the client bundle. Powers
-// rider navigation (Module 4) and the ETA on the customer tracking map (Module 5).
+// Proxied server-side (D4) so any provider key never reaches the client bundle. Powers rider
+// navigation (Module 4) and the ETA on the customer tracking map (Module 5).
+//
+// Provider chain (first available wins):
+//   1. OpenRouteService — the plan's stated choice — used only if NUXT_ORS_API_KEY is set.
+//   2. OSRM public demo server — no key required, same OSM road network. This is the default
+//      because heiGIT ORS signup was unavailable; documented as a deliberate deviation in the
+//      README "limits" section. The public OSRM host is a demo instance (moderate use only),
+//      which the per-order cache below keeps us well within.
+//   3. Haversine straight line — last-resort estimate flagged `estimated: true` so the map still
+//      shows *something* if both routers fail; never a hard failure.
 //
 // Caching: the warehouse→customer route for a given order does not change, so identical
-// coordinate pairs are cached in-process to protect the free-tier quota (2K req/day). A rider's
-// live position DOES change, but rider navigation re-queries against a moving origin — callers
-// that want to spare the quota should query origin→destination once and reuse it.
-//
-// Degradation: with no key configured (or an ORS error), we return a straight-line (haversine)
-// estimate flagged `estimated: true` rather than failing, so the map still shows *something*.
+// coordinate pairs are cached in-process. A rider's live position DOES change, but rider
+// navigation re-queries against a moving origin — callers that want to spare the upstream should
+// query origin→destination once and reuse it.
 
 interface OrsGeoJson {
   features: Array<{
     geometry: { type: 'LineString', coordinates: number[][] }
     properties: { summary: { distance: number, duration: number } }
+  }>
+}
+
+interface OsrmResponse {
+  code: string
+  routes?: Array<{
+    geometry: { type: 'LineString', coordinates: number[][] }
+    distance: number
+    duration: number
   }>
 }
 
@@ -61,6 +76,43 @@ function fallback(from: [number, number], to: [number, number]): DirectionsResul
   }
 }
 
+// ORS provider — used only when a key is configured. Coordinates are [lng, lat].
+async function viaOrs(from: [number, number], to: [number, number], key: string): Promise<DirectionsResult | null> {
+  const res = await $fetch<OrsGeoJson>(
+    'https://api.openrouteservice.org/v2/directions/driving-car/geojson',
+    {
+      method: 'POST',
+      headers: { Authorization: key, 'Content-Type': 'application/json' },
+      body: { coordinates: [[from[1], from[0]], [to[1], to[0]]] },
+    },
+  )
+  const feature = res.features?.[0]
+  if (!feature) return null
+  return {
+    coordinates: feature.geometry.coordinates,
+    distance: feature.properties.summary.distance,
+    duration: feature.properties.summary.duration,
+    estimated: false,
+  }
+}
+
+// OSRM public demo server — no key. Path params are lng,lat pairs separated by ';'.
+async function viaOsrm(from: [number, number], to: [number, number]): Promise<DirectionsResult | null> {
+  const coords = `${from[1]},${from[0]};${to[1]},${to[0]}`
+  const res = await $fetch<OsrmResponse>(
+    `https://router.project-osrm.org/route/v1/driving/${coords}`,
+    { query: { overview: 'full', geometries: 'geojson' } },
+  )
+  const route = res.code === 'Ok' ? res.routes?.[0] : undefined
+  if (!route) return null
+  return {
+    coordinates: route.geometry.coordinates,
+    distance: route.distance,
+    duration: route.duration,
+    estimated: false,
+  }
+}
+
 export default defineEventHandler(async (event): Promise<DirectionsResult> => {
   const query = getQuery(event)
   const from = parseLatLng(query.from)
@@ -73,37 +125,23 @@ export default defineEventHandler(async (event): Promise<DirectionsResult> => {
   const hit = cache.get(cacheKey)
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value
 
-  const config = useRuntimeConfig()
-  const key = config.orsApiKey as string
-  if (!key) {
-    // No key provisioned yet — degrade rather than 500 so the map still renders.
-    return fallback(from, to)
-  }
+  const key = useRuntimeConfig().orsApiKey as string
 
+  // Provider chain: ORS (if keyed) → OSRM public → haversine. A thrown/empty upstream falls
+  // through to the next provider rather than failing the request.
   try {
-    // ORS expects [lng, lat] order.
-    const res = await $fetch<OrsGeoJson>(
-      'https://api.openrouteservice.org/v2/directions/driving-car/geojson',
-      {
-        method: 'POST',
-        headers: { Authorization: key, 'Content-Type': 'application/json' },
-        body: { coordinates: [[from[1], from[0]], [to[1], to[0]]] },
-      },
-    )
-    const feature = res.features?.[0]
-    if (!feature) return fallback(from, to)
+    const value = key
+      ? (await viaOrs(from, to, key)) ?? (await viaOsrm(from, to))
+      : await viaOsrm(from, to)
 
-    const value: DirectionsResult = {
-      coordinates: feature.geometry.coordinates,
-      distance: feature.properties.summary.distance,
-      duration: feature.properties.summary.duration,
-      estimated: false,
+    if (value) {
+      cache.set(cacheKey, { at: Date.now(), value })
+      return value
     }
-    cache.set(cacheKey, { at: Date.now(), value })
-    return value
   }
   catch (err) {
-    console.error('[directions BFF] ORS request failed, returning straight-line estimate:', err)
-    return fallback(from, to)
+    console.error('[directions BFF] routing provider failed, returning straight-line estimate:', err)
   }
+
+  return fallback(from, to)
 })
