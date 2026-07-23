@@ -46,3 +46,9 @@ export const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8).max(200),
 });
+
+// POST /api/auth/google — the browser sends the Google Identity Services ID token (a JWT) as
+// `credential`; the backend verifies it against GOOGLE_CLIENT_ID and upserts the user.
+export const GoogleAuthSchema = z.object({
+  credential: z.string().min(1),
+});

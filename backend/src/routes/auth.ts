@@ -14,14 +14,21 @@ import { sendEmail } from '../lib/resend.js';
 import { passwordResetEmail } from '../lib/email/templates.js';
 import {
   RegisterSchema, LoginSchema, RefreshSchema, LogoutSchema,
-  ForgotPasswordSchema, ResetPasswordSchema, ChangePasswordSchema,
+  ForgotPasswordSchema, ResetPasswordSchema, ChangePasswordSchema, GoogleAuthSchema,
 } from '../schemas/auth.js';
+import { OAuth2Client } from 'google-auth-library';
+import { randomBytes } from 'node:crypto';
 
 export const authRouter = Router();
 
 // base frontend origin for the reset link — mirrors orders.ts/rider.ts/webhooks.ts's CORS_ORIGIN
 // parsing (first entry is the primary frontend origin); no dedicated FRONTEND_URL env exists.
 const FRONTEND_ORIGIN = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000').split(',')[0]!.trim();
+
+// Reused verifier for Google Identity Services ID tokens (POST /api/auth/google). The same
+// GOOGLE_CLIENT_ID works for every environment — the OAuth client registers both the localhost
+// and production JavaScript origins, so no per-environment key is needed.
+const googleClient = new OAuth2Client();
 
 // strips passwordHash before sending to client
 function buildUserResponse(user: User) {
@@ -192,5 +199,49 @@ authRouter.post('/change-password', requireAuth, async (req, res, next) => {
     res.status(200).json({ message: 'password changed successfully' });
   } catch (err) {
     next(err);
+  }
+});
+
+// POST /api/auth/google — Google Identity Services sign-in. The browser posts the GIS ID token as
+// `credential`; we verify it against GOOGLE_CLIENT_ID, then upsert the user by verified email and
+// issue our own JWT + httpOnly cookies (same session shape as register/login, Phase 7).
+authRouter.post('/google', async (req, res, next) => {
+  const result = GoogleAuthSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  const clientId = process.env['GOOGLE_CLIENT_ID'];
+  if (!clientId) return next(new HttpError(503, 'google_auth_not_configured'));
+
+  try {
+    // verifyIdToken checks the signature, expiry, issuer AND that the token's audience is our
+    // client id — a token minted for any other app is rejected here.
+    const ticket = await googleClient.verifyIdToken({ idToken: result.data.credential, audience: clientId });
+    const payload = ticket.getPayload();
+
+    // require a Google-verified email before we trust it to match/create an account — otherwise a
+    // Google account with an unverified address could hijack a local account sharing that email.
+    if (!payload?.email || !payload.email_verified) {
+      return next(new HttpError(401, 'google_email_unverified'));
+    }
+
+    const email = payload.email.toLowerCase();
+    const name = payload.name || email.split('@')[0]!;
+
+    // upsert by email: an existing account (local or previously Google) just logs in; a new one is
+    // created with a random unusable password so the password-login path stays closed until reset.
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
+      user = await prisma.user.create({ data: { email, name, phone: '', passwordHash } });
+    }
+
+    const token = signAccessToken({ sub: user.id, role: user.role });
+    const refreshToken = await generateRefreshToken(user.id);
+    const csrfToken = setAuthCookies(res, { token, refreshToken });
+    res.status(200).json({ user: buildUserResponse(user), token, refreshToken, csrfToken });
+  } catch (err) {
+    // verifyIdToken throws on any invalid/expired/wrong-audience token — treat all as 401.
+    if (err instanceof HttpError) return next(err);
+    return next(new HttpError(401, 'invalid_google_token'));
   }
 });
