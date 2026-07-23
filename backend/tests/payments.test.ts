@@ -18,6 +18,32 @@ async function customerToken(email = 'pay-cust@example.com'): Promise<string> {
   return (res.body as AuthResponse).token;
 }
 
+async function adminToken(): Promise<string> {
+  const res = await request(app)
+    .post('/api/auth/login')
+    .send({ email: 'admin@eztech.fr', password: 'adminpass123' });
+  return (res.body as AuthResponse).token;
+}
+
+// create an order, mint its intent, then flip it to paid via the signed-webhook path
+async function createPaidOrder(token: string, productId: string): Promise<string> {
+  const create = await request(app)
+    .post('/api/orders')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ items: [{ productId, quantity: 1, durationUnit: 'flat', durationValue: 1 }], dropoff: INSIDE });
+  const orderId = (create.body as { order: { id: string } }).order.id;
+
+  await request(app).post('/api/payments/create-intent').set('Authorization', `Bearer ${token}`).send({ orderId });
+
+  stripeMockState.nextEvent = fakePaymentIntentSucceeded(orderId);
+  await request(app)
+    .post('/api/webhooks/stripe')
+    .set('stripe-signature', 'sig')
+    .set('content-type', 'application/json')
+    .send(Buffer.from(JSON.stringify({ id: 'evt' })));
+  return orderId;
+}
+
 const INSIDE = { address: 'Paris', lat: 48.85, lng: 2.35 };
 
 async function seedAll() {
@@ -99,5 +125,73 @@ describe('payment-gated stock decrement', () => {
     const paid = await testPrisma.order.findUnique({ where: { id: orderId } });
     expect(paid?.paymentStatus).toBe('paid');
     expect(paid?.status).toBe('pending_assignment');
+  });
+});
+
+describe('POST /api/payments/:id/refund (admin)', () => {
+  beforeEach(async () => {
+    resetStripeMock();
+    await truncateRiderTables();
+    await truncateCatalogTables();
+  });
+
+  it('refunds a paid order: flips to refunded/cancelled and calls Stripe with an idempotency key', async () => {
+    const token = await customerToken();
+    const { product } = await seedAll();
+    const orderId = await createPaidOrder(token, product.id);
+
+    const res = await request(app)
+      .post(`/api/payments/${orderId}/refund`)
+      .set('Authorization', `Bearer ${await adminToken()}`);
+    expect(res.status).toBe(200);
+
+    const refunded = await testPrisma.order.findUnique({ where: { id: orderId } });
+    expect(refunded?.paymentStatus).toBe('refunded');
+    expect(refunded?.status).toBe('cancelled');
+    expect(stripeMockState.refundsCreate.length).toBe(1);
+  });
+
+  it('is idempotent: a second refund is a no-op 409 and does not issue a second Stripe refund', async () => {
+    const token = await customerToken();
+    const { product } = await seedAll();
+    const orderId = await createPaidOrder(token, product.id);
+    const admin = await adminToken();
+
+    const first = await request(app).post(`/api/payments/${orderId}/refund`).set('Authorization', `Bearer ${admin}`);
+    expect(first.status).toBe(200);
+    const second = await request(app).post(`/api/payments/${orderId}/refund`).set('Authorization', `Bearer ${admin}`);
+    expect(second.status).toBe(409);
+    expect((second.body as { error: string }).error).toBe('not_refundable');
+  });
+
+  it('returns 403 for a non-admin caller', async () => {
+    const token = await customerToken();
+    const { product } = await seedAll();
+    const orderId = await createPaidOrder(token, product.id);
+
+    const res = await request(app).post(`/api/payments/${orderId}/refund`).set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(403);
+    expect(stripeMockState.refundsCreate.length).toBe(0);
+  });
+
+  it('returns 409 for an unpaid (awaiting_payment) order', async () => {
+    const token = await customerToken();
+    const { product } = await seedAll();
+    const create = await request(app)
+      .post('/api/orders')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ items: [{ productId: product.id, quantity: 1, durationUnit: 'flat', durationValue: 1 }], dropoff: INSIDE });
+    const orderId = (create.body as { order: { id: string } }).order.id;
+
+    const res = await request(app).post(`/api/payments/${orderId}/refund`).set('Authorization', `Bearer ${await adminToken()}`);
+    expect(res.status).toBe(409);
+    expect((res.body as { error: string }).error).toBe('not_refundable');
+  });
+
+  it('returns 404 for an unknown order', async () => {
+    const res = await request(app)
+      .post('/api/payments/00000000-0000-0000-0000-000000000000/refund')
+      .set('Authorization', `Bearer ${await adminToken()}`);
+    expect(res.status).toBe(404);
   });
 });
