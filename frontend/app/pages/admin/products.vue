@@ -7,6 +7,7 @@ definePageMeta({
 
 useHead({ title: 'Produits — Admin EzTech' })
 
+const { adminFetch, fmtMoney } = useAdminApi()
 const config = useRuntimeConfig()
 const auth = useAuthStore()
 
@@ -67,19 +68,12 @@ const emptyForm = () => ({
 })
 const form = reactive(emptyForm())
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function authHeaders() {
-  return auth.token ? { Authorization: `Bearer ${auth.token}` } : {}
-}
-function csrfHeaders() {
-  const csrf = useCookie('ez_csrf').value
-  return csrf ? { 'x-csrf-token': csrf } : {}
-}
+// ── Helpers (locaux) ──────────────────────────────────────────────────────────
 function slugify(s: string) {
   return s.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').replace(/-+/g, '-')
 }
 function fmtPrice(p: number | null) {
-  return p != null ? `${Number(p).toFixed(2)} €` : '—'
+  return p != null ? `${fmtMoney(p)} €` : '—'
 }
 function displayPrice(product: Product) {
   if (product.flatPrice != null) return fmtPrice(product.flatPrice)
@@ -96,9 +90,9 @@ async function fetchAll() {
   error.value = null
   try {
     const [pData, cData, bData] = await Promise.all([
-      $fetch<{ products: Product[]; total: number }>(`${config.public.apiUrl}/products?pageSize=100`, { credentials: 'include', headers: authHeaders() }),
-      $fetch<{ categories: Category[] }>(`${config.public.apiUrl}/categories`, { credentials: 'include', headers: authHeaders() }),
-      $fetch<{ brands: Brand[] }>(`${config.public.apiUrl}/brands`, { credentials: 'include', headers: authHeaders() }),
+      adminFetch<{ products: Product[]; total: number }>('/products?pageSize=100'),
+      adminFetch<{ categories: Category[] }>('/categories'),
+      adminFetch<{ brands: Brand[] }>('/brands'),
     ])
     products.value = pData.products
     categories.value = cData.categories
@@ -187,18 +181,15 @@ async function save() {
     }
 
     if (editingProduct.value) {
-      const data = await $fetch<{ product: Product }>(
-        `${config.public.apiUrl}/products/${editingProduct.value.id}`,
-        { method: 'PATCH', credentials: 'include', headers: { ...authHeaders(), ...csrfHeaders() }, body },
+      const data = await adminFetch<{ product: Product }>(
+        `/products/${editingProduct.value.id}`,
+        { method: 'PATCH', body },
       )
       const idx = products.value.findIndex(p => p.id === editingProduct.value!.id)
       if (idx !== -1) products.value[idx] = data.product
     }
     else {
-      const data = await $fetch<{ product: Product }>(
-        `${config.public.apiUrl}/products`,
-        { method: 'POST', credentials: 'include', headers: { ...authHeaders(), ...csrfHeaders() }, body },
-      )
+      const data = await adminFetch<{ product: Product }>('/products', { method: 'POST', body })
       products.value.unshift(data.product)
     }
     closePanel()
@@ -215,10 +206,7 @@ async function deleteProduct(p: Product) {
   if (!confirm(`Désactiver « ${p.name} » ? Le produit sera masqué du catalogue.`)) return
   deleting.value = p.id
   try {
-    await $fetch(
-      `${config.public.apiUrl}/products/${p.id}`,
-      { method: 'DELETE', credentials: 'include', headers: { ...authHeaders(), ...csrfHeaders() } },
-    )
+    await adminFetch(`/products/${p.id}`, { method: 'DELETE' })
     products.value = products.value.filter(x => x.id !== p.id)
   }
   catch (e) { alert('Impossible de supprimer ce produit.') }
