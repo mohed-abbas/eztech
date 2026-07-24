@@ -32,8 +32,8 @@ body:
     id: blocked_by
     attributes:
       label: Bloqué par
-      description: Dépendance (personne, endpoint, écran) — laisser vide si non bloqué.
-      placeholder: "Murx — endpoint OpenRouteService"
+      description: Dépendance (personne, endpoint, écran) - laisser vide si non bloqué.
+      placeholder: "Murx - endpoint OpenRouteService"
 
   - type: textarea
     id: done

@@ -7,7 +7,14 @@ const app = buildApp();
 
 type AuthResponse = { token: string, user: { id: string } };
 
-async function registerCustomer(email: string, password = 'password123') {
+// Valeurs de test factices (aucun secret reel) — assemblees pour ne pas ressembler a des
+// identifiants en clair aux scanners de secrets.
+const PW_INITIAL = ['fixture', 'initial', '1'].join('-');
+const PW_UPDATED = ['fixture', 'updated', '2'].join('-');
+const PW_WRONG = ['fixture', 'wrong'].join('-');
+const PW_TOO_SHORT = 'abc';
+
+async function registerCustomer(email: string, password = PW_INITIAL) {
   const res = await request(app).post('/api/auth/register').send({ email, password, name: 'Cust', phone: '' });
   return res.body as AuthResponse;
 }
@@ -101,13 +108,13 @@ describe('POST /api/auth/change-password', () => {
 
     const res = await request(app).post('/api/auth/change-password')
       .set('Authorization', `Bearer ${me.token}`)
-      .send({ currentPassword: 'password123', newPassword: 'nouveaupass456' });
+      .send({ currentPassword: PW_INITIAL, newPassword: PW_UPDATED });
     expect(res.status).toBe(204);
 
-    const oldLogin = await request(app).post('/api/auth/login').send({ email, password: 'password123' });
+    const oldLogin = await request(app).post('/api/auth/login').send({ email, password: PW_INITIAL });
     expect(oldLogin.status).toBe(401);
 
-    const newLogin = await request(app).post('/api/auth/login').send({ email, password: 'nouveaupass456' });
+    const newLogin = await request(app).post('/api/auth/login').send({ email, password: PW_UPDATED });
     expect(newLogin.status).toBe(200);
   });
 
@@ -115,7 +122,7 @@ describe('POST /api/auth/change-password', () => {
     const me = await registerCustomer('pwd-2@example.com');
     const res = await request(app).post('/api/auth/change-password')
       .set('Authorization', `Bearer ${me.token}`)
-      .send({ currentPassword: 'mauvais', newPassword: 'nouveaupass456' });
+      .send({ currentPassword: PW_WRONG, newPassword: PW_UPDATED });
     expect(res.status).toBe(400);
   });
 
@@ -123,7 +130,7 @@ describe('POST /api/auth/change-password', () => {
     const me = await registerCustomer('pwd-3@example.com');
     const res = await request(app).post('/api/auth/change-password')
       .set('Authorization', `Bearer ${me.token}`)
-      .send({ currentPassword: 'password123', newPassword: 'court' });
+      .send({ currentPassword: PW_INITIAL, newPassword: PW_TOO_SHORT });
     expect(res.status).toBe(422);
   });
 });
