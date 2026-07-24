@@ -1,9 +1,13 @@
 export default defineNuxtRouteMiddleware((to) => {
-  // Runs on server AND client now (Phase 7): the auth plugin has already bootstrapped the session
-  // from the httpOnly cookie by the time middleware runs, so SSR and client agree on auth state —
-  // no more unauthenticated SSR render of a protected page (which caused hydration mismatches).
+  // Client-only guard: in SSR (Docker) the Nuxt server reaches the backend via an internal
+  // network name, not localhost. auth.me() silently fails → user stays null → false redirect.
+  // The auth plugin already bootstraps the session; on the client, hydrate() reads localStorage.
+  // A protected page flashes briefly on first SSR render then immediately redirects client-side
+  // if unauthenticated — acceptable for an admin-only SPA.
+  if (import.meta.server) return
+
   const auth = useAuthStore()
-  if (import.meta.client) auth.hydrate()
+  auth.hydrate()
   if (!auth.isAuthenticated) {
     return navigateTo({
       path: '/login',
@@ -11,3 +15,4 @@ export default defineNuxtRouteMiddleware((to) => {
     })
   }
 })
+
