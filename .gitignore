@@ -23,6 +23,8 @@ logs
 .idea
 .claude
 
+
+
 # Local env files
 .env
 .env.*
