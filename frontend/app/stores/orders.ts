@@ -324,6 +324,27 @@ export const useOrdersStore = defineStore('orders', {
       return { orderId: res.order.id }
     },
 
+    /** Planifie un retour pour une commande livree — le livreur viendra recuperer l'article. */
+    async scheduleReturn(payload: { orderId: string, pickupAddress: string, scheduledFor?: string }): Promise<string> {
+      const config = useRuntimeConfig()
+      const auth = useAuthStore()
+      const csrf = useCookie('ez_csrf').value
+      const res = await $fetch<{ return: { id: string, reference: string } }>(`${config.public.apiUrl}/returns`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+          ...(csrf ? { 'x-csrf-token': csrf } : {}),
+        },
+        body: {
+          orderId: payload.orderId,
+          pickupAddress: payload.pickupAddress,
+          ...(payload.scheduledFor ? { scheduledFor: payload.scheduledFor } : {}),
+        },
+      })
+      return res.return.reference
+    },
+
     /** Simulate delivery cycle: advances status every `intervalMs` through all steps. Returns cancel function. */
     simulateDelivery(orderId: string, intervalMs = 3000): () => void {
       // Cancel any existing simulation for this order

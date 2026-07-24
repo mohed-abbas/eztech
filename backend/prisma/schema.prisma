@@ -172,6 +172,7 @@ model Order {
   deliveryFee           Decimal?       @db.Decimal(10, 2) // from server env config (D-07)
   total                 Decimal?       @db.Decimal(10, 2) // subtotal + deliveryFee
   warehouseId           String? // single fulfillment warehouse picked at create (D-11)
+  preparedAt            DateTime? // quand l'entrepot a marque la commande prete pour le ramassage
   stripePaymentIntentId String? // anchors the order to its Stripe PaymentIntent
   // computed at the `delivered` transition = deliveredAt + max(perItem rental duration); null when
   // every line is flat-priced (no rental clock) — drives return-reminder scheduling (N-05)
@@ -186,6 +187,7 @@ model Order {
 
   @@index([status])
   @@index([riderId])
+  @@index([warehouseId])
 }
 
 // a full snapshot of a purchased line (D-05) — order history stays correct even if the

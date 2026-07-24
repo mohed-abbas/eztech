@@ -1,19 +1,32 @@
 <script setup lang="ts">
-import { LOW_STOCK_THRESHOLD } from '~/stores/warehouse'
+import { LOW_STOCK_THRESHOLD, type OrderToPrepare } from '~/stores/warehouse'
 
 definePageMeta({ layout: 'warehouse', middleware: ['auth', 'role'], role: 'warehouse_manager' })
 useHead({ title: 'Tableau de bord entrepot - EzTech' })
 
 const wh = useWarehouseStore()
 
+async function loadWarehouse(id: string) {
+  await Promise.all([wh.fetchInventory(id), wh.fetchOrdersToPrepare(id)])
+}
+
 onMounted(async () => {
   await wh.fetchWarehouses()
-  if (wh.selectedId) await wh.fetchInventory(wh.selectedId)
+  if (wh.selectedId) await loadWarehouse(wh.selectedId)
 })
 
 async function selectWarehouse(id: string) {
   wh.select(id)
-  await wh.fetchInventory(id)
+  await loadWarehouse(id)
+}
+
+const preparingId = ref<string | null>(null)
+async function prepare(o: OrderToPrepare) {
+  if (!wh.selectedId) return
+  preparingId.value = o.id
+  try { await wh.markPrepared(wh.selectedId, o.id) }
+  catch (e) { wh.error = e instanceof Error ? e.message : 'Action impossible' }
+  finally { preparingId.value = null }
 }
 </script>
 
@@ -42,6 +55,33 @@ async function selectWarehouse(id: string) {
     </div>
 
     <template v-if="wh.selected">
+      <!-- Commandes entrantes a preparer -->
+      <section class="space-y-3">
+        <h2 class="text-lg font-semibold text-text-primary">Commandes a preparer ({{ wh.ordersToPrepare.length }})</h2>
+        <Card v-if="!wh.ordersToPrepare.length">
+          <CardContent class="py-8 text-center text-text-muted">
+            <Icon name="ph:package" class="mx-auto mb-2 size-8" />
+            <p>Aucune commande a preparer pour le moment.</p>
+          </CardContent>
+        </Card>
+        <Card v-for="o in wh.ordersToPrepare" :key="o.id" data-testid="prepare-order">
+          <CardContent class="flex items-center justify-between gap-4 p-4">
+            <div class="min-w-0">
+              <p class="font-medium text-text-primary">{{ o.reference }}</p>
+              <p class="truncate text-sm text-text-muted">
+                {{ o.items.map(i => `${i.quantity}× ${i.name}`).join(', ') }}
+              </p>
+            </div>
+            <span v-if="o.preparedAt" class="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+              <Icon name="ph:check" class="inline size-3" /> Prete
+            </span>
+            <Button v-else size="sm" :disabled="preparingId === o.id" @click="prepare(o)">
+              <Icon name="ph:hand-arrow-down" class="mr-2 size-4" /> Prete pour le ramassage
+            </Button>
+          </CardContent>
+        </Card>
+      </section>
+
       <!-- Synthese -->
       <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Card>

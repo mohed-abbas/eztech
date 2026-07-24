@@ -39,3 +39,9 @@ export const ResetPasswordSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(8).max(200),
 });
+
+// changement de mot de passe par l'utilisateur connecte (il connait son mot de passe actuel)
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8).max(200),
+});

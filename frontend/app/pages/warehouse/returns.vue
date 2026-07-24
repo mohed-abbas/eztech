@@ -49,7 +49,7 @@ function fmt(iso: string | null) {
         </CardContent>
       </Card>
 
-      <Card v-for="r in wh.returnsToInspect" :key="r.id">
+      <Card v-for="r in wh.returnsToInspect" :key="r.id" data-testid="return-card">
         <CardHeader>
           <CardTitle class="flex items-center justify-between text-base">
             <span>{{ r.reference }}</span>

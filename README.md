@@ -36,11 +36,24 @@ eztech/
 The fastest way to get the full stack running — Postgres + backend + frontend — with hot reload and a
 seeded database. The only prerequisite is **Docker Desktop**; you don't need Node or npm installed locally.
 
-From the `eztech/` directory:
+From the `eztech/` directory, create the three env files from their templates, set a JWT secret, then start:
 
 ```bash
+cp .env.example .env                      # infra: Postgres, JWT, shared ports
+cp backend/.env.example backend/.env      # backend: Stripe keys, admin seed account
+cp frontend/.env.example frontend/.env    # frontend: API URL, Stripe publishable key
+
+# JWT_SECRET ships EMPTY on purpose and compose refuses to start without it (min 32 chars).
+# Generate one and paste it into JWT_SECRET= in eztech/.env :
+openssl rand -base64 48
+
 docker compose up --build
 ```
+
+> **All three files are required** — `docker-compose.yml` loads `backend/.env` and `frontend/.env`
+> via `env_file`, and they are gitignored, so a fresh clone has none of them and `docker compose up`
+> fails until they exist. Apart from `JWT_SECRET`, the templates ship working dev defaults (Stripe
+> test placeholders included), so nothing else needs editing to boot.
 
 This starts:
 
