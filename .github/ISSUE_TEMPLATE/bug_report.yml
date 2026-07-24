@@ -1,0 +1,54 @@
+name: "🐛 Bug"
+description: "Signaler un dysfonctionnement"
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Gravité
+      options:
+        - "🔴 Critique — bloque la démo ou trompe l'utilisateur"
+        - "🟠 Majeur — fonctionnalité cassée, contournement possible"
+        - "🟡 Mineur — gêne ou incohérence"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: role
+    attributes:
+      label: Rôle concerné
+      options: ["Client", "Livreur", "Responsable entrepôt", "Admin", "Transverse"]
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: Ce qui se passe
+      description: Comportement observé, et ce qui était attendu à la place.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes pour reproduire
+      placeholder: |
+        1. Se connecter avec ...
+        2. Aller sur ...
+        3. Cliquer sur ...
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Où dans le code (si connu)
+      placeholder: "frontend/app/pages/profile.vue:279"
+
+  - type: checkboxes
+    id: demo
+    attributes:
+      label: Impact démo
+      options:
+        - label: "Ce bug est visible pendant la soutenance"
