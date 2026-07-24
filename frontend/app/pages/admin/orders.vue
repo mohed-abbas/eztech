@@ -45,6 +45,9 @@ interface AdminOrder {
   events?: OrderEvent[]
 }
 
+// ── Composable ───────────────────────────────────────────────────────────────
+const { adminFetch, fmtMoney } = useAdminApi()
+
 // ── State ────────────────────────────────────────────────────────────────────
 const config = useRuntimeConfig()
 const auth = useAuthStore()
@@ -72,15 +75,9 @@ const cancelError = ref<string | null>(null)
 async function fetchOrders() {
   loading.value = true
   error.value = null
+  auth.hydrate()
   try {
-    auth.hydrate()
-    const data = await $fetch<{ orders: AdminOrder[] }>(
-      `${config.public.apiUrl}/orders`,
-      {
-        credentials: 'include',
-        headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
-      },
-    )
+    const data = await adminFetch<{ orders: AdminOrder[] }>('/orders')
     orders.value = data.orders
   }
   catch (e) {
@@ -153,13 +150,7 @@ async function openDetail(order: AdminOrder) {
 
   loadingDetail.value = true
   try {
-    const data = await $fetch<{ order: AdminOrder }>(
-      `${config.public.apiUrl}/orders/${order.id}`,
-      {
-        credentials: 'include',
-        headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
-      },
-    )
+    const data = await adminFetch<{ order: AdminOrder }>(`/orders/${order.id}`)
     selectedOrder.value = data.order
   }
   catch { /* keep the list-level data */ }
@@ -180,25 +171,15 @@ async function cancelOrder(orderId: string) {
   cancelling.value = true
   cancelError.value = null
   try {
-    const csrf = useCookie('ez_csrf').value
-    const data = await $fetch<{ order: AdminOrder }>(
-      `${config.public.apiUrl}/orders/${orderId}/cancel`,
-      {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-          ...(csrf ? { 'x-csrf-token': csrf } : {}),
-        },
-      },
-    )
+    const data = await adminFetch<{ order: AdminOrder }>(`/orders/${orderId}/cancel`, { method: 'POST' })
     // update both the list and the modal
     const idx = orders.value.findIndex(o => o.id === orderId)
     if (idx !== -1) orders.value[idx] = { ...orders.value[idx]!, ...data.order }
     if (selectedOrder.value?.id === orderId) selectedOrder.value = { ...selectedOrder.value, ...data.order }
   }
   catch (e) {
-    cancelError.value = e instanceof Error ? e.message : 'Impossible d\'annuler la commande'
+    const err = e as { data?: { error?: string }; message?: string }
+    cancelError.value = err?.data?.error ?? err?.message ?? 'Impossible d\'annuler la commande'
   }
   finally {
     cancelling.value = false
@@ -208,10 +189,6 @@ async function cancelOrder(orderId: string) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function fmt(iso: string) {
   return new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-}
-
-function fmtMoney(v: string | number) {
-  return Number(v).toFixed(2)
 }
 
 const EXTRA_STATUS_CONFIG: Record<string, { label: string, icon: string, color: string, bg: string, border: string }> = {
