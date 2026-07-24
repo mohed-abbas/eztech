@@ -7,9 +7,9 @@ body:
     attributes:
       label: Gravité
       options:
-        - "🔴 Critique — bloque la démo ou trompe l'utilisateur"
-        - "🟠 Majeur — fonctionnalité cassée, contournement possible"
-        - "🟡 Mineur — gêne ou incohérence"
+        - "🔴 Critique - bloque la démo ou trompe l'utilisateur"
+        - "🟠 Majeur - fonctionnalité cassée, contournement possible"
+        - "🟡 Mineur - gêne ou incohérence"
     validations:
       required: true
 

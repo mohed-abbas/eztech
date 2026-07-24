@@ -135,7 +135,8 @@ const scheduledReturnRef = ref<string | null>(null)
 const returnError = ref('')
 
 watch(isDelivered, (delivered) => {
-  if (delivered && !returnPickup.value) returnPickup.value = order.value?.dropoff?.address ?? ''
+  // l'adresse de livraison sert d'adresse de recuperation par defaut (dropoff n'a que lat/lng)
+  if (delivered && !returnPickup.value) returnPickup.value = order.value?.deliveryAddress?.street ?? ''
 }, { immediate: true })
 
 async function scheduleReturn() {

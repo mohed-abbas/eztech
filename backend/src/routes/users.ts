@@ -42,9 +42,13 @@ usersRouter.patch('/me', requireAuth, async (req, res, next) => {
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
   try {
+    // exactOptionalPropertyTypes : retirer les cles `undefined` avant Prisma
+    const data = Object.fromEntries(
+      Object.entries(result.data).filter(([, v]) => v !== undefined),
+    ) as unknown as Prisma.UserUncheckedUpdateInput;
     const user = await prisma.user.update({
       where: { id: req.user!.sub },
-      data: result.data,
+      data,
       include: { addresses: true },
     });
     res.json({ user: buildUserResponse(user) });
@@ -82,10 +86,14 @@ usersRouter.patch('/me/addresses/:addressId', requireAuth, async (req, res, next
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
   try {
+    // exactOptionalPropertyTypes : retirer les cles `undefined` avant Prisma
+    const data = Object.fromEntries(
+      Object.entries(result.data).filter(([, v]) => v !== undefined),
+    ) as unknown as Prisma.AddressUncheckedUpdateManyInput;
     // updateMany garde par userId : une adresse d'un autre compte renvoie 404 (aucune fuite d'existence)
     const updated = await prisma.address.updateMany({
       where: { id: String(req.params['addressId']), userId: req.user!.sub },
-      data: result.data,
+      data,
     });
     if (updated.count === 0) return next(new HttpError(404, 'address_not_found'));
     const address = await prisma.address.findUnique({ where: { id: String(req.params['addressId']) } });
