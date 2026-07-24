@@ -92,20 +92,13 @@ async function savePersonal() {
   }
   if (!user.value) return
   savingPersonal.value = true
-  const snapshot = { name: user.value.name, email: user.value.email, phone: user.value.phone }
   try {
-    await new Promise(r => setTimeout(r, 400))
-    user.value.name = personalForm.name.trim()
-    user.value.email = personalForm.email.trim()
-    user.value.phone = personalForm.phone.trim()
-    auth.persist()
+    // l'email n'est pas modifiable ici (changer d'email exigerait une re-verification)
+    await auth.updateProfile({ name: personalForm.name.trim(), phone: personalForm.phone.trim() })
     editingPersonal.value = false
     flashSuccess('Informations personnelles mises à jour.')
   }
   catch {
-    user.value.name = snapshot.name
-    user.value.email = snapshot.email
-    user.value.phone = snapshot.phone
     flashSuccess('Échec de la sauvegarde.')
   }
   finally {
@@ -157,36 +150,20 @@ async function saveAddress() {
   }
   if (!user.value) return
   savingAddress.value = true
-  const snapshotAddresses = user.value.addresses.map(a => ({ ...a }))
   const wasNew = editingAddress.value === 'new'
+  const payload = {
+    label: addressForm.label.trim(),
+    street: addressForm.street.trim(),
+    city: addressForm.city.trim(),
+    zipCode: addressForm.zipCode.trim(),
+  }
   try {
-    await new Promise(r => setTimeout(r, 300))
-
-    if (editingAddress.value === 'new') {
-      user.value.addresses.push({
-        id: `addr_${Date.now()}`,
-        label: addressForm.label.trim(),
-        street: addressForm.street.trim(),
-        city: addressForm.city.trim(),
-        zipCode: addressForm.zipCode.trim(),
-      })
-    }
-    else {
-      const addr = user.value.addresses.find(a => a.id === editingAddress.value)
-      if (addr) {
-        addr.label = addressForm.label.trim()
-        addr.street = addressForm.street.trim()
-        addr.city = addressForm.city.trim()
-        addr.zipCode = addressForm.zipCode.trim()
-      }
-    }
-
-    auth.persist()
+    if (wasNew) await auth.addAddress(payload)
+    else if (editingAddress.value) await auth.updateAddress(editingAddress.value, payload)
     editingAddress.value = null
     flashSuccess(wasNew ? 'Adresse ajoutée.' : 'Adresse mise à jour.')
   }
   catch {
-    user.value.addresses = snapshotAddresses
     flashSuccess('Échec de la sauvegarde de l\'adresse.')
   }
   finally {
@@ -194,11 +171,15 @@ async function saveAddress() {
   }
 }
 
-function removeAddress(id: string) {
+async function removeAddress(id: string) {
   if (!user.value) return
-  user.value.addresses = user.value.addresses.filter(a => a.id !== id)
-  auth.persist()
-  flashSuccess('Adresse supprimée.')
+  try {
+    await auth.deleteAddress(id)
+    flashSuccess('Adresse supprimée.')
+  }
+  catch {
+    flashSuccess('Échec de la suppression de l\'adresse.')
+  }
 }
 
 function clearAddressError(field: string) {
@@ -234,13 +215,14 @@ async function saveVehicle() {
   }
   if (!user.value) return
   savingVehicle.value = true
-  const snapshot = {
-    vehicleType: user.value.vehicleType,
-    licenseNumber: user.value.licenseNumber,
-    insuranceNumber: user.value.insuranceNumber,
-  }
   try {
-    await new Promise(r => setTimeout(r, 400))
+    // vraie persistance via l'API livreur (la meme que /rider/account)
+    const rider = useRiderStore()
+    await rider.updateProfile({
+      vehicleType: vehicleForm.vehicleType,
+      licenseNumber: vehicleForm.licenseNumber.trim(),
+      insuranceNumber: vehicleForm.insuranceNumber.trim(),
+    })
     user.value.vehicleType = vehicleForm.vehicleType
     user.value.licenseNumber = vehicleForm.licenseNumber.trim()
     user.value.insuranceNumber = vehicleForm.insuranceNumber.trim()
@@ -249,9 +231,6 @@ async function saveVehicle() {
     flashSuccess('Informations véhicule mises à jour.')
   }
   catch {
-    user.value.vehicleType = snapshot.vehicleType
-    user.value.licenseNumber = snapshot.licenseNumber
-    user.value.insuranceNumber = snapshot.insuranceNumber
     flashSuccess('Échec de la sauvegarde du véhicule.')
   }
   finally {
@@ -277,12 +256,23 @@ async function changePassword() {
     return
   }
   savingPassword.value = true
-  await new Promise(r => setTimeout(r, 600))
-  savingPassword.value = false
-  securityForm.currentPassword = ''
-  securityForm.newPassword = ''
-  securityForm.confirmNewPassword = ''
-  flashSuccess('Mot de passe modifié avec succès.')
+  try {
+    await auth.changePassword(securityForm.currentPassword, securityForm.newPassword)
+    securityForm.currentPassword = ''
+    securityForm.newPassword = ''
+    securityForm.confirmNewPassword = ''
+    flashSuccess('Mot de passe modifié avec succès.')
+  }
+  catch (e) {
+    const code = (e as { data?: { error?: string }, response?: { _data?: { error?: string } } })?.data?.error
+      ?? (e as { response?: { _data?: { error?: string } } })?.response?._data?.error
+    securityErrors.currentPassword = code === 'invalid_current_password'
+      ? 'Mot de passe actuel incorrect.'
+      : 'Échec du changement de mot de passe.'
+  }
+  finally {
+    savingPassword.value = false
+  }
 }
 
 function clearSecurityError(field: string) {
@@ -443,16 +433,13 @@ function vehicleIcon(type?: string) {
                     />
                   </template>
                 </FormField>
-                <FormField id="profile-email" label="E-mail" :error="personalErrors.email">
+                <!-- E-mail non modifiable : le changer exigerait une re-verification (non implementee) -->
+                <FormField id="profile-email" label="E-mail">
                   <template #default="{ id: fieldId }">
-                    <Input
-                      :id="fieldId"
-                      v-model="personalForm.email"
-                      type="email"
-                      placeholder="you@example.com"
-                      :aria-invalid="!!personalErrors.email || undefined"
-                      @input="clearPersonalError('email')"
-                    />
+                    <Input :id="fieldId" v-model="personalForm.email" type="email" disabled readonly />
+                    <p class="mt-1 text-caption text-text-muted">
+                      L'adresse e-mail ne peut pas être modifiée ici.
+                    </p>
                   </template>
                 </FormField>
                 <FormField id="profile-phone" label="Téléphone" :error="personalErrors.phone">

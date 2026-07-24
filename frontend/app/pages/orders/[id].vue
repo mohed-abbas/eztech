@@ -125,6 +125,40 @@ const mapCenter = computed<[number, number]>(() => {
 
 // ─── État final « Livré » : carte figée + marqueur vert ─────────────────────
 const isDelivered = computed(() => currentStatus.value === 'delivered')
+
+// ─── Planifier un retour (commande livrée) ─────────────────────────────────
+const ordersStore = useOrdersStore()
+const returnPickup = ref('')
+const returnDate = ref('')
+const schedulingReturn = ref(false)
+const scheduledReturnRef = ref<string | null>(null)
+const returnError = ref('')
+
+watch(isDelivered, (delivered) => {
+  if (delivered && !returnPickup.value) returnPickup.value = order.value?.dropoff?.address ?? ''
+}, { immediate: true })
+
+async function scheduleReturn() {
+  returnError.value = ''
+  if (!order.value || !returnPickup.value.trim()) {
+    returnError.value = 'Indiquez une adresse de récupération.'
+    return
+  }
+  schedulingReturn.value = true
+  try {
+    scheduledReturnRef.value = await ordersStore.scheduleReturn({
+      orderId: order.value.id,
+      pickupAddress: returnPickup.value.trim(),
+      ...(returnDate.value ? { scheduledFor: new Date(returnDate.value).toISOString() } : {}),
+    })
+  }
+  catch {
+    returnError.value = 'Impossible de planifier le retour. Réessayez.'
+  }
+  finally {
+    schedulingReturn.value = false
+  }
+}
 const showMapCard = computed(() => showMap.value || isDelivered.value)
 const mapCollapsed = ref(false)
 // Position figée une fois livré : dernière position connue, sinon la destination
@@ -379,6 +413,36 @@ const etaLabel = computed<string | null>(() => {
                   <template v-else>En attente de la position du livreur…</template>
                 </p>
               </div>
+            </div>
+          </Card>
+
+          <!-- Planifier un retour (commande livrée) -->
+          <Card v-if="isDelivered" class="p-5" data-testid="schedule-return">
+            <div class="mb-3 flex items-center gap-3">
+              <div class="flex size-9 items-center justify-center rounded-full bg-primary-100">
+                <Icon name="ph:arrow-u-down-left" class="size-4.5 text-primary-600" />
+              </div>
+              <h3 class="text-body font-semibold text-text-primary">Planifier un retour</h3>
+            </div>
+
+            <div v-if="scheduledReturnRef" class="flex items-center gap-3 rounded-lg bg-emerald-50 px-4 py-3">
+              <Icon name="ph:check-circle-fill" class="size-5 shrink-0 text-emerald-600" />
+              <p class="text-body-sm text-text-primary">
+                Retour <strong>{{ scheduledReturnRef }}</strong> planifié. Un livreur viendra récupérer l'article.
+              </p>
+            </div>
+
+            <div v-else class="space-y-3">
+              <p class="text-body-sm text-text-muted">
+                Vous avez terminé avec cet article ? Programmez sa récupération.
+              </p>
+              <Input v-model="returnPickup" placeholder="Adresse de récupération" />
+              <Input v-model="returnDate" type="datetime-local" />
+              <p v-if="returnError" class="text-body-sm text-error">{{ returnError }}</p>
+              <Button :disabled="schedulingReturn" class="w-full font-semibold" @click="scheduleReturn">
+                <Icon v-if="schedulingReturn" name="ph:spinner-gap" class="size-4 animate-spin" />
+                {{ schedulingReturn ? 'Planification...' : 'Planifier le retour' }}
+              </Button>
             </div>
           </Card>
 
