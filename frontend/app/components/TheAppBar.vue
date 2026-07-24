@@ -1,102 +1,121 @@
 <script setup lang="ts">
-const route = useRoute()
-const auth = useAuthStore()
-const cart = useCartStore()
-const { user, isAuthenticated, role } = storeToRefs(auth)
-const { count: cartCount } = storeToRefs(cart)
+const route = useRoute();
+const auth = useAuthStore();
+const cart = useCartStore();
+const { user, isAuthenticated, role } = storeToRefs(auth);
+const { count: cartCount } = storeToRefs(cart);
 
-const mobileOpen = ref(false)
-const dropdownOpen = ref(false)
-const dropdownRef = ref<HTMLDivElement | null>(null)
+const mobileOpen = ref(false);
+const dropdownOpen = ref(false);
+const dropdownRef = ref<HTMLDivElement | null>(null);
 
 const navItems = computed(() => {
-  const items: { label: string, to: string, icon: string }[] = [
-    { label: 'Produits', to: '/products', icon: 'ph:package' },
-  ]
+  const items: { label: string; to: string; icon: string }[] = [
+    { label: "Produits", to: "/products", icon: "ph:package" },
+  ];
 
-  if (role.value === 'customer') {
-    items.push({ label: 'Mes commandes', to: '/orders', icon: 'ph:receipt' })
+  if (role.value === "customer") {
+    items.push({ label: "Mes commandes", to: "/orders", icon: "ph:receipt" });
   }
 
-  if (role.value === 'rider') {
+  if (role.value === "rider") {
     items.push(
-      { label: 'Tableau de bord', to: '/rider/dashboard', icon: 'ph:gauge' },
-      { label: 'Livraisons', to: '/rider/deliveries', icon: 'ph:truck' },
-      { label: 'Retours', to: '/rider/returns', icon: 'ph:arrow-u-down-left' },
-      { label: 'Notifications', to: '/rider/notifications', icon: 'ph:bell' },
-      { label: 'Gains', to: '/rider/earnings', icon: 'ph:currency-eur' },
-      { label: 'Mon compte', to: '/rider/account', icon: 'ph:identification-card' },
-    )
+      { label: "Tableau de bord", to: "/rider/dashboard", icon: "ph:gauge" },
+      { label: "Livraisons", to: "/rider/deliveries", icon: "ph:truck" },
+      { label: "Retours", to: "/rider/returns", icon: "ph:arrow-u-down-left" },
+      { label: "Notifications", to: "/rider/notifications", icon: "ph:bell" },
+      { label: "Gains", to: "/rider/earnings", icon: "ph:currency-eur" },
+      {
+        label: "Mon compte",
+        to: "/rider/account",
+        icon: "ph:identification-card",
+      },
+    );
   }
 
-  if (role.value === 'admin') {
-    items.push({ label: 'Commandes', to: '/orders', icon: 'ph:receipt' })
+  if (role.value === "admin") {
+    items.push({ label: "Commandes", to: "/orders", icon: "ph:receipt" });
   }
 
-  return items
-})
+  return items;
+});
 
 const initials = computed(() => {
-  if (!user.value?.name) return '?'
+  if (!user.value?.name) return "?";
   return user.value.name
-    .split(' ')
-    .map(w => w[0])
-    .join('')
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
     .toUpperCase()
-    .slice(0, 2)
-})
+    .slice(0, 2);
+});
 
-const showCart = computed(() => role.value === 'customer')
+const showCart = computed(() => role.value === "customer");
 
 function isActive(path: string): boolean {
-  if (path === '/products') return route.path === '/products' || route.path.startsWith('/products/')
-  if (path === '/orders') return route.path === '/orders' || route.path.startsWith('/orders/')
-  return route.path.startsWith(path)
+  if (path === "/products")
+    return route.path === "/products" || route.path.startsWith("/products/");
+  if (path === "/orders")
+    return route.path === "/orders" || route.path.startsWith("/orders/");
+  return route.path.startsWith(path);
 }
 
 function handleLogout() {
-  dropdownOpen.value = false
-  mobileOpen.value = false
-  auth.logout()
+  dropdownOpen.value = false;
+  mobileOpen.value = false;
+  auth.logout();
 }
 
 function closeMobile() {
-  mobileOpen.value = false
+  mobileOpen.value = false;
 }
 
 function onClickOutsideDropdown(e: Event) {
   if (dropdownRef.value && !dropdownRef.value.contains(e.target as Node)) {
-    dropdownOpen.value = false
+    dropdownOpen.value = false;
   }
 }
 
 onMounted(() => {
-  document.addEventListener('click', onClickOutsideDropdown)
-  auth.hydrate()
-  cart.hydrate()
-})
+  document.addEventListener("click", onClickOutsideDropdown);
+  auth.hydrate();
+  cart.hydrate();
+});
 
 onUnmounted(() => {
-  document.removeEventListener('click', onClickOutsideDropdown)
-})
+  document.removeEventListener("click", onClickOutsideDropdown);
+});
 
-watch(() => route.path, () => {
-  mobileOpen.value = false
-  dropdownOpen.value = false
-})
+watch(
+  () => route.path,
+  () => {
+    mobileOpen.value = false;
+    dropdownOpen.value = false;
+  },
+);
 </script>
 
 <template>
-  <header class="fixed top-0 inset-x-0 z-50 h-16 bg-white/80 backdrop-blur-xl border-b border-neutral-200/60 shadow-sm">
-    <div class="mx-auto max-w-7xl h-full flex items-center justify-between px-4 sm:px-6 lg:px-8">
-
+  <header
+    class="fixed top-0 inset-x-0 z-50 h-16 bg-white/80 backdrop-blur-xl border-b border-neutral-200/60 shadow-sm"
+  >
+    <div
+      class="mx-auto max-w-7xl h-full flex items-center justify-between px-4 sm:px-6 lg:px-8"
+    >
       <!-- Left: Logo + Nav links -->
       <div class="flex items-center gap-8">
-        <NuxtLink to="/products" class="flex items-center gap-2.5 group shrink-0">
-          <div class="size-9 rounded-full bg-primary-500 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
+        <NuxtLink
+          to="/products"
+          class="flex items-center gap-2.5 group shrink-0"
+        >
+          <div
+            class="size-9 rounded-full bg-primary-500 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
+          >
             <Icon name="ph:package" class="size-4 text-white" />
           </div>
-          <span class="text-lg font-semibold text-neutral-900 hidden sm:block">EzTech</span>
+          <span class="text-lg font-semibold text-neutral-900 hidden sm:block"
+            >EzTech</span
+          >
         </NuxtLink>
 
         <!-- Desktop nav links -->
@@ -106,9 +125,11 @@ watch(() => route.path, () => {
             :key="item.to"
             :to="item.to"
             class="relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
-            :class="isActive(item.to)
-              ? 'text-primary-600 bg-primary-50'
-              : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50'"
+            :class="
+              isActive(item.to)
+                ? 'text-primary-600 bg-primary-50'
+                : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50'
+            "
           >
             <Icon :name="item.icon" class="size-4" />
             {{ item.label }}
@@ -118,15 +139,16 @@ watch(() => route.path, () => {
 
       <!-- Right: Cart + Avatar + Mobile toggle -->
       <div class="flex items-center gap-2">
-
         <!-- Cart button (customers only) -->
         <NuxtLink
           v-if="showCart"
           to="/cart"
           class="relative flex items-center justify-center size-10 rounded-lg transition-colors"
-          :class="isActive('/cart')
-            ? 'text-primary-600 bg-primary-50'
-            : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50'"
+          :class="
+            isActive('/cart')
+              ? 'text-primary-600 bg-primary-50'
+              : 'text-neutral-500 hover:text-neutral-900 hover:bg-neutral-50'
+          "
         >
           <Icon name="ph:shopping-cart" class="size-5" />
           <Transition
@@ -141,16 +163,22 @@ watch(() => route.path, () => {
               v-if="cartCount > 0"
               class="absolute -top-0.5 -right-0.5 flex items-center justify-center size-5 rounded-full bg-primary-500 text-[10px] font-bold text-white ring-2 ring-white"
             >
-              {{ cartCount > 99 ? '99+' : cartCount }}
+              {{ cartCount > 99 ? "99+" : cartCount }}
             </span>
           </Transition>
         </NuxtLink>
 
         <!-- Notification bell (customers + riders; no admin bell this phase, N-03) -->
-        <NotificationsNotificationBell v-if="isAuthenticated && role !== 'admin'" />
+        <NotificationsNotificationBell
+          v-if="isAuthenticated && role !== 'admin'"
+        />
 
         <!-- Desktop avatar dropdown -->
-        <div v-if="isAuthenticated" ref="dropdownRef" class="relative hidden md:block">
+        <div
+          v-if="isAuthenticated"
+          ref="dropdownRef"
+          class="relative hidden md:block"
+        >
           <button
             class="flex items-center gap-2 rounded-full p-1 pr-3 transition-colors hover:bg-neutral-50"
             @click.stop="dropdownOpen = !dropdownOpen"
@@ -188,9 +216,15 @@ watch(() => route.path, () => {
             >
               <!-- User info header -->
               <div class="px-4 py-3 bg-neutral-50/80">
-                <p class="text-sm font-semibold text-neutral-900 truncate">{{ user?.name }}</p>
-                <p class="text-xs text-neutral-500 truncate">{{ user?.email }}</p>
-                <span class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-primary-100 text-primary-700">
+                <p class="text-sm font-semibold text-neutral-900 truncate">
+                  {{ user?.name }}
+                </p>
+                <p class="text-xs text-neutral-500 truncate">
+                  {{ user?.email }}
+                </p>
+                <span
+                  class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide bg-primary-100 text-primary-700"
+                >
                   {{ user?.role }}
                 </span>
               </div>
@@ -199,6 +233,16 @@ watch(() => route.path, () => {
 
               <!-- Menu items -->
               <div class="py-1">
+                <NuxtLink
+                  v-if="user?.role == 'admin'"
+                  to="/admin"
+                  class="flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
+                  @click="dropdownOpen = false"
+                >
+                  <Icon name="ph:gauge" class="size-4 text-neutral-400" />
+                  Page admin
+                </NuxtLink>
+
                 <NuxtLink
                   to="/profile"
                   class="flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
@@ -276,9 +320,11 @@ watch(() => route.path, () => {
             :key="item.to"
             :to="item.to"
             class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
-            :class="isActive(item.to)
-              ? 'text-primary-600 bg-primary-50'
-              : 'text-neutral-600 hover:bg-neutral-50'"
+            :class="
+              isActive(item.to)
+                ? 'text-primary-600 bg-primary-50'
+                : 'text-neutral-600 hover:bg-neutral-50'
+            "
             @click="closeMobile"
           >
             <Icon :name="item.icon" class="size-4" />
@@ -303,7 +349,9 @@ watch(() => route.path, () => {
               {{ initials }}
             </div>
             <div class="min-w-0">
-              <p class="text-sm font-semibold text-neutral-900 truncate">{{ user?.name }}</p>
+              <p class="text-sm font-semibold text-neutral-900 truncate">
+                {{ user?.name }}
+              </p>
               <p class="text-xs text-neutral-500 truncate">{{ user?.email }}</p>
             </div>
           </div>
