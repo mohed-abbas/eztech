@@ -162,6 +162,16 @@ jobs:
           for path in /login /products /cart /checkout /profile; do
             curl -sf -o /dev/null "http://localhost:3000$path" || true
           done
+          # Warm the product-detail route too. The smoke test clicks into /products/<id>, and the dev
+          # server compiles that route on first hit; if it isn't pre-warmed the cold compile races the
+          # add-to-cart interaction and blows Playwright's timeout. The id is dynamic (seeded), so pull
+          # a real one from the catalogue API.
+          PID=$(curl -sf http://localhost:3001/api/products \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const p=JSON.parse(d);const a=p.products||p;process.stdout.write((a[0]&&a[0].id)||'')})")
+          if [ -n "$PID" ]; then
+            curl -sf -o /dev/null "http://localhost:3000/products/$PID" || true
+            echo "warmed /products/$PID"
+          fi
       - name: Run Playwright smoke test
         env:
           E2E_BASE_URL: http://localhost:3000
