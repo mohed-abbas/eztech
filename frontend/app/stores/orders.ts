@@ -221,6 +221,16 @@ export const useOrdersStore = defineStore('orders', {
           headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
         })
         this.orders = orders
+
+        // Seed productNames from each item's name snapshot (carried through the BFF remap).
+        // Without this, getProductName() falls back to the raw product UUID for every order
+        // loaded from the backend, so the list renders "a3f9c1e2-…" instead of "MacBook Pro M3" (H3).
+        for (const o of orders) {
+          for (const item of o.items) {
+            const named = item as OrderItem & { name?: string }
+            if (named.name) this.productNames[item.productId] = named.name
+          }
+        }
       }
       catch (err) {
         this.error = err instanceof Error ? err.message : 'Erreur de chargement des commandes'

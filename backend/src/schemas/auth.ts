@@ -40,8 +40,25 @@ export const ResetPasswordSchema = z.object({
   password: z.string().min(8).max(200),
 });
 
-// changement de mot de passe par l'utilisateur connecte (il connait son mot de passe actuel)
+// POST /api/auth/change-password — authenticated self-service rotation (H5). Distinct from
+// reset-password (which consumes an emailed token); this verifies the current password instead.
 export const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(8).max(200),
+});
+
+// POST /api/auth/google — the browser sends the Google Identity Services ID token (a JWT) as
+// `credential`; the backend verifies it against GOOGLE_CLIENT_ID and upserts the user.
+export const GoogleAuthSchema = z.object({
+  credential: z.string().min(1),
+});
+
+// POST /api/auth/verify-email — the raw single-use token from the confirmation link (Module 1).
+export const VerifyEmailSchema = z.object({
+  token: z.string().min(1),
+});
+
+// POST /api/auth/resend-verification — re-request the confirmation link for an address.
+export const ResendVerificationSchema = z.object({
+  email: z.string().email(),
 });

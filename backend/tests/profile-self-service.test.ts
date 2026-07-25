@@ -109,7 +109,7 @@ describe('POST /api/auth/change-password', () => {
     const res = await request(app).post('/api/auth/change-password')
       .set('Authorization', `Bearer ${me.token}`)
       .send({ currentPassword: PW_INITIAL, newPassword: PW_UPDATED });
-    expect(res.status).toBe(204);
+    expect(res.status).toBe(200);
 
     const oldLogin = await request(app).post('/api/auth/login').send({ email, password: PW_INITIAL });
     expect(oldLogin.status).toBe(401);

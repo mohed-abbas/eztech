@@ -5,8 +5,8 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import {
-  PatchUserSchema, ReviewRiderApplicationSchema, NotificationPrefsSchema,
-  UpdateMeSchema, CreateAddressSchema, PatchAddressSchema,
+  PatchUserSchema, PatchMeSchema, ReviewRiderApplicationSchema, NotificationPrefsSchema,
+  CreateAddressSchema, PatchAddressSchema,
 } from '../schemas/user.js';
 
 export const usersRouter = Router();
@@ -34,23 +34,21 @@ usersRouter.patch('/me/notifications', requireAuth, async (req, res, next) => {
   }
 });
 
-// PATCH /api/users/me — l'utilisateur met a jour SON profil (nom, telephone). Comme ci-dessus,
-// declare avant /:id et keye sur req.user!.sub : on ne peut jamais modifier quelqu'un d'autre,
-// ni son propre role (absent du schema).
+// PATCH /api/users/me — owner-scoped self-service profile update (H5). Registered ABOVE /:id so
+// 'me' is never captured as an :id param. Keyed on req.user!.sub, never req.params, so a caller can
+// only ever edit their own record. Cannot touch email or role (see PatchMeSchema). Returns addresses
+// so the profile store keeps them after a save.
 usersRouter.patch('/me', requireAuth, async (req, res, next) => {
-  const result = UpdateMeSchema.safeParse(req.body);
+  const result = PatchMeSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
+  // filter undefined to satisfy exactOptionalPropertyTypes (mirrors the admin PATCH /:id handler)
+  const data = Object.fromEntries(
+    Object.entries(result.data).filter(([, v]) => v !== undefined),
+  ) as { name?: string; phone?: string; vehicleType?: 'bicycle' | 'scooter' | 'car'; licenseNumber?: string; insuranceNumber?: string };
+
   try {
-    // exactOptionalPropertyTypes : retirer les cles `undefined` avant Prisma
-    const data = Object.fromEntries(
-      Object.entries(result.data).filter(([, v]) => v !== undefined),
-    ) as unknown as Prisma.UserUncheckedUpdateInput;
-    const user = await prisma.user.update({
-      where: { id: req.user!.sub },
-      data,
-      include: { addresses: true },
-    });
+    const user = await prisma.user.update({ where: { id: req.user!.sub }, data, include: { addresses: true } });
     res.json({ user: buildUserResponse(user) });
   } catch (err) {
     next(err);

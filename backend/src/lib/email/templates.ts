@@ -94,6 +94,36 @@ export function returnReminderEmail(params: { orderReference: string; rentalEnds
   return { subject: 'Rappel : retour de votre location', html, text };
 }
 
+export function lateFeePendingEmail(params: { orderReference: string; amount: number; orderUrl: string }): EmailContent {
+  const ref = escapeHtml(params.orderReference);
+  const amount = escapeHtml(`${params.amount.toFixed(2)} €`);
+  const { html, text } = renderEmail({
+    heading: 'Frais de retard sur votre location',
+    bodyHtml:
+      `<p>La periode de location de votre commande <strong>${ref}</strong> est depassee.</p>` +
+      `<p>Des frais de retard de <strong>${amount}</strong> vont etre preleves sur votre carte enregistree.</p>`,
+    ctaLabel: 'Voir la commande',
+    ctaUrl: params.orderUrl,
+    unsubscribe: false,
+  });
+  return { subject: 'Frais de retard sur votre location', html, text };
+}
+
+export function lateFeeChargedEmail(params: { orderReference: string; amount: number; orderUrl: string }): EmailContent {
+  const ref = escapeHtml(params.orderReference);
+  const amount = escapeHtml(`${params.amount.toFixed(2)} €`);
+  const { html, text } = renderEmail({
+    heading: 'Frais de retard preleves',
+    bodyHtml:
+      `<p>Des frais de retard de <strong>${amount}</strong> ont ete preleves pour votre commande <strong>${ref}</strong>.</p>` +
+      `<p>Retournez le materiel au plus vite pour eviter des frais supplementaires.</p>`,
+    ctaLabel: 'Planifier le retour',
+    ctaUrl: params.orderUrl,
+    unsubscribe: false,
+  });
+  return { subject: 'Frais de retard preleves', html, text };
+}
+
 export function lowStockEmail(params: { productName: string; quantity: number; adminUrl: string }): EmailContent {
   const name = escapeHtml(params.productName);
   const { html, text } = renderEmail({
@@ -104,6 +134,19 @@ export function lowStockEmail(params: { productName: string; quantity: number; a
     unsubscribe: true,
   });
   return { subject: 'Alerte stock bas', html, text };
+}
+
+export function verifyEmailEmail(params: { verifyUrl: string }): EmailContent {
+  const { html, text } = renderEmail({
+    heading: 'Confirmez votre adresse email',
+    bodyHtml:
+      `<p>Bienvenue chez EzTech ! Confirmez votre adresse email pour pouvoir passer votre premiere commande.</p>` +
+      `<p>Ce lien expire dans 24 heures. Si vous n'etes pas a l'origine de cette inscription, ignorez cet email.</p>`,
+    ctaLabel: 'Confirmer mon email',
+    ctaUrl: params.verifyUrl,
+    unsubscribe: false,
+  });
+  return { subject: 'Confirmez votre adresse email', html, text };
 }
 
 export function passwordResetEmail(params: { resetUrl: string }): EmailContent {

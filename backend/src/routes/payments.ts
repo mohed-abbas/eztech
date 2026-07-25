@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { getStripe } from '../lib/stripe.js';
+import { ensureStripeCustomer } from '../lib/stripe-customer.js';
 import { CreateIntentSchema } from '../schemas/payment.js';
 
 export const paymentsRouter = Router();
@@ -27,8 +28,12 @@ paymentsRouter.post('/create-intent', requireAuth, async (req, res, next) => {
     // only an unpaid order can be charged — already-paid/refunded/failed orders are not payable
     if (order.paymentStatus !== 'awaiting_payment') return next(new HttpError(409, 'not_payable'));
 
-    // idempotencyKey keyed on the order id — a double-submit reuses the same intent (no double charge, D-08)
+    // attach a Stripe customer and save the card off_session so an overdue rental can be charged a
+    // late fee later without the customer present (Module 9). Guests (no customerId) can't be saved.
     const stripe = await getStripe();
+    const customerId = order.customerId ? await ensureStripeCustomer(order.customerId) : undefined;
+
+    // idempotencyKey keyed on the order id — a double-submit reuses the same intent (no double charge, D-08)
     const intent = await stripe.paymentIntents.create(
       {
         // Decimal → integer cents via exact Decimal arithmetic (no IEEE-754 float error, WR-05)
@@ -36,6 +41,7 @@ paymentsRouter.post('/create-intent', requireAuth, async (req, res, next) => {
         currency: 'eur',
         metadata: { orderId: order.id },
         automatic_payment_methods: { enabled: true },
+        ...(customerId ? { customer: customerId, setup_future_usage: 'off_session' as const } : {}),
       },
       { idempotencyKey: `intent_${order.id}` },
     );
@@ -43,6 +49,46 @@ paymentsRouter.post('/create-intent', requireAuth, async (req, res, next) => {
     await prisma.order.update({ where: { id: order.id }, data: { stripePaymentIntentId: intent.id } });
 
     res.json({ clientSecret: intent.client_secret });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/payments/:id/refund — admin-only full refund (D5). Exposes as an admin action the same
+// Stripe refund the webhook already performs on an unfulfillable order. Idempotent: the Stripe call
+// is keyed on the order id (a retry never double-refunds), and the DB flip is guarded on the current
+// 'paid' state so a second call is a no-op returning 409.
+paymentsRouter.post('/:id/refund', requireAuth, requireRole('admin'), async (req, res, next) => {
+  try {
+    const id = String(req.params['id']);
+    const order = await prisma.order.findUnique({ where: { id } });
+    if (!order) return next(new HttpError(404, 'order_not_found'));
+
+    // only a paid order can be refunded — awaiting/failed/already-refunded are not refundable
+    if (order.paymentStatus !== 'paid') return next(new HttpError(409, 'not_refundable'));
+    if (!order.stripePaymentIntentId) return next(new HttpError(409, 'no_payment_intent'));
+
+    // deterministic idempotency key keyed on the order — mirrors the webhook path (CR-02), so an
+    // admin double-click or a retry reuses the same Stripe refund rather than issuing a second one.
+    const stripe = await getStripe();
+    await stripe.refunds.create(
+      { payment_intent: order.stripePaymentIntentId },
+      { idempotencyKey: `refund_${order.id}` },
+    );
+
+    // guard the flip on the paid state: a concurrent second request updates 0 rows and 409s below.
+    const updated = await prisma.order.updateMany({
+      where: { id, paymentStatus: 'paid' },
+      data: { paymentStatus: 'refunded', status: 'cancelled' },
+    });
+    if (updated.count === 0) return next(new HttpError(409, 'not_refundable'));
+
+    await prisma.orderEvent.create({
+      data: { orderId: id, status: 'cancelled', note: 'refunded by admin' },
+    });
+
+    const result = await prisma.order.findUnique({ where: { id }, include: { items: true } });
+    res.json({ order: result });
   } catch (err) {
     next(err);
   }
