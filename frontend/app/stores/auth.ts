@@ -331,6 +331,70 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    // ── Profil self-service (persiste cote serveur, plus de localStorage seul) ──
+    _authHeaders(): Record<string, string> {
+      return { ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...csrfHeader() }
+    },
+
+    async updateProfile(payload: { name?: string, phone?: string }): Promise<void> {
+      const config = useRuntimeConfig()
+      const res = await $fetch<{ user: User }>(`${config.public.apiUrl}/users/me`, {
+        method: 'PATCH',
+        body: payload,
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      this.user = res.user
+      this.persist()
+    },
+
+    async addAddress(payload: { label: string, street: string, city: string, zipCode: string }): Promise<void> {
+      const config = useRuntimeConfig()
+      const res = await $fetch<{ address: Address }>(`${config.public.apiUrl}/users/me/addresses`, {
+        method: 'POST',
+        body: payload,
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      if (this.user) this.user.addresses = [...(this.user.addresses ?? []), res.address]
+      this.persist()
+    },
+
+    async updateAddress(id: string, payload: { label?: string, street?: string, city?: string, zipCode?: string }): Promise<void> {
+      const config = useRuntimeConfig()
+      const res = await $fetch<{ address: Address }>(`${config.public.apiUrl}/users/me/addresses/${id}`, {
+        method: 'PATCH',
+        body: payload,
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      if (this.user) {
+        this.user.addresses = (this.user.addresses ?? []).map(a => (a.id === id ? res.address : a))
+      }
+      this.persist()
+    },
+
+    async deleteAddress(id: string): Promise<void> {
+      const config = useRuntimeConfig()
+      await $fetch(`${config.public.apiUrl}/users/me/addresses/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      if (this.user) this.user.addresses = (this.user.addresses ?? []).filter(a => a.id !== id)
+      this.persist()
+    },
+
+    async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+      const config = useRuntimeConfig()
+      await $fetch(`${config.public.apiUrl}/auth/change-password`, {
+        method: 'POST',
+        body: { currentPassword, newPassword },
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+    },
+
     logout() {
       const { isMock } = useMock()
       // best-effort server-side revoke + cookie clear (don't block the UI on it). Works for a

@@ -14,7 +14,7 @@ import { sendEmail } from '../lib/resend.js';
 import { passwordResetEmail } from '../lib/email/templates.js';
 import {
   RegisterSchema, LoginSchema, RefreshSchema, LogoutSchema,
-  ForgotPasswordSchema, ResetPasswordSchema,
+  ForgotPasswordSchema, ResetPasswordSchema, ChangePasswordSchema,
 } from '../schemas/auth.js';
 
 export const authRouter = Router();
@@ -138,6 +138,31 @@ authRouter.get('/me', requireAuth, async (req, res, next) => {
   const user = await prisma.user.findUnique({ where: { id: req.user!.sub }, include: { addresses: true } });
   if (!user) return next(new HttpError(401, 'user_revoked'));
   res.json({ user: buildUserResponse(user) });
+});
+
+// POST /api/auth/change-password — l'utilisateur CONNECTE change son mot de passe (il fournit l'actuel).
+// Distinct du flux forgot/reset par email. Par securite, tous les refresh tokens sont revoques :
+// les autres sessions ne pourront plus se rafraichir.
+authRouter.post('/change-password', requireAuth, async (req, res, next) => {
+  const result = ChangePasswordSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub }, select: { id: true, passwordHash: true } });
+    if (!user) return next(new HttpError(401, 'user_revoked'));
+
+    const ok = await verifyPassword(result.data.currentPassword, user.passwordHash);
+    if (!ok) return next(new HttpError(400, 'invalid_current_password'));
+
+    const passwordHash = await hashPassword(result.data.newPassword);
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
+      prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }),
+    ]);
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
 });
 
 // POST /api/auth/forgot-password

@@ -21,6 +21,10 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
+  // Serialise TOUTE la suite : les specs partagent un unique serveur Nuxt dev (contention de
+  // compilation) et les memes comptes seedes (livreur/client), dont l'etat est mutable —
+  // en parallele, deux specs se marchent dessus (409 already_on_delivery, timeouts d'hydratation).
+  workers: 1,
   // One retry in CI: a retry re-runs against a now-warm dev server (routes compiled, Vite deps
   // pre-bundled), which absorbs residual first-hit cold-compile flakiness. Locally stays strict.
   retries: process.env.CI ? 1 : 0,
