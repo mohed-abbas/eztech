@@ -221,6 +221,16 @@ export const useOrdersStore = defineStore('orders', {
           headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
         })
         this.orders = orders
+
+        // Seed productNames from each item's name snapshot (carried through the BFF remap).
+        // Without this, getProductName() falls back to the raw product UUID for every order
+        // loaded from the backend, so the list renders "a3f9c1e2-…" instead of "MacBook Pro M3" (H3).
+        for (const o of orders) {
+          for (const item of o.items) {
+            const named = item as OrderItem & { name?: string }
+            if (named.name) this.productNames[item.productId] = named.name
+          }
+        }
       }
       catch (err) {
         this.error = err instanceof Error ? err.message : 'Erreur de chargement des commandes'
@@ -322,6 +332,27 @@ export const useOrdersStore = defineStore('orders', {
         body: { items: payload.items, dropoff: payload.dropoff },
       })
       return { orderId: res.order.id }
+    },
+
+    /** Planifie un retour pour une commande livree — le livreur viendra recuperer l'article. */
+    async scheduleReturn(payload: { orderId: string, pickupAddress: string, scheduledFor?: string }): Promise<string> {
+      const config = useRuntimeConfig()
+      const auth = useAuthStore()
+      const csrf = useCookie('ez_csrf').value
+      const res = await $fetch<{ return: { id: string, reference: string } }>(`${config.public.apiUrl}/returns`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+          ...(csrf ? { 'x-csrf-token': csrf } : {}),
+        },
+        body: {
+          orderId: payload.orderId,
+          pickupAddress: payload.pickupAddress,
+          ...(payload.scheduledFor ? { scheduledFor: payload.scheduledFor } : {}),
+        },
+      })
+      return res.return.reference
     },
 
     /** Simulate delivery cycle: advances status every `intervalMs` through all steps. Returns cancel function. */

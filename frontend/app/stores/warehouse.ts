@@ -37,6 +37,16 @@ export interface ReturnItem {
   riderFee: number
 }
 
+export interface OrderToPrepare {
+  id: string
+  reference: string
+  status: string
+  preparedAt: string | null
+  createdAt: string
+  dropoffAddress: string
+  items: { name: string, quantity: number }[]
+}
+
 export const LOW_STOCK_THRESHOLD = 3
 
 export const useWarehouseStore = defineStore('warehouse', {
@@ -44,6 +54,7 @@ export const useWarehouseStore = defineStore('warehouse', {
     warehouses: [] as WarehouseSummary[],
     selectedId: null as string | null,
     stock: [] as StockLine[],
+    ordersToPrepare: [] as OrderToPrepare[],
     returnsToInspect: [] as ReturnItem[],
     returnsProcessed: [] as ReturnItem[],
     loading: false,
@@ -142,6 +153,23 @@ export const useWarehouseStore = defineStore('warehouse', {
       }) as { stock: StockLine }
       const line = this.stock.find(s => s.productId === productId)
       if (line) line.quantity = res.stock.quantity
+    },
+
+    async fetchOrdersToPrepare(warehouseId: string) {
+      try {
+        const res = await this._api(`/warehouses/${warehouseId}/orders`) as { orders: OrderToPrepare[] }
+        this.ordersToPrepare = res.orders
+      }
+      catch (e) {
+        this.error = e instanceof Error ? e.message : 'Chargement des commandes impossible'
+      }
+    },
+
+    // marque une commande prete pour le ramassage par le livreur
+    async markPrepared(warehouseId: string, orderId: string) {
+      const res = await this._api(`/warehouses/${warehouseId}/orders/${orderId}/prepare`, { method: 'PATCH' }) as { order: { preparedAt: string } }
+      const order = this.ordersToPrepare.find(o => o.id === orderId)
+      if (order) order.preparedAt = res.order.preparedAt
     },
 
     async fetchReturns() {

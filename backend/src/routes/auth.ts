@@ -6,16 +6,20 @@ import { HttpError } from '../middleware/error.js';
 import { hashPassword, verifyPassword, DUMMY_HASH } from '../lib/password.js';
 import {
   generateRefreshToken, rotateRefreshToken,
-  revokeRefreshToken, verifyRefreshToken,
+  revokeRefreshToken, revokeAllRefreshTokens, verifyRefreshToken,
 } from '../lib/refresh-token.js';
 import { issueResetToken, consumeResetToken } from '../lib/reset-token.js';
+import { issueVerificationToken, consumeVerificationToken } from '../lib/verification-token.js';
 import { setAuthCookies, clearAuthCookies, getCookie, REFRESH_COOKIE } from '../lib/cookies.js';
 import { sendEmail } from '../lib/resend.js';
-import { passwordResetEmail } from '../lib/email/templates.js';
+import { passwordResetEmail, verifyEmailEmail } from '../lib/email/templates.js';
 import {
   RegisterSchema, LoginSchema, RefreshSchema, LogoutSchema,
-  ForgotPasswordSchema, ResetPasswordSchema,
+  ForgotPasswordSchema, ResetPasswordSchema, ChangePasswordSchema, GoogleAuthSchema,
+  VerifyEmailSchema, ResendVerificationSchema,
 } from '../schemas/auth.js';
+import { OAuth2Client } from 'google-auth-library';
+import { randomBytes } from 'node:crypto';
 
 export const authRouter = Router();
 
@@ -23,10 +27,28 @@ export const authRouter = Router();
 // parsing (first entry is the primary frontend origin); no dedicated FRONTEND_URL env exists.
 const FRONTEND_ORIGIN = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000').split(',')[0]!.trim();
 
+// Reused verifier for Google Identity Services ID tokens (POST /api/auth/google). The same
+// GOOGLE_CLIENT_ID works for every environment — the OAuth client registers both the localhost
+// and production JavaScript origins, so no per-environment key is needed.
+const googleClient = new OAuth2Client();
+
 // strips passwordHash before sending to client
 function buildUserResponse(user: User) {
   const { passwordHash: _h, ...rest } = user;
   return rest;
+}
+
+// Issue a fresh verification token and email its link. Essential mail (ignores emailOptOut). Never
+// throws into the request path — a failed send must not fail registration; the user can re-request.
+async function sendVerificationEmail(userId: string, email: string): Promise<void> {
+  try {
+    const raw = await issueVerificationToken(userId);
+    const verifyUrl = `${FRONTEND_ORIGIN}/verify-email?token=${raw}`;
+    const { subject, html, text } = verifyEmailEmail({ verifyUrl });
+    await sendEmail({ to: email, subject, html, text });
+  } catch {
+    // best-effort — the resend endpoint is the recovery path
+  }
 }
 
 // POST /api/auth/register
@@ -75,6 +97,11 @@ authRouter.post('/register', async (req, res, next) => {
   const token = signAccessToken({ sub: user.id, role: user.role });
   const refreshToken = await generateRefreshToken(user.id);
   const csrfToken = setAuthCookies(res, { token, refreshToken });
+
+  // customers must confirm their email before their first order (Module 1) — send the link now.
+  // Riders/managers/admins are provisioned/approved out of band and are not order-placers.
+  if (user.role === 'customer') void sendVerificationEmail(user.id, user.email);
+
   res.status(201).json({ user: buildUserResponse(user), token, refreshToken, csrfToken });
 });
 
@@ -140,6 +167,35 @@ authRouter.get('/me', requireAuth, async (req, res, next) => {
   res.json({ user: buildUserResponse(user) });
 });
 
+// POST /api/auth/change-password — authenticated rotation. Verifies the current password before
+// setting the new one (H5). requireAuth ensures we rotate only the caller's own credential.
+authRouter.post('/change-password', requireAuth, async (req, res, next) => {
+  const result = ChangePasswordSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  const { currentPassword, newPassword } = result.data;
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!user) return next(new HttpError(404, 'user_not_found'));
+
+    const ok = await verifyPassword(currentPassword, user.passwordHash);
+    if (!ok) return next(new HttpError(400, 'invalid_current_password'));
+
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+    // evict every existing session, then re-issue one for the current device so the caller stays
+    // logged in while any other (possibly stolen) session is invalidated (06-REVIEW blocker).
+    await revokeAllRefreshTokens(user.id);
+    const token = signAccessToken({ sub: user.id, role: user.role });
+    const refreshToken = await generateRefreshToken(user.id);
+    const csrfToken = setAuthCookies(res, { token, refreshToken });
+    res.status(200).json({ message: 'password changed successfully', token, refreshToken, csrfToken });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/auth/forgot-password
 authRouter.post('/forgot-password', async (req, res, next) => {
   const result = ForgotPasswordSchema.safeParse(req.body);
@@ -170,5 +226,112 @@ authRouter.post('/reset-password', async (req, res, next) => {
 
   const passwordHash = await hashPassword(password);
   await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  // a reset must evict every existing session — otherwise an attacker holding a stolen refresh
+  // token keeps access for the full TTL after the legitimate owner resets (06-REVIEW blocker).
+  await revokeAllRefreshTokens(userId);
   res.status(200).json({ message: 'password reset successfully' });
+});
+
+// POST /api/auth/verify-email — consume a verification token and stamp emailVerifiedAt (Module 1).
+// The token itself is the credential, so this route is public (the link lands before login).
+authRouter.post('/verify-email', async (req, res, next) => {
+  const result = VerifyEmailSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  const userId = await consumeVerificationToken(result.data.token);
+  if (!userId) return next(new HttpError(400, 'invalid_or_expired_token'));
+  res.status(200).json({ message: 'email verified' });
+});
+
+// POST /api/auth/resend-verification — re-issue the confirmation link for an email. Always 200 and
+// never reveals whether the address exists or is already verified (same anti-enumeration posture as
+// forgot-password, T-06-18). The frontend passes the logged-in user's own email.
+authRouter.post('/resend-verification', async (req, res, next) => {
+  const result = ResendVerificationSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  const user = await prisma.user.findUnique({ where: { email: result.data.email } });
+  // only (re)send for a real, still-unverified account; stay silent either way
+  if (user && user.emailVerifiedAt === null) {
+    await sendVerificationEmail(user.id, user.email);
+  }
+  res.status(200).json({ message: 'if that account exists and is unverified, a link has been sent' });
+});
+
+// POST /api/auth/change-password — authenticated rotation. Verifies the current password before
+// setting the new one (H5). requireAuth ensures we rotate only the caller's own credential.
+authRouter.post('/change-password', requireAuth, async (req, res, next) => {
+  const result = ChangePasswordSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  const { currentPassword, newPassword } = result.data;
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!user) return next(new HttpError(404, 'user_not_found'));
+
+    const ok = await verifyPassword(currentPassword, user.passwordHash);
+    if (!ok) return next(new HttpError(400, 'invalid_current_password'));
+
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+    // evict every existing session, then re-issue one for the current device so the caller stays
+    // logged in while any other (possibly stolen) session is invalidated (06-REVIEW blocker).
+    await revokeAllRefreshTokens(user.id);
+    const token = signAccessToken({ sub: user.id, role: user.role });
+    const refreshToken = await generateRefreshToken(user.id);
+    const csrfToken = setAuthCookies(res, { token, refreshToken });
+    res.status(200).json({ message: 'password changed successfully', token, refreshToken, csrfToken });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/auth/google — Google Identity Services sign-in. The browser posts the GIS ID token as
+// `credential`; we verify it against GOOGLE_CLIENT_ID, then upsert the user by verified email and
+// issue our own JWT + httpOnly cookies (same session shape as register/login, Phase 7).
+authRouter.post('/google', async (req, res, next) => {
+  const result = GoogleAuthSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  const clientId = process.env['GOOGLE_CLIENT_ID'];
+  if (!clientId) return next(new HttpError(503, 'google_auth_not_configured'));
+
+  try {
+    // verifyIdToken checks the signature, expiry, issuer AND that the token's audience is our
+    // client id — a token minted for any other app is rejected here.
+    const ticket = await googleClient.verifyIdToken({ idToken: result.data.credential, audience: clientId });
+    const payload = ticket.getPayload();
+
+    // require a Google-verified email before we trust it to match/create an account — otherwise a
+    // Google account with an unverified address could hijack a local account sharing that email.
+    if (!payload?.email || !payload.email_verified) {
+      return next(new HttpError(401, 'google_email_unverified'));
+    }
+
+    const email = payload.email.toLowerCase();
+    const name = payload.name || email.split('@')[0]!;
+
+    // upsert by email: an existing account (local or previously Google) just logs in; a new one is
+    // created with a random unusable password so the password-login path stays closed until reset.
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
+      // Google already asserted email_verified above, so a Google-created account is verified on
+      // creation — no confirmation link needed before its first order (Module 1).
+      user = await prisma.user.create({ data: { email, name, phone: '', passwordHash, emailVerifiedAt: new Date() } });
+    } else if (user.emailVerifiedAt === null) {
+      // a pre-existing local account signing in via Google gets its address confirmed too
+      user = await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
+    }
+
+    const token = signAccessToken({ sub: user.id, role: user.role });
+    const refreshToken = await generateRefreshToken(user.id);
+    const csrfToken = setAuthCookies(res, { token, refreshToken });
+    res.status(200).json({ user: buildUserResponse(user), token, refreshToken, csrfToken });
+  } catch (err) {
+    // verifyIdToken throws on any invalid/expired/wrong-audience token — treat all as 401.
+    if (err instanceof HttpError) return next(err);
+    return next(new HttpError(401, 'invalid_google_token'));
+  }
 });

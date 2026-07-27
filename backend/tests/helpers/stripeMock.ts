@@ -15,18 +15,23 @@ export type FakeStripeEvent = {
 export const stripeMockState = {
   // when true, webhooks.constructEvent throws (simulates an invalid signature)
   constructEventThrows: false,
+  // when true, paymentIntents.create throws (simulates an off_session card decline)
+  paymentIntentsCreateThrows: false,
   // the event constructEvent returns on the happy path
   nextEvent: null as FakeStripeEvent | null,
   // records of calls for assertions
   paymentIntentsCreate: [] as unknown[],
   refundsCreate: [] as unknown[],
+  customersCreate: [] as unknown[],
 };
 
 export function resetStripeMock(): void {
   stripeMockState.constructEventThrows = false;
+  stripeMockState.paymentIntentsCreateThrows = false;
   stripeMockState.nextEvent = null;
   stripeMockState.paymentIntentsCreate = [];
   stripeMockState.refundsCreate = [];
+  stripeMockState.customersCreate = [];
 }
 
 // Build a fake `payment_intent.succeeded` event carrying metadata.orderId, matching
@@ -46,9 +51,18 @@ export function stripeMockFactory() {
     paymentIntents = {
       // no await needed — callers always `await` this call, and `await` on a plain value resolves
       // immediately, so a sync return keeps the real SDK's Promise-returning call shape for callers.
+      // `status: 'succeeded'` supports the off_session late-fee charge path (Module 9).
       create: vi.fn((params: unknown) => {
+        if (stripeMockState.paymentIntentsCreateThrows) throw new Error('Your card was declined.');
         stripeMockState.paymentIntentsCreate.push(params);
-        return { id: 'pi_test', client_secret: 'cs_test' };
+        return { id: 'pi_test', client_secret: 'cs_test', status: 'succeeded' };
+      }),
+    };
+
+    customers = {
+      create: vi.fn((params: unknown) => {
+        stripeMockState.customersCreate.push(params);
+        return { id: 'cus_test' };
       }),
     };
 

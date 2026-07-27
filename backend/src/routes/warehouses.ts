@@ -53,6 +53,52 @@ warehousesRouter.get('/:id/stock', requireAuth, requireRole('admin', 'warehouse_
   }
 });
 
+// statuts d'une commande encore a preparer (avant que le livreur ne l'emporte)
+const TO_PREPARE_STATUSES = ['pending_assignment', 'rider_assigned', 'at_warehouse'] as const;
+
+// GET /api/warehouses/:id/orders — commandes entrantes a preparer pour cet entrepot (admin ou son manager)
+warehousesRouter.get('/:id/orders', requireAuth, requireRole('admin', 'warehouse_manager'), async (req, res, next) => {
+  try {
+    const warehouseId = String(req.params['id']);
+    await assertWarehouseAccess(req.user!, warehouseId);
+    const orders = await prisma.order.findMany({
+      where: { warehouseId, status: { in: [...TO_PREPARE_STATUSES] } },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        reference: true,
+        status: true,
+        preparedAt: true,
+        createdAt: true,
+        dropoffAddress: true,
+        items: { select: { name: true, quantity: true } },
+      },
+    });
+    res.json({ orders });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/warehouses/:id/orders/:orderId/prepare — marquer la commande prete pour le ramassage
+warehousesRouter.patch('/:id/orders/:orderId/prepare', requireAuth, requireRole('admin', 'warehouse_manager'), async (req, res, next) => {
+  try {
+    const warehouseId = String(req.params['id']);
+    const orderId = String(req.params['orderId']);
+    await assertWarehouseAccess(req.user!, warehouseId);
+    const order = await prisma.order.findUnique({ where: { id: orderId }, select: { id: true, warehouseId: true } });
+    if (!order || order.warehouseId !== warehouseId) return next(new HttpError(404, 'order_not_found'));
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: { preparedAt: new Date() },
+      select: { id: true, reference: true, preparedAt: true },
+    });
+    res.json({ order: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /api/warehouses — creer (admin)
 warehousesRouter.post('/', requireAuth, requireRole('admin'), async (req, res, next) => {
   const parsed = CreateWarehouseSchema.safeParse(req.body);

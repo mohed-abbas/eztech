@@ -42,6 +42,9 @@ function remap(o: ApiOrder) {
     userId: o.customerId ?? 'guest',
     items: (o.items ?? []).map((i) => ({
       productId: i.productId ?? '',
+      // carry the OrderItem name snapshot so the store can seed productNames — otherwise the
+      // orders list renders raw product UUIDs for every order fetched from the backend (H3).
+      name: i.name,
       quantity: i.quantity,
       duration: { type: i.durationUnit, value: i.durationValue },
       unitPrice: Number(i.unitPrice),

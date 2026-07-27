@@ -4,7 +4,10 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
-import { PatchUserSchema, ReviewRiderApplicationSchema, NotificationPrefsSchema } from '../schemas/user.js';
+import {
+  PatchUserSchema, PatchMeSchema, ReviewRiderApplicationSchema, NotificationPrefsSchema,
+  CreateAddressSchema, PatchAddressSchema,
+} from '../schemas/user.js';
 
 export const usersRouter = Router();
 
@@ -26,6 +29,86 @@ usersRouter.patch('/me/notifications', requireAuth, async (req, res, next) => {
       data: { emailOptOut: result.data.emailOptOut },
     });
     res.json({ user: buildUserResponse(user) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/users/me — owner-scoped self-service profile update (H5). Registered ABOVE /:id so
+// 'me' is never captured as an :id param. Keyed on req.user!.sub, never req.params, so a caller can
+// only ever edit their own record. Cannot touch email or role (see PatchMeSchema). Returns addresses
+// so the profile store keeps them after a save.
+usersRouter.patch('/me', requireAuth, async (req, res, next) => {
+  const result = PatchMeSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  // filter undefined to satisfy exactOptionalPropertyTypes (mirrors the admin PATCH /:id handler)
+  const data = Object.fromEntries(
+    Object.entries(result.data).filter(([, v]) => v !== undefined),
+  ) as { name?: string; phone?: string; vehicleType?: 'bicycle' | 'scooter' | 'car'; licenseNumber?: string; insuranceNumber?: string };
+
+  try {
+    const user = await prisma.user.update({ where: { id: req.user!.sub }, data, include: { addresses: true } });
+    res.json({ user: buildUserResponse(user) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/users/me/addresses — adresses de l'utilisateur connecte
+usersRouter.get('/me/addresses', requireAuth, async (req, res, next) => {
+  try {
+    const addresses = await prisma.address.findMany({ where: { userId: req.user!.sub }, orderBy: { createdAt: 'asc' } });
+    res.json({ addresses });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/users/me/addresses — ajouter une adresse
+usersRouter.post('/me/addresses', requireAuth, async (req, res, next) => {
+  const result = CreateAddressSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  try {
+    const address = await prisma.address.create({ data: { ...result.data, userId: req.user!.sub } });
+    res.status(201).json({ address });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PATCH /api/users/me/addresses/:addressId — modifier une adresse dont on est proprietaire
+usersRouter.patch('/me/addresses/:addressId', requireAuth, async (req, res, next) => {
+  const result = PatchAddressSchema.safeParse(req.body);
+  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
+
+  try {
+    // exactOptionalPropertyTypes : retirer les cles `undefined` avant Prisma
+    const data = Object.fromEntries(
+      Object.entries(result.data).filter(([, v]) => v !== undefined),
+    ) as unknown as Prisma.AddressUncheckedUpdateManyInput;
+    // updateMany garde par userId : une adresse d'un autre compte renvoie 404 (aucune fuite d'existence)
+    const updated = await prisma.address.updateMany({
+      where: { id: String(req.params['addressId']), userId: req.user!.sub },
+      data,
+    });
+    if (updated.count === 0) return next(new HttpError(404, 'address_not_found'));
+    const address = await prisma.address.findUnique({ where: { id: String(req.params['addressId']) } });
+    res.json({ address });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/users/me/addresses/:addressId — supprimer une adresse dont on est proprietaire
+usersRouter.delete('/me/addresses/:addressId', requireAuth, async (req, res, next) => {
+  try {
+    const deleted = await prisma.address.deleteMany({
+      where: { id: String(req.params['addressId']), userId: req.user!.sub },
+    });
+    if (deleted.count === 0) return next(new HttpError(404, 'address_not_found'));
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

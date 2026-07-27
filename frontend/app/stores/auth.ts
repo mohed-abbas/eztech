@@ -21,6 +21,8 @@ export interface User {
   licenseNumber?: string
   insuranceNumber?: string
   createdAt: string
+  // ISO timestamp once the email is confirmed (Module 1); null/undefined until then
+  emailVerifiedAt?: string | null
 }
 
 export interface RegisterCustomerPayload {
@@ -221,6 +223,29 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    // Exchanges a Google Identity Services ID token for our own session (POST /api/auth/google).
+    // The backend verifies the token, upserts the user, and sets the same httpOnly cookies as
+    // password login — so from here on the session is indistinguishable from a normal login.
+    async loginWithGoogle(credential: string): Promise<User> {
+      this.loading = true
+      try {
+        const config = useRuntimeConfig()
+        const response = await $fetch<{ user: User, token: string, refreshToken?: string }>(`${config.public.apiUrl}/auth/google`, {
+          method: 'POST',
+          body: { credential },
+          credentials: 'include',
+        })
+        this.user = response.user
+        this.token = response.token
+        this.refreshToken = response.refreshToken ?? null
+        this.persist()
+        return this.user!
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
     async register(payload: RegisterPayload): Promise<User> {
       this.loading = true
       try {
@@ -329,6 +354,126 @@ export const useAuthStore = defineStore('auth', {
       finally {
         this.loading = false
       }
+    },
+
+    // Confirms the account email from the link token (Module 1). Throws a friendly message on an
+    // invalid/expired token so the page can show a resend affordance.
+    async verifyEmail(token: string): Promise<void> {
+      this.loading = true
+      try {
+        const { isMock } = useMock()
+        if (isMock.value) {
+          await new Promise(r => setTimeout(r, 600))
+          return
+        }
+
+        const config = useRuntimeConfig()
+        try {
+          await $fetch(`${config.public.apiUrl}/auth/verify-email`, {
+            method: 'POST',
+            body: { token },
+          })
+        }
+        catch (err) {
+          const code = (err as { data?: { error?: string }, response?: { _data?: { error?: string } } })?.data?.error
+            ?? (err as { response?: { _data?: { error?: string } } })?.response?._data?.error
+          if (code === 'invalid_or_expired_token') {
+            throw new Error('Ce lien de confirmation est invalide ou a expiré.')
+          }
+          throw err
+        }
+
+        // reflect verification locally without a round-trip so the order gate lifts immediately
+        if (this.user) this.user.emailVerifiedAt = new Date().toISOString()
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
+    // Re-requests the confirmation link. Always resolves (the backend is enumeration-safe).
+    async resendVerification(email: string): Promise<void> {
+      this.loading = true
+      try {
+        const { isMock } = useMock()
+        if (isMock.value) {
+          await new Promise(r => setTimeout(r, 600))
+          return
+        }
+
+        const config = useRuntimeConfig()
+        await $fetch(`${config.public.apiUrl}/auth/resend-verification`, {
+          method: 'POST',
+          body: { email },
+        })
+      }
+      finally {
+        this.loading = false
+      }
+    },
+
+    // ── Profil self-service (persiste cote serveur, plus de localStorage seul) ──
+    _authHeaders(): Record<string, string> {
+      return { ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...csrfHeader() }
+    },
+
+    async updateProfile(payload: { name?: string, phone?: string }): Promise<void> {
+      const config = useRuntimeConfig()
+      const res = await $fetch<{ user: User }>(`${config.public.apiUrl}/users/me`, {
+        method: 'PATCH',
+        body: payload,
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      this.user = res.user
+      this.persist()
+    },
+
+    async addAddress(payload: { label: string, street: string, city: string, zipCode: string }): Promise<void> {
+      const config = useRuntimeConfig()
+      const res = await $fetch<{ address: Address }>(`${config.public.apiUrl}/users/me/addresses`, {
+        method: 'POST',
+        body: payload,
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      if (this.user) this.user.addresses = [...(this.user.addresses ?? []), res.address]
+      this.persist()
+    },
+
+    async updateAddress(id: string, payload: { label?: string, street?: string, city?: string, zipCode?: string }): Promise<void> {
+      const config = useRuntimeConfig()
+      const res = await $fetch<{ address: Address }>(`${config.public.apiUrl}/users/me/addresses/${id}`, {
+        method: 'PATCH',
+        body: payload,
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      if (this.user) {
+        this.user.addresses = (this.user.addresses ?? []).map(a => (a.id === id ? res.address : a))
+      }
+      this.persist()
+    },
+
+    async deleteAddress(id: string): Promise<void> {
+      const config = useRuntimeConfig()
+      await $fetch(`${config.public.apiUrl}/users/me/addresses/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      if (this.user) this.user.addresses = (this.user.addresses ?? []).filter(a => a.id !== id)
+      this.persist()
+    },
+
+    async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+      const config = useRuntimeConfig()
+      await $fetch(`${config.public.apiUrl}/auth/change-password`, {
+        method: 'POST',
+        body: { currentPassword, newPassword },
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
     },
 
     logout() {

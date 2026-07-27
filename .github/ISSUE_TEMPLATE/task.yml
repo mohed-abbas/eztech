@@ -1,0 +1,46 @@
+name: "📋 Tâche / Fonctionnalité"
+description: "Travail à faire, ou fonctionnalité manquante (y compris bloquée par une dépendance)"
+labels: ["task"]
+body:
+  - type: dropdown
+    id: module
+    attributes:
+      label: Module
+      options:
+        - "Auth & utilisateurs"
+        - "Catalogue & recherche"
+        - "Commande & location"
+        - "Livreur"
+        - "Temps réel / suivi"
+        - "Entrepôt"
+        - "Admin"
+        - "Notifications"
+        - "Paiements"
+        - "Infra / CI"
+    validations:
+      required: true
+
+  - type: textarea
+    id: goal
+    attributes:
+      label: Objectif
+      description: Ce qui doit exister à la fin, et pourquoi.
+    validations:
+      required: true
+
+  - type: input
+    id: blocked_by
+    attributes:
+      label: Bloqué par
+      description: Dépendance (personne, endpoint, écran) - laisser vide si non bloqué.
+      placeholder: "Murx - endpoint OpenRouteService"
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Critères de fin
+      placeholder: |
+        - [ ] ...
+        - [ ] Tests verts
+    validations:
+      required: true
