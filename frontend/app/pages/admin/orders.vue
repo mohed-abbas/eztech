@@ -2,7 +2,7 @@
 import { STATUS_CONFIG } from '~/stores/orders'
 
 definePageMeta({
-  layout: 'default',
+  layout: 'admin',
   middleware: ['auth', 'role'],
   role: 'admin',
 })
@@ -49,7 +49,6 @@ interface AdminOrder {
 const { adminFetch, fmtMoney } = useAdminApi()
 
 // ── State ────────────────────────────────────────────────────────────────────
-const config = useRuntimeConfig()
 const auth = useAuthStore()
 
 const orders = ref<AdminOrder[]>([])
@@ -71,14 +70,32 @@ const showModal = ref(false)
 const cancelling = ref(false)
 const cancelError = ref<string | null>(null)
 
+// ── Response-shape guards ────────────────────────────────────────────────────
+// In production nginx path-splits /api/orders to the Nuxt BFF (server/api/orders.ts), which
+// answers with a storefront-shaped FLAT ARRAY (no reference, no paymentStatus, no events) and
+// has no handler at all for POST /orders/:id/cancel. Reading `.orders` off that gave `undefined`
+// and blanked the page on the next render, with nothing thrown for the try/catch to catch. The
+// admin API is therefore called on /admin/orders (Express, unshadowed) and the envelope is
+// validated, so a wrong shape surfaces as an error instead of an empty screen.
+function unwrapOrders(data: unknown): AdminOrder[] {
+  const list = (data as { orders?: unknown } | null | undefined)?.orders
+  if (!Array.isArray(list)) throw new Error('Réponse inattendue de l\'API : « orders » manquant.')
+  return list as AdminOrder[]
+}
+
+function unwrapOrder(data: unknown): AdminOrder {
+  const order = (data as { order?: AdminOrder } | null | undefined)?.order
+  if (!order || typeof order.id !== 'string') throw new Error('Réponse inattendue de l\'API : commande manquante.')
+  return order
+}
+
 // ── Fetch all orders ─────────────────────────────────────────────────────────
 async function fetchOrders() {
   loading.value = true
   error.value = null
   auth.hydrate()
   try {
-    const data = await adminFetch<{ orders: AdminOrder[] }>('/orders')
-    orders.value = data.orders
+    orders.value = unwrapOrders(await adminFetch<unknown>('/admin/orders'))
   }
   catch (e) {
     error.value = e instanceof Error ? e.message : 'Erreur de chargement'
@@ -150,8 +167,7 @@ async function openDetail(order: AdminOrder) {
 
   loadingDetail.value = true
   try {
-    const data = await adminFetch<{ order: AdminOrder }>(`/orders/${order.id}`)
-    selectedOrder.value = data.order
+    selectedOrder.value = unwrapOrder(await adminFetch<unknown>(`/admin/orders/${order.id}`))
   }
   catch { /* keep the list-level data */ }
   finally {
@@ -171,11 +187,11 @@ async function cancelOrder(orderId: string) {
   cancelling.value = true
   cancelError.value = null
   try {
-    const data = await adminFetch<{ order: AdminOrder }>(`/orders/${orderId}/cancel`, { method: 'POST' })
+    const cancelled = unwrapOrder(await adminFetch<unknown>(`/admin/orders/${orderId}/cancel`, { method: 'POST' }))
     // update both the list and the modal
     const idx = orders.value.findIndex(o => o.id === orderId)
-    if (idx !== -1) orders.value[idx] = { ...orders.value[idx]!, ...data.order }
-    if (selectedOrder.value?.id === orderId) selectedOrder.value = { ...selectedOrder.value, ...data.order }
+    if (idx !== -1) orders.value[idx] = { ...orders.value[idx]!, ...cancelled }
+    if (selectedOrder.value?.id === orderId) selectedOrder.value = { ...selectedOrder.value, ...cancelled }
   }
   catch (e) {
     const err = e as { data?: { error?: string }; message?: string }
@@ -205,12 +221,6 @@ function getStatusCfg(status: string) {
 function isCancellable(order: AdminOrder) {
   return !['picked_up', 'in_transit', 'delivered', 'cancelled'].includes(order.status)
     && order.paymentStatus !== 'refunded'
-}
-
-function timelineStep(status: string): number {
-  const steps = ['pending_assignment', 'rider_assigned', 'picked_up', 'in_transit', 'delivered']
-  const idx = steps.indexOf(status)
-  return idx >= 0 ? idx : 0
 }
 </script>
 

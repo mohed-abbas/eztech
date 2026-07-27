@@ -1,17 +1,16 @@
 <script setup lang="ts">
-const props = withDefaults(
-  defineProps<{
-    open: boolean
-    title?: string
-    /** Tailwind max-w class applied to the dialog panel */
-    size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
-  }>(),
-  { size: 'lg' },
-)
+interface ModalProps {
+  open: boolean
+  title?: string
+  /** Tailwind max-w class applied to the dialog panel */
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+}
+
+withDefaults(defineProps<ModalProps>(), { size: 'lg' })
 
 const emit = defineEmits<{ close: [] }>()
 
-const sizeClass: Record<NonNullable<typeof props.size>, string> = {
+const sizeClass: Record<NonNullable<ModalProps['size']>, string> = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',

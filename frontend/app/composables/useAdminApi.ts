@@ -61,6 +61,8 @@ export function useAdminApi() {
       headers?: Record<string, string>
       [k: string]: unknown
     }
+    // $fetch returns TypedInternalResponse<…, T>, which TS does not narrow back to T for an
+    // absolute (non-Nitro) URL — the cast keeps callers' generics honest without widening them.
     return withAuth(() =>
       $fetch<T>(`${config.public.apiUrl}${path}`, {
         credentials: 'include',
@@ -70,7 +72,7 @@ export function useAdminApi() {
           ...(extra ?? {}),
         },
         ...rest,
-      }),
+      }) as Promise<T>,
     )
   }
 

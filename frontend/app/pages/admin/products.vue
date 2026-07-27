@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
-  layout: "default",
+  layout: "admin",
   middleware: ["auth", "role"],
   role: "admin",
 });
@@ -8,7 +8,6 @@ definePageMeta({
 useHead({ title: "Produits — Admin EzTech" });
 
 const { adminFetch, fmtMoney } = useAdminApi();
-const config = useRuntimeConfig();
 const auth = useAuthStore();
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -50,9 +49,13 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const searchQuery = ref("");
 const categoryFilter = ref("all");
+// Inactive (soft-deleted) products are fetched but hidden until the admin asks for them
+const showInactive = ref(false);
 const saving = ref(false);
 const saveError = ref<string | null>(null);
-const deleting = ref<string | null>(null);
+// id of the product whose activation is being toggled, + inline error banner
+const toggling = ref<string | null>(null);
+const rowError = ref<string | null>(null);
 
 // Modal
 const showModal = ref(false);
@@ -79,14 +82,14 @@ const form = reactive(emptyForm());
 // ── Validation ────────────────────────────────────────────────────────────────
 // Track which fields the user has interacted with (blur), so errors only
 // appear after the user has had a chance to fill a field.
-const touched = reactive<Record<string, boolean>>({});
+const touched = ref<Record<string, boolean>>({});
 
 function touch(field: string) {
-  touched[field] = true;
+  touched.value = { ...touched.value, [field]: true };
 }
 
 function resetTouched() {
-  Object.keys(touched).forEach((k) => delete touched[k]);
+  touched.value = {};
 }
 
 // Derived field errors — only shown when the field has been touched
@@ -97,6 +100,9 @@ const fieldErrors = computed(() => {
   else if (!/^[a-z0-9-]+$/.test(form.slug.trim()))
     e.slug = "Uniquement des lettres minuscules, chiffres et tirets.";
   if (!form.imageUrl.trim()) e.imageUrl = "L'URL de l'image est obligatoire.";
+  // categoryId is required by the API (CreateProductSchema) and the storefront
+  // filters key off category.slug — a product without one is unreachable.
+  if (!form.categoryId) e.categoryId = "La catégorie est obligatoire.";
   if (form.pricingType === "flat" && (form.flatPrice === "" || form.flatPrice === null))
     e.flatPrice = "Le prix forfaitaire est obligatoire.";
   if (
@@ -114,7 +120,7 @@ const formValid = computed(() => Object.keys(fieldErrors.value).length === 0);
 
 // Show an error only if the field was touched
 function err(field: string) {
-  return touched[field] ? fieldErrors.value[field] : undefined;
+  return touched.value[field] ? fieldErrors.value[field] : undefined;
 }
 
 // ── Helpers (locaux) ──────────────────────────────────────────────────────────
@@ -137,6 +143,27 @@ function displayPrice(product: Product) {
   return "—";
 }
 
+// ── Response-shape guards ─────────────────────────────────────────────────────
+// In production nginx path-splits /api/products to the Nuxt BFF (server/api/products.ts), which
+// answers with a storefront-shaped FLAT ARRAY, drops every query param and has no write handler.
+// Reading `.products` off that gave `undefined`, which the next render turned into a blank page
+// (`undefined.filter`) with nothing thrown for the try/catch to catch. The admin API is therefore
+// called on /admin/products (Express, unshadowed) and the envelope is validated before use, so a
+// wrong shape becomes a visible error instead of a silent blank screen.
+function unwrapList<T>(data: unknown, key: string): T[] {
+  const list = (data as Record<string, unknown> | null | undefined)?.[key];
+  if (!Array.isArray(list))
+    throw new Error(`Réponse inattendue de l'API : « ${key} » manquant.`);
+  return list as T[];
+}
+
+function unwrapProduct(data: unknown): Product {
+  const product = (data as { product?: Product } | null | undefined)?.product;
+  if (!product || typeof product.id !== "string")
+    throw new Error("Réponse inattendue de l'API : produit manquant.");
+  return product;
+}
+
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 async function fetchAll() {
   auth.hydrate();
@@ -144,15 +171,13 @@ async function fetchAll() {
   error.value = null;
   try {
     const [pData, cData, bData] = await Promise.all([
-      adminFetch<{ products: Product[]; total: number }>(
-        "/products?pageSize=100&includeInactive=true",
-      ),
-      adminFetch<{ categories: Category[] }>("/categories"),
-      adminFetch<{ brands: Brand[] }>("/brands"),
+      adminFetch<unknown>("/admin/products?pageSize=100&includeInactive=true"),
+      adminFetch<unknown>("/categories"),
+      adminFetch<unknown>("/brands"),
     ]);
-    products.value = pData.products;
-    categories.value = cData.categories;
-    brands.value = bData.brands;
+    products.value = unwrapList<Product>(pData, "products");
+    categories.value = unwrapList<Category>(cData, "categories");
+    brands.value = unwrapList<Brand>(bData, "brands");
   } catch (e) {
     error.value = e instanceof Error ? e.message : "Erreur de chargement";
   } finally {
@@ -163,8 +188,13 @@ async function fetchAll() {
 onMounted(fetchAll);
 
 // ── Filters ───────────────────────────────────────────────────────────────────
+const inactiveCount = computed(
+  () => products.value.filter((p) => !p.isActive).length,
+);
+
 const filtered = computed(() => {
   let list = products.value;
+  if (!showInactive.value) list = list.filter((p) => p.isActive);
   if (categoryFilter.value !== "all")
     list = list.filter((p) => p.categoryId === categoryFilter.value);
   if (searchQuery.value.trim()) {
@@ -222,22 +252,51 @@ watch(
   },
 );
 
+// ── API error → French message ────────────────────────────────────────────────
+function apiMessage(e: unknown, fallback: string) {
+  const apiErr = e as {
+    data?: { error?: string; issues?: { message: string }[] };
+    message?: string;
+  };
+  const code = apiErr?.data?.error;
+  const errorMap: Record<string, string> = {
+    slug_taken: "Ce slug est déjà utilisé par un autre produit.",
+    invalid_relation: "La catégorie ou la marque sélectionnée est invalide.",
+    validation_failed:
+      apiErr?.data?.issues?.map((i) => i.message).join(" · ") ??
+      "Données invalides.",
+    missing_token: "Session expirée, veuillez vous reconnecter.",
+    forbidden: "Action non autorisée.",
+    product_not_found: "Ce produit n'existe plus.",
+  };
+  return (code && errorMap[code]) ?? apiErr?.message ?? fallback;
+}
+
 // ── Save (create / update) ────────────────────────────────────────────────────
 async function save() {
   saving.value = true;
   saveError.value = null;
   try {
+    const description = form.description.trim();
+    const imageUrl = form.imageUrl.trim();
+    // The API rejects null for description/imageUrl (z.string().optional()) and
+    // requires a uuid for categoryId — so never send a null category, and omit
+    // the optionals when empty. brandId IS nullable, so null is fine there.
     const body: Record<string, unknown> = {
       name: form.name.trim(),
       slug: form.slug.trim(),
-      description: form.description.trim() || null,
-      imageUrl: form.imageUrl.trim() || null,
       pricingType: form.pricingType,
-      categoryId: form.categoryId || null,
+      categoryId: form.categoryId,
       brandId: form.brandId || null,
       featured: form.featured,
       isActive: form.isActive,
     };
+    // On edit, send an empty string to actually clear a value the product
+    // still has; on create, just leave the field out.
+    if (description) body.description = description;
+    else if (editingProduct.value?.description) body.description = "";
+    if (imageUrl) body.imageUrl = imageUrl;
+    else if (editingProduct.value?.imageUrl) body.imageUrl = "";
     // only send prices relevant to pricingType
     if (form.pricingType === "flat") {
       body.flatPrice = form.flatPrice !== "" ? Number(form.flatPrice) : null;
@@ -250,55 +309,60 @@ async function save() {
     }
 
     if (editingProduct.value) {
-      const data = await adminFetch<{ product: Product }>(
-        `/products/${editingProduct.value.id}`,
+      const data = await adminFetch<unknown>(
+        `/admin/products/${editingProduct.value.id}`,
         { method: "PATCH", body },
       );
+      const updated = unwrapProduct(data);
       const idx = products.value.findIndex(
         (p) => p.id === editingProduct.value!.id,
       );
-      if (idx !== -1) products.value[idx] = data.product;
+      if (idx !== -1) products.value[idx] = updated;
     } else {
-      const data = await adminFetch<{ product: Product }>("/products", {
+      const data = await adminFetch<unknown>("/admin/products", {
         method: "POST",
         body,
       });
-      products.value.unshift(data.product);
+      products.value.unshift(unwrapProduct(data));
     }
     closeModal();
   } catch (e: unknown) {
-    const apiErr = e as { data?: { error?: string; issues?: { message: string }[] }; message?: string };
-    const code = apiErr?.data?.error;
-    const errorMap: Record<string, string> = {
-      slug_taken: "Ce slug est déjà utilisé par un autre produit.",
-      invalid_relation: "La catégorie ou la marque sélectionnée est invalide.",
-      validation_failed: apiErr?.data?.issues?.map((i) => i.message).join(" · ") ?? "Données invalides.",
-      missing_token: "Session expirée, veuillez vous reconnecter.",
-      forbidden: "Action non autorisée.",
-    };
-    saveError.value =
-      (code && errorMap[code]) ??
-      apiErr?.message ??
-      "Erreur lors de la sauvegarde.";
+    saveError.value = apiMessage(e, "Erreur lors de la sauvegarde.");
   } finally {
     saving.value = false;
   }
 }
 
-// ── Delete (soft) ─────────────────────────────────────────────────────────────
-async function deleteProduct(p: Product) {
+// ── Activation toggle (soft delete / restore) ─────────────────────────────────
+// PATCH is used rather than DELETE because it returns the updated product,
+// while DELETE answers 204 with no body. Deactivated products stay in the list.
+async function setActive(p: Product, isActive: boolean) {
   if (
-    !confirm(`Désactiver « ${p.name} » ? Le produit sera masqué du catalogue.`)
+    !isActive
+    && !confirm(`Désactiver « ${p.name} » ? Le produit sera masqué du catalogue.`)
   )
     return;
-  deleting.value = p.id;
+  toggling.value = p.id;
+  rowError.value = null;
   try {
-    await adminFetch(`/products/${p.id}`, { method: "DELETE" });
-    products.value = products.value.filter((x) => x.id !== p.id);
+    const data = await adminFetch<unknown>(`/admin/products/${p.id}`, {
+      method: "PATCH",
+      body: { isActive },
+    });
+    const updated = unwrapProduct(data);
+    const idx = products.value.findIndex((x) => x.id === p.id);
+    if (idx !== -1) products.value[idx] = updated;
+    // keep the row on screen so the admin sees the result of their action
+    if (!isActive) showInactive.value = true;
   } catch (e) {
-    alert("Impossible de supprimer ce produit.");
+    rowError.value = apiMessage(
+      e,
+      isActive
+        ? "Impossible de réactiver ce produit."
+        : "Impossible de désactiver ce produit.",
+    );
   } finally {
-    deleting.value = null;
+    toggling.value = null;
   }
 }
 </script>
@@ -328,10 +392,14 @@ async function deleteProduct(p: Product) {
           <div>
             <h1 class="text-h1 font-semibold text-white">Produits</h1>
             <p class="mt-1 text-body text-neutral-400">
-              {{ products.length }} produit{{
-                products.length !== 1 ? "s" : ""
+              {{ products.length - inactiveCount }} produit{{
+                products.length - inactiveCount !== 1 ? "s" : ""
               }}
-              actif{{ products.length !== 1 ? "s" : "" }} dans le catalogue
+              actif{{ products.length - inactiveCount !== 1 ? "s" : "" }} dans
+              le catalogue
+              <span v-if="inactiveCount">
+                · {{ inactiveCount }} inactif{{ inactiveCount !== 1 ? "s" : "" }}
+              </span>
             </p>
           </div>
           <button
@@ -370,11 +438,39 @@ async function deleteProduct(p: Product) {
             {{ c.name }}
           </option>
         </select>
+        <label
+          class="flex cursor-pointer select-none items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+        >
+          <input
+            v-model="showInactive"
+            type="checkbox"
+            class="size-4 rounded border-neutral-300 accent-primary-600"
+          />
+          Afficher les produits inactifs
+          <span
+            v-if="inactiveCount"
+            class="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-semibold text-text-muted"
+          >
+            {{ inactiveCount }}
+          </span>
+        </label>
         <button
           class="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
           @click="fetchAll"
         >
           <Icon name="ph:arrows-clockwise" class="size-4" /> Actualiser
+        </button>
+      </div>
+
+      <!-- Row-level action error -->
+      <div
+        v-if="rowError"
+        class="mb-6 flex items-start gap-2 rounded-xl border border-error/20 bg-error/10 px-4 py-3 text-body-sm text-error"
+      >
+        <Icon name="ph:warning-circle" class="mt-0.5 size-4 shrink-0" />
+        <span class="flex-1">{{ rowError }}</span>
+        <button class="shrink-0 font-medium underline" @click="rowError = null">
+          Fermer
         </button>
       </div>
 
@@ -432,7 +528,12 @@ async function deleteProduct(p: Product) {
         <div
           v-for="p in filtered"
           :key="p.id"
-          class="group overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm transition hover:border-primary-200 hover:shadow-md"
+          class="group overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:shadow-md"
+          :class="
+            p.isActive
+              ? 'border-neutral-200 hover:border-primary-200'
+              : 'border-dashed border-neutral-300 opacity-75'
+          "
         >
           <!-- Image -->
           <div class="relative h-40 overflow-hidden bg-neutral-100">
@@ -441,6 +542,7 @@ async function deleteProduct(p: Product) {
               :src="p.imageUrl"
               :alt="p.name"
               class="size-full object-cover transition duration-300 group-hover:scale-105"
+              :class="{ 'grayscale': !p.isActive }"
             />
             <div v-else class="flex size-full items-center justify-center">
               <Icon name="ph:image" class="size-10 text-neutral-300" />
@@ -452,6 +554,12 @@ async function deleteProduct(p: Product) {
                 class="rounded-full bg-amber-500 px-2 py-0.5 text-caption font-bold text-white"
               >
                 ★ Vedette
+              </span>
+              <span
+                v-if="!p.isActive"
+                class="inline-flex items-center gap-1 rounded-full bg-neutral-700 px-2 py-0.5 text-caption font-bold text-white"
+              >
+                <Icon name="ph:eye-slash" class="size-3" /> Inactif
               </span>
             </div>
           </div>
@@ -490,16 +598,41 @@ async function deleteProduct(p: Product) {
                 <Icon name="ph:pencil-simple" class="size-4" /> Modifier
               </button>
               <button
-                :disabled="deleting === p.id"
+                v-if="p.isActive"
+                :disabled="toggling === p.id"
+                title="Désactiver"
+                aria-label="Désactiver"
                 class="flex size-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-400 transition hover:border-error/30 hover:bg-error/5 hover:text-error disabled:opacity-40"
-                @click="deleteProduct(p)"
+                @click="setActive(p, false)"
               >
-                <Icon v-if="deleting !== p.id" name="ph:trash" class="size-4" />
+                <Icon
+                  v-if="toggling !== p.id"
+                  name="ph:eye-slash"
+                  class="size-4"
+                />
                 <Icon
                   v-else
                   name="ph:circle-notch"
                   class="size-4 animate-spin"
                 />
+              </button>
+              <button
+                v-else
+                :disabled="toggling === p.id"
+                class="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-body-sm font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-40"
+                @click="setActive(p, true)"
+              >
+                <Icon
+                  v-if="toggling !== p.id"
+                  name="ph:arrow-counter-clockwise"
+                  class="size-4"
+                />
+                <Icon
+                  v-else
+                  name="ph:circle-notch"
+                  class="size-4 animate-spin"
+                />
+                Réactiver
               </button>
             </div>
           </div>
@@ -721,18 +854,32 @@ async function deleteProduct(p: Product) {
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label
-              class="mb-1.5 block text-body-sm font-medium text-text-primary"
-              >Catégorie</label
+              class="mb-1.5 flex items-center gap-1 text-body-sm font-medium text-text-primary"
             >
+              Catégorie
+              <span class="text-error">*</span>
+            </label>
             <select
               v-model="form.categoryId"
-              class="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              class="w-full rounded-xl border px-3 py-2.5 text-body-sm focus:outline-none focus:ring-2"
+              :class="err('categoryId')
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
+                : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+              @blur="touch('categoryId')"
+              @change="touch('categoryId')"
             >
-              <option value="">Aucune</option>
+              <option value="" disabled>Sélectionner une catégorie</option>
               <option v-for="c in categories" :key="c.id" :value="c.id">
                 {{ c.name }}
               </option>
             </select>
+            <p
+              v-if="err('categoryId')"
+              class="mt-1 flex items-center gap-1 text-caption text-error"
+            >
+              <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+              {{ err('categoryId') }}
+            </p>
           </div>
           <div>
             <label
