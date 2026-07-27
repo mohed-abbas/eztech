@@ -42,6 +42,24 @@ export const requireAuth: RequestHandler = (req, _res, next) => {
   }
 };
 
+// Same token resolution as requireAuth, but NEVER rejects: no token or an invalid/expired one simply
+// leaves req.user undefined and continues. Used by routes that are public but behave differently for
+// an authenticated admin — GET /api/products reads req.user?.role to honour ?includeInactive=true.
+// It must not 401: the public catalog and the Nuxt BFF (frontend/server/api/products.ts) call that
+// route anonymously, so forwarding an auth error here would take the whole storefront down.
+export const optionalAuth: RequestHandler = (req, _res, next) => {
+  const header = req.header('authorization');
+  const bearer = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  const token = bearer || getCookie(req, ACCESS_COOKIE);
+  if (!token) return next();
+  try {
+    req.user = verifyAccessToken(token);
+  } catch {
+    // token illisible/expire : on reste anonyme plutot que de refuser la requete
+  }
+  next();
+};
+
 export function requireRole(...roles: Role[]): RequestHandler {
   return (req, _res, next) => {
     // requireAuth must run first — it sets req.user
