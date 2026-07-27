@@ -30,3 +30,13 @@ apiRouter.use('/zones', zonesRouter);
 apiRouter.use('/warehouses', warehousesRouter);
 apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/payments', paymentsRouter);
+
+// Production nginx path-splits a small allowlist of /api paths (products, orders, zones, config,
+// geocode) to the Nuxt BFF, which serves a storefront-shaped remap: /api/products answers with a
+// flat array, ignores every query param (so ?includeInactive is lost) and has no write handler, so
+// a POST/PATCH there silently degrades to a read. The admin pages need the real Express catalog and
+// order API, so the same routers are additionally mounted under /api/admin/* — a prefix nginx does
+// not split, so it always reaches this app. No new handlers and no new permissions: the guards live
+// on the routers themselves and are unchanged.
+apiRouter.use('/admin/products', productsRouter);
+apiRouter.use('/admin/orders', ordersRouter);
