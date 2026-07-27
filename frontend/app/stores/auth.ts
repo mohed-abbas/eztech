@@ -6,6 +6,8 @@ export interface Address {
   street: string
   city: string
   zipCode: string
+  // adresse de livraison par defaut (une seule par compte, garantie cote serveur)
+  isDefault?: boolean
   coordinates?: { lat: number, lng: number }
 }
 
@@ -417,7 +419,15 @@ export const useAuthStore = defineStore('auth', {
       return { ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...csrfHeader() }
     },
 
-    async updateProfile(payload: { name?: string, phone?: string }): Promise<void> {
+    // PATCH /api/users/me accepte aussi les champs vehicule (voir backend/src/schemas/user.ts
+    // PatchMeSchema) — la route est owner-scoped sur req.user.sub, donc valable pour tous les roles.
+    async updateProfile(payload: {
+      name?: string
+      phone?: string
+      vehicleType?: 'bicycle' | 'scooter' | 'car'
+      licenseNumber?: string
+      insuranceNumber?: string
+    }): Promise<void> {
       const config = useRuntimeConfig()
       const res = await $fetch<{ user: User }>(`${config.public.apiUrl}/users/me`, {
         method: 'PATCH',
@@ -463,6 +473,36 @@ export const useAuthStore = defineStore('auth', {
         headers: this._authHeaders(),
       })
       if (this.user) this.user.addresses = (this.user.addresses ?? []).filter(a => a.id !== id)
+      this.persist()
+      // supprimer l'adresse par defaut promeut la plus ancienne restante cote serveur (204, pas de
+      // corps) : on relit la liste pour recuperer le nouveau flag. Best-effort, l'UI est deja a jour.
+      await this.refreshAddresses().catch(() => {})
+    },
+
+    // Marque une adresse comme adresse par defaut. Le backend bascule les autres a false dans la
+    // meme transaction et renvoie la liste complete — on la reassigne telle quelle plutot que de
+    // recalculer le flag cote client (source de verite = serveur).
+    async setDefaultAddress(id: string): Promise<void> {
+      const config = useRuntimeConfig()
+      const res = await $fetch<{ addresses: Address[] }>(`${config.public.apiUrl}/users/me/addresses/${id}/default`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      if (this.user) this.user.addresses = res.addresses
+      this.persist()
+    },
+
+    // Recharge les adresses depuis l'API. Necessaire parce que hydrate() restaure le blob
+    // localStorage et que init() n'appelle /auth/me que si aucun user n'est charge : sans ca la
+    // liste d'adresses peut rester perimee apres un ajout fait dans un autre onglet.
+    async refreshAddresses(): Promise<void> {
+      const config = useRuntimeConfig()
+      const res = await $fetch<{ addresses: Address[] }>(`${config.public.apiUrl}/users/me/addresses`, {
+        credentials: 'include',
+        headers: this._authHeaders(),
+      })
+      if (this.user) this.user.addresses = res.addresses
       this.persist()
     },
 

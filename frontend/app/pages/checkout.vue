@@ -24,9 +24,46 @@ onMounted(() => {
 // --- Address selection ---
 type AddressMode = 'saved' | 'manual' | 'geo'
 const addressMode = ref<AddressMode>('saved')
-const selectedSavedId = ref<string | null>(user.value?.addresses?.[0]?.id ?? null)
+const selectedSavedId = ref<string | null>(null)
+// Passe a true des que l'utilisateur clique une carte. Tant qu'il est false la selection n'est
+// qu'une proposition automatique, qu'on a le droit de recalculer quand la liste change ; une fois
+// a true plus rien ne doit toucher selectedSavedId, sinon la commande partirait vers une adresse
+// que l'utilisateur n'a pas choisie (le dropoff est construit depuis cette selection).
+const addressPickedByUser = ref(false)
 
 const savedAddresses = computed<Address[]>(() => user.value?.addresses ?? [])
+
+// Adresse par defaut du compte, sinon la premiere de la liste.
+function applyDefaultSelection() {
+  if (addressPickedByUser.value) return
+  selectedSavedId.value = savedAddresses.value.find(a => a.isDefault)?.id
+    ?? savedAddresses.value[0]?.id
+    ?? null
+}
+
+function pickSavedAddress(id: string) {
+  addressPickedByUser.value = true
+  selectedSavedId.value = id
+}
+
+// Preselection synchrone : le plugin auth attend auth.init() avant le rendu (serveur ET client),
+// donc dans le cas nominal la liste est deja la au setup et aucune carte ne s'affiche non
+// selectionnee au premier paint.
+applyDefaultSelection()
+
+// Le blob localStorage restaure par auth.hydrate() peut etre perime (adresse ajoutee depuis un
+// autre onglet, defaut change) : on relit la liste depuis l'API puis on recalcule la proposition.
+// applyDefaultSelection() s'auto-annule si l'utilisateur a deja clique pendant l'aller-retour.
+onMounted(async () => {
+  await auth.refreshAddresses().catch(() => {})
+  applyDefaultSelection()
+})
+
+// Si la liste arrive apres le montage (hydratation client, /auth/me tardif), on applique la
+// selection par defaut a ce moment-la — sans jamais ecraser un choix deja fait par l'utilisateur.
+watch(savedAddresses, () => {
+  applyDefaultSelection()
+})
 
 const manualStreet = ref('')
 const manualCity = ref('Paris')
@@ -585,13 +622,22 @@ const steps = [
 
               <!-- Saved -->
               <div v-if="addressMode === 'saved'" class="space-y-2">
-                <AddressCard
-                  v-for="addr in savedAddresses"
-                  :key="addr.id"
-                  :address="addr"
-                  :selected="selectedSavedId === addr.id"
-                  @select="(id: string) => selectedSavedId = id"
-                />
+                <!-- le badge est superpose plutot qu'ajoute a AddressCard (composant partage) ;
+                     pointer-events-none pour que le clic atteigne quand meme la carte -->
+                <div v-for="addr in savedAddresses" :key="addr.id" class="relative">
+                  <AddressCard
+                    :address="addr"
+                    :selected="selectedSavedId === addr.id"
+                    @select="pickSavedAddress"
+                  />
+                  <span
+                    v-if="addr.isDefault"
+                    class="pointer-events-none absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-caption font-semibold text-primary-700"
+                  >
+                    <Icon name="ph:star-fill" class="size-3" />
+                    Par défaut
+                  </span>
+                </div>
                 <p v-if="savedAddresses.length === 0" class="text-sm text-text-muted py-4 text-center">
                   Aucune adresse enregistrée.
                   <Button variant="link" size="sm" class="px-0 h-auto" @click="addressMode = 'manual'">Saisir manuellement</Button>
