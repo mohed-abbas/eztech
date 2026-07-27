@@ -82,8 +82,15 @@ const navSections = [
         color: "from-primary-500 to-primary-600",
         badge: null as null | (() => number),
       },
-      // Carte « Entrepôts » retirée : la page cible n'existe pas. Elle revient
-      // en J2 avec l'UI entrepôts du module 6.
+      {
+        to: "/admin/warehouses",
+        label: "Entrepôts",
+        description:
+          "Créer, modifier, assigner un responsable et suivre le stock",
+        icon: "ph:warehouse",
+        color: "from-orange-500 to-orange-600",
+        badge: null,
+      },
     ],
   },
   {
