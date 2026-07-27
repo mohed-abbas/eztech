@@ -38,7 +38,7 @@ const emptyForm = () => ({ name: '', slug: '', description: '', icon: '' })
 const form = reactive(emptyForm())
 
 // Champs déjà visités : on n'affiche l'erreur qu'après interaction.
-const touched = reactive<Record<string, boolean>>({ name: false, slug: false })
+const touched = reactive<Record<string, boolean>>({ name: false, slug: false, icon: false })
 function touch(field: string) {
   touched[field] = true
 }
@@ -47,6 +47,11 @@ function resetTouched() {
   for (const k of Object.keys(touched)) touched[k] = false
 }
 
+// Nom d'icône Iconify : « collection:nom » (ex. ph:bicycle, simple-icons:apple).
+// Le backend accepte n'importe quelle chaîne, mais un nom hors format ne pourra
+// jamais s'afficher — autant le refuser côté formulaire.
+const ICON_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 const fieldErrors = computed(() => {
   const e: Record<string, string> = {}
   if (!form.name.trim()) e.name = 'Le nom est obligatoire.'
@@ -54,10 +59,17 @@ const fieldErrors = computed(() => {
   // même contrainte que le backend : /^[a-z0-9-]+$/ (backend/src/schemas/catalog.ts:3)
   else if (!/^[a-z0-9-]+$/.test(form.slug.trim()))
     e.slug = 'Uniquement des lettres minuscules, chiffres et tirets.'
+  const icon = form.icon.trim()
+  if (icon && !ICON_RE.test(icon))
+    e.icon = 'Format attendu : « collection:nom », par exemple ph:bicycle.'
   return e
 })
 
 const formValid = computed(() => Object.keys(fieldErrors.value).length === 0)
+
+// Résumé affiché en info-bulle du bouton désactivé : sans lui, l'admin voit un
+// bouton grisé sans savoir ce qui bloque.
+const invalidSummary = computed(() => Object.values(fieldErrors.value).join(' '))
 
 function err(field: string) {
   return touched[field] ? fieldErrors.value[field] : undefined
@@ -83,20 +95,41 @@ watch(
 )
 
 // ── Chargement ────────────────────────────────────────────────────────────────
-async function fetchAll() {
+// GET /api/categories est la SEULE source de vérité pour `_count.products` :
+// POST et PATCH ne renvoient pas ce champ, et les compteurs bougent dès qu'un
+// produit est créé, archivé ou déplacé depuis /admin/products. Toute action
+// destructive ou créatrice repasse donc par ce chargement.
+const refreshing = ref(false)
+
+async function load(silent = false) {
   auth.hydrate()
-  loading.value = true
-  error.value = null
+  if (silent) refreshing.value = true
+  else {
+    loading.value = true
+    error.value = null
+  }
   try {
     const data = await adminFetch<{ categories: Category[] }>('/categories')
     categories.value = data.categories
+    error.value = null
   }
   catch (e) {
-    error.value = e instanceof Error ? e.message : 'Erreur de chargement'
+    // un rafraîchissement silencieux ne doit jamais vider la liste déjà affichée
+    if (!silent) error.value = e instanceof Error ? e.message : 'Erreur de chargement'
   }
   finally {
     loading.value = false
+    refreshing.value = false
   }
+}
+
+function fetchAll() {
+  return load(false)
+}
+
+// recharge les compteurs sans repasser par le squelette de chargement
+function refreshCounts() {
+  return load(true)
 }
 
 onMounted(fetchAll)
@@ -108,6 +141,53 @@ const filtered = computed(() => {
     c => c.name.toLowerCase().includes(q) || c.slug.toLowerCase().includes(q),
   )
 })
+
+// ── Aperçu de l'icône ─────────────────────────────────────────────────────────
+// <Icon> (@nuxt/icon v2) n'expose ni événement d'erreur ni slot de repli : en
+// mode `css` (le défaut) il rend un <span class="iconify"> vide quand l'icône est
+// introuvable, en mode `svg` il ne rend simplement aucun <svg>. On inspecte donc
+// l'aperçu rendu pour signaler un nom syntaxiquement valide mais inexistant,
+// plutôt que de laisser l'admin enregistrer une icône invisible.
+const iconPreview = useTemplateRef<HTMLElement>('iconPreview')
+const iconPreviewFailed = ref(false)
+let iconProbe: ReturnType<typeof setInterval> | undefined
+
+function iconRenders(root: HTMLElement): boolean {
+  const el = root.querySelector<HTMLElement>('.iconify') ?? root
+  if (el.querySelector('svg')) return true
+  const s = getComputedStyle(el)
+  const mask = s.getPropertyValue('mask-image') || s.getPropertyValue('-webkit-mask-image')
+  return Boolean(mask) && mask !== 'none'
+}
+
+function stopIconProbe() {
+  if (iconProbe !== undefined) clearInterval(iconProbe)
+  iconProbe = undefined
+}
+
+// l'icône est résolue à la volée (bundle client puis API Iconify) : on sonde
+// l'aperçu pendant ~3 s avant de conclure à un échec, sinon on crierait au loup
+// sur une simple latence réseau.
+function probeIconPreview() {
+  stopIconProbe()
+  iconPreviewFailed.value = false
+  if (!import.meta.client) return
+  if (!showModal.value || !form.icon.trim() || fieldErrors.value.icon) return
+  let tries = 0
+  iconProbe = setInterval(() => {
+    tries += 1
+    const el = iconPreview.value
+    if (el && iconRenders(el)) return stopIconProbe()
+    if (tries >= 10) {
+      stopIconProbe()
+      iconPreviewFailed.value = true
+    }
+  }, 300)
+}
+
+watch(() => form.icon, probeIconPreview)
+watch(showModal, open => (open ? probeIconPreview() : stopIconProbe()))
+onBeforeUnmount(stopIconProbe)
 
 // ── Modale ────────────────────────────────────────────────────────────────────
 function openCreate() {
@@ -183,8 +263,11 @@ function toFrench(e: unknown, fallback: string): string {
       describeIssues(issuesOf(apiErr?.data)) ?? 'Certains champs sont invalides.',
     slug_taken: 'Ce slug est déjà pris par une autre catégorie.',
     category_not_found: 'Cette catégorie n’existe plus. Actualisez la liste.',
+    // la colonne « Produits » ne compte que les produits actifs (backend/src/routes/
+    // categories.ts:16) : un produit archivé bloque la suppression sans y figurer.
     category_in_use:
-      'Suppression impossible : des produits sont encore rattachés à cette catégorie.',
+      'Suppression impossible : des produits sont encore rattachés à cette catégorie, '
+      + 'y compris des produits archivés qui ne sont pas comptés dans la colonne « Produits ».',
     missing_token: 'Session expirée, veuillez vous reconnecter.',
     invalid_token: 'Session expirée, veuillez vous reconnecter.',
     forbidden: 'Action réservée aux administrateurs.',
@@ -200,6 +283,7 @@ async function save() {
   // révèle les erreurs restantes même si l'utilisateur n'a rien visité
   touched.name = true
   touched.slug = true
+  touched.icon = true
   if (!formValid.value) return
 
   saving.value = true
@@ -248,6 +332,9 @@ async function save() {
   }
   catch (e) {
     saveError.value = toFrench(e, 'Erreur lors de la sauvegarde.')
+    // la catégorie a disparu entre-temps : la liste locale est périmée
+    if ((e as { data?: { error?: string } })?.data?.error === 'category_not_found')
+      void refreshCounts()
   }
   finally {
     saving.value = false
@@ -255,16 +342,40 @@ async function save() {
 }
 
 // ── Suppression ───────────────────────────────────────────────────────────────
+// `_count.products` ne compte que les produits ACTIFS : un compteur à 0 ne
+// garantit donc pas que la suppression passera (un produit archivé conserve la
+// clé étrangère). Le garde-fou local évite l'aller-retour évident, le 409 du
+// backend reste le filet de sécurité.
+function productCount(c: Category) {
+  return c._count?.products ?? 0
+}
+
+function deleteBlocked(c: Category) {
+  return productCount(c) > 0
+}
+
+function deleteHint(c: Category) {
+  const n = productCount(c)
+  if (n === 0) return `Supprimer la catégorie ${c.name}`
+  return `Impossible de supprimer ${c.name} : ${n} produit${n > 1 ? 's' : ''} rattaché${n > 1 ? 's' : ''}`
+}
+
 async function remove(c: Category) {
+  if (deleteBlocked(c)) return
   if (!confirm(`Supprimer la catégorie « ${c.name} » ? Cette action est définitive.`)) return
   deleting.value = c.id
   deleteError.value = null
   try {
+    // DELETE répond 204 sans corps : adminFetch résout sur `null`, il n'y a
+    // aucune enveloppe { category } à lire ici (backend/src/routes/categories.ts:79).
     await adminFetch(`/categories/${c.id}`, { method: 'DELETE' })
     categories.value = categories.value.filter(x => x.id !== c.id)
   }
   catch (e) {
     deleteError.value = toFrench(e, 'Impossible de supprimer cette catégorie.')
+    // 409 category_in_use ou 404 category_not_found ⇒ nos compteurs sont périmés,
+    // on les resynchronise pour que le bouton reflète l'état réel du catalogue.
+    void refreshCounts()
   }
   finally {
     deleting.value = null
@@ -287,10 +398,16 @@ async function remove(c: Category) {
       <div class="flex items-center gap-2">
         <button
           type="button"
-          class="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+          :disabled="loading || refreshing"
+          title="Recharger la liste et les compteurs de produits"
+          class="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
           @click="fetchAll"
         >
-          <Icon name="ph:arrows-clockwise" class="size-4" />
+          <Icon
+            name="ph:arrows-clockwise"
+            class="size-4"
+            :class="refreshing && 'animate-spin'"
+          />
           Actualiser
         </button>
         <button
@@ -322,9 +439,22 @@ async function remove(c: Category) {
     <!-- Erreur de suppression -->
     <div
       v-if="deleteError"
-      class="mb-4 rounded-xl border border-error/20 bg-error/10 px-4 py-3 text-body-sm text-error"
+      class="mb-4 flex flex-col gap-3 rounded-xl border border-error/20 bg-error/10 px-4 py-3 text-body-sm text-error sm:flex-row sm:items-center sm:justify-between"
     >
-      {{ deleteError }}
+      <span>{{ deleteError }}</span>
+      <button
+        type="button"
+        :disabled="loading || refreshing"
+        class="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-error/30 bg-white px-3 py-1.5 text-body-sm font-medium text-error transition hover:bg-error/5 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+        @click="fetchAll"
+      >
+        <Icon
+          name="ph:arrows-clockwise"
+          class="size-4"
+          :class="refreshing && 'animate-spin'"
+        />
+        Actualiser
+      </button>
     </div>
 
     <!-- Chargement -->
@@ -388,8 +518,12 @@ async function remove(c: Category) {
               <th scope="col" class="px-5 py-3">
                 Description
               </th>
-              <th scope="col" class="px-5 py-3">
-                Produits
+              <th
+                scope="col"
+                class="px-5 py-3"
+                title="Nombre de produits actifs rattachés. Les produits archivés ne sont pas comptés mais empêchent aussi la suppression."
+              >
+                Produits actifs
               </th>
               <th scope="col" class="px-5 py-3 text-right">
                 Actions
@@ -431,11 +565,14 @@ async function remove(c: Category) {
                     <Icon name="ph:pencil-simple" class="size-4" />
                     Modifier
                   </button>
+                  <!-- désactivé tant que des produits actifs pointent la catégorie :
+                       le backend répondrait 409 category_in_use -->
                   <button
                     type="button"
-                    :disabled="deleting === c.id"
-                    :aria-label="`Supprimer ${c.name}`"
-                    class="flex size-9 items-center justify-center rounded-xl border border-border text-neutral-400 transition hover:border-error/30 hover:bg-error/5 hover:text-error disabled:opacity-40"
+                    :disabled="deleting === c.id || deleteBlocked(c)"
+                    :aria-label="deleteHint(c)"
+                    :title="deleteHint(c)"
+                    class="flex size-9 items-center justify-center rounded-xl border border-border text-neutral-400 transition hover:border-error/30 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-neutral-400"
                     @click="remove(c)"
                   >
                     <Icon v-if="deleting !== c.id" name="ph:trash" class="size-4" />
@@ -532,8 +669,22 @@ async function remove(c: Category) {
             Icône
           </label>
           <div class="flex items-center gap-3">
+            <!-- aperçu : bascule en pictogramme d'alerte si le nom est mal formé -->
             <span
-              class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-700"
+              v-if="err('icon')"
+              class="flex size-11 shrink-0 items-center justify-center rounded-xl bg-error/10 text-error"
+              aria-hidden="true"
+            >
+              <Icon name="ph:warning-circle" class="size-5" />
+            </span>
+            <span
+              v-else
+              ref="iconPreview"
+              class="flex size-11 shrink-0 items-center justify-center rounded-xl"
+              :class="iconPreviewFailed
+                ? 'bg-warning/10 text-warning'
+                : 'bg-primary-50 text-primary-700'"
+              aria-hidden="true"
             >
               <Icon :name="form.icon || 'ph:tag'" class="size-5" />
             </span>
@@ -542,11 +693,30 @@ async function remove(c: Category) {
               v-model="form.icon"
               type="text"
               placeholder="ph:bicycle"
-              class="w-full rounded-xl border border-border px-4 py-2.5 font-mono text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              :aria-invalid="err('icon') ? 'true' : undefined"
+              aria-describedby="cat-icon-help"
+              class="w-full rounded-xl border px-4 py-2.5 font-mono text-body-sm focus:outline-none focus:ring-2"
+              :class="err('icon')
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
+                : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+              @blur="touch('icon')"
             >
           </div>
-          <p class="mt-1 text-caption text-text-muted">
-            Nom d'icône Iconify, par exemple <code>ph:bicycle</code> (optionnel).
+          <p v-if="err('icon')" class="mt-1 flex items-center gap-1 text-caption text-error">
+            <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+            {{ err('icon') }}
+          </p>
+          <!-- nom bien formé mais introuvable : l'aperçu reste vide, on le dit -->
+          <p
+            v-else-if="iconPreviewFailed"
+            class="mt-1 flex items-center gap-1 text-caption text-warning"
+          >
+            <Icon name="ph:eye-slash" class="size-3.5 shrink-0" />
+            Aperçu indisponible : cette icône n'a pas pu être chargée. Vérifiez le nom sur icones.js.org.
+          </p>
+          <p id="cat-icon-help" class="mt-1 text-caption text-text-muted">
+            Nom d'icône Iconify au format <code>collection:nom</code>, par exemple
+            <code>ph:bicycle</code> (optionnel — <code>ph:tag</code> par défaut).
           </p>
         </div>
 
@@ -564,7 +734,7 @@ async function remove(c: Category) {
           <button
             type="button"
             :disabled="saving || !formValid"
-            :title="!formValid ? 'Renseignez les champs obligatoires' : ''"
+            :title="!formValid ? invalidSummary : ''"
             class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
             @click="save"
           >
