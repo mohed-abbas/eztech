@@ -112,6 +112,10 @@ model Address {
   street    String
   city      String
   zipCode   String
+  // exactly one address per user should carry isDefault=true — enforced in the route layer
+  // (PATCH /api/users/me/addresses/:id/default) inside a transaction, plus self-healing on
+  // create (first address wins) and on delete (oldest remaining is promoted).
+  isDefault Boolean  @default(false)
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
