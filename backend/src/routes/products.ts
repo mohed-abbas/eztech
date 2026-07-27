@@ -13,12 +13,15 @@ const withRelations = { category: true, brand: true } as const;
 const toNum = (d: Prisma.Decimal | null): number | null => (d == null ? null : Number(d));
 
 // GET /api/products — public catalog listing with filters, sort, pagination
+//   ?includeInactive=true  admin-only: skips the isActive=true filter
 productsRouter.get('/', async (req, res, next) => {
   const parsed = ProductQuerySchema.safeParse(req.query);
   if (!parsed.success) return next(new HttpError(422, 'validation_failed', { issues: parsed.error.issues }));
-  const { category, brand, search, featured, sort, page, pageSize } = parsed.data;
+  const { category, brand, search, featured, sort, page, pageSize, includeInactive } = parsed.data;
 
-  const where: Prisma.ProductWhereInput = { isActive: true };
+  // includeInactive is only honoured for authenticated admins — anyone else still sees only active products
+  const isAdmin = req.user?.role === 'admin';
+  const where: Prisma.ProductWhereInput = (includeInactive === 'true' && isAdmin) ? {} : { isActive: true };
   if (category) where.category = { slug: category };
   if (brand) where.brand = { slug: brand };
   if (featured) where.featured = featured === 'true';

@@ -11,6 +11,8 @@ export const ProductQuerySchema = z.object({
   sort: z.enum(['price_asc', 'price_desc', 'newest']).default('newest'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  // admin-only: when 'true' the isActive filter is skipped (enforced server-side via requireRole)
+  includeInactive: z.enum(['true', 'false']).optional(),
 });
 
 const pricing = {

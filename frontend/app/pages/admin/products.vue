@@ -76,6 +76,47 @@ const emptyForm = () => ({
 });
 const form = reactive(emptyForm());
 
+// ── Validation ────────────────────────────────────────────────────────────────
+// Track which fields the user has interacted with (blur), so errors only
+// appear after the user has had a chance to fill a field.
+const touched = reactive<Record<string, boolean>>({});
+
+function touch(field: string) {
+  touched[field] = true;
+}
+
+function resetTouched() {
+  Object.keys(touched).forEach((k) => delete touched[k]);
+}
+
+// Derived field errors — only shown when the field has been touched
+const fieldErrors = computed(() => {
+  const e: Record<string, string> = {};
+  if (!form.name.trim()) e.name = "Le nom est obligatoire.";
+  if (!form.slug.trim()) e.slug = "Le slug est obligatoire.";
+  else if (!/^[a-z0-9-]+$/.test(form.slug.trim()))
+    e.slug = "Uniquement des lettres minuscules, chiffres et tirets.";
+  if (!form.imageUrl.trim()) e.imageUrl = "L'URL de l'image est obligatoire.";
+  if (form.pricingType === "flat" && (form.flatPrice === "" || form.flatPrice === null))
+    e.flatPrice = "Le prix forfaitaire est obligatoire.";
+  if (
+    form.pricingType === "tiered" &&
+    form.hourlyPrice === "" &&
+    form.dailyPrice === "" &&
+    form.weeklyPrice === ""
+  )
+    e.tiered = "Renseignez au moins un tarif (heure, jour ou semaine).";
+  return e;
+});
+
+// True when the form is ready to submit
+const formValid = computed(() => Object.keys(fieldErrors.value).length === 0);
+
+// Show an error only if the field was touched
+function err(field: string) {
+  return touched[field] ? fieldErrors.value[field] : undefined;
+}
+
 // ── Helpers (locaux) ──────────────────────────────────────────────────────────
 function slugify(s: string) {
   return s
@@ -104,7 +145,7 @@ async function fetchAll() {
   try {
     const [pData, cData, bData] = await Promise.all([
       adminFetch<{ products: Product[]; total: number }>(
-        "/products?pageSize=100",
+        "/products?pageSize=100&includeInactive=true",
       ),
       adminFetch<{ categories: Category[] }>("/categories"),
       adminFetch<{ brands: Brand[] }>("/brands"),
@@ -141,6 +182,7 @@ function openCreate() {
   editingProduct.value = null;
   Object.assign(form, emptyForm());
   saveError.value = null;
+  resetTouched();
   showModal.value = true;
 }
 
@@ -162,6 +204,7 @@ function openEdit(p: Product) {
     isActive: p.isActive,
   });
   saveError.value = null;
+  resetTouched();
   showModal.value = true;
 }
 
@@ -169,6 +212,7 @@ function closeModal() {
   showModal.value = false;
   editingProduct.value = null;
   saveError.value = null;
+  resetTouched();
 }
 
 watch(
@@ -223,9 +267,19 @@ async function save() {
     }
     closeModal();
   } catch (e: unknown) {
-    const err = e as { data?: { error?: string }; message?: string };
+    const apiErr = e as { data?: { error?: string; issues?: { message: string }[] }; message?: string };
+    const code = apiErr?.data?.error;
+    const errorMap: Record<string, string> = {
+      slug_taken: "Ce slug est déjà utilisé par un autre produit.",
+      invalid_relation: "La catégorie ou la marque sélectionnée est invalide.",
+      validation_failed: apiErr?.data?.issues?.map((i) => i.message).join(" · ") ?? "Données invalides.",
+      missing_token: "Session expirée, veuillez vous reconnecter.",
+      forbidden: "Action non autorisée.",
+    };
     saveError.value =
-      err?.data?.error ?? err?.message ?? "Erreur lors de la sauvegarde";
+      (code && errorMap[code]) ??
+      apiErr?.message ??
+      "Erreur lors de la sauvegarde.";
   } finally {
     saving.value = false;
   }
@@ -464,29 +518,47 @@ async function deleteProduct(p: Product) {
       <div class="space-y-5">
         <!-- Name -->
         <div>
-          <label class="mb-1.5 block text-body-sm font-medium text-text-primary"
-            >Nom *</label
-          >
+          <label class="mb-1.5 flex items-center gap-1 text-body-sm font-medium text-text-primary">
+            Nom
+            <span class="text-error">*</span>
+          </label>
           <input
             v-model="form.name"
             type="text"
             placeholder="Nom du produit"
-            class="w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
+            :class="err('name')
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
+              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+            @blur="touch('name')"
           />
+          <p v-if="err('name')" class="mt-1 flex items-center gap-1 text-caption text-error">
+            <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+            {{ err('name') }}
+          </p>
         </div>
 
         <!-- Slug -->
         <div>
-          <label class="mb-1.5 block text-body-sm font-medium text-text-primary"
-            >Slug *</label
-          >
+          <label class="mb-1.5 flex items-center gap-1 text-body-sm font-medium text-text-primary">
+            Slug
+            <span class="text-error">*</span>
+          </label>
           <input
             v-model="form.slug"
             type="text"
             placeholder="mon-produit"
-            class="w-full rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-2.5 font-mono text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full rounded-xl border bg-neutral-50 px-4 py-2.5 font-mono text-body-sm focus:outline-none focus:ring-2"
+            :class="err('slug')
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
+              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+            @blur="touch('slug')"
           />
-          <p class="mt-1 text-caption text-text-muted">
+          <p v-if="err('slug')" class="mt-1 flex items-center gap-1 text-caption text-error">
+            <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+            {{ err('slug') }}
+          </p>
+          <p v-else class="mt-1 text-caption text-text-muted">
             Généré automatiquement depuis le nom
           </p>
         </div>
@@ -506,15 +578,24 @@ async function deleteProduct(p: Product) {
 
         <!-- Image URL -->
         <div>
-          <label class="mb-1.5 block text-body-sm font-medium text-text-primary"
-            >URL de l'image</label
-          >
+          <label class="mb-1.5 flex items-center gap-1 text-body-sm font-medium text-text-primary">
+            URL de l'image
+            <span class="text-error">*</span>
+          </label>
           <input
             v-model="form.imageUrl"
             type="url"
             placeholder="https://..."
-            class="w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
+            :class="err('imageUrl')
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
+              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+            @blur="touch('imageUrl')"
           />
+          <p v-if="err('imageUrl')" class="mt-1 flex items-center gap-1 text-caption text-error">
+            <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+            {{ err('imageUrl') }}
+          </p>
           <!-- Preview -->
           <div
             v-if="form.imageUrl"
@@ -560,58 +641,80 @@ async function deleteProduct(p: Product) {
 
         <!-- Prices -->
         <div v-if="form.pricingType === 'flat'">
-          <label class="mb-1.5 block text-body-sm font-medium text-text-primary"
-            >Prix forfaitaire (€)</label
-          >
+          <label class="mb-1.5 flex items-center gap-1 text-body-sm font-medium text-text-primary">
+            Prix forfaitaire (€)
+            <span class="text-error">*</span>
+          </label>
           <input
             v-model="form.flatPrice"
             type="number"
             min="0"
             step="0.01"
             placeholder="0.00"
-            class="w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
+            :class="err('flatPrice')
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
+              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+            @blur="touch('flatPrice')"
           />
+          <p v-if="err('flatPrice')" class="mt-1 flex items-center gap-1 text-caption text-error">
+            <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+            {{ err('flatPrice') }}
+          </p>
         </div>
-        <div v-else class="grid grid-cols-3 gap-3">
-          <div>
-            <label class="mb-1.5 block text-caption font-medium text-text-muted"
-              >Par heure (€)</label
-            >
-            <input
-              v-model="form.hourlyPrice"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-            />
+        <div v-else class="space-y-2">
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="mb-1.5 block text-caption font-medium text-text-muted"
+                >Par heure (€)</label
+              >
+              <input
+                v-model="form.hourlyPrice"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                @blur="touch('tiered')"
+              />
+            </div>
+            <div>
+              <label class="mb-1.5 block text-caption font-medium text-text-muted"
+                >Par jour (€)</label
+              >
+              <input
+                v-model="form.dailyPrice"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                @blur="touch('tiered')"
+              />
+            </div>
+            <div>
+              <label class="mb-1.5 block text-caption font-medium text-text-muted"
+                >Par semaine (€)</label
+              >
+              <input
+                v-model="form.weeklyPrice"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                @blur="touch('tiered')"
+              />
+            </div>
           </div>
-          <div>
-            <label class="mb-1.5 block text-caption font-medium text-text-muted"
-              >Par jour (€)</label
-            >
-            <input
-              v-model="form.dailyPrice"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-            />
-          </div>
-          <div>
-            <label class="mb-1.5 block text-caption font-medium text-text-muted"
-              >Par semaine (€)</label
-            >
-            <input
-              v-model="form.weeklyPrice"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-            />
-          </div>
+          <!-- At least one tiered price required -->
+          <p v-if="err('tiered')" class="flex items-center gap-1 text-caption text-error">
+            <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+            {{ err('tiered') }}
+          </p>
+          <p v-else class="text-caption text-text-muted">
+            <span class="text-error">*</span> Au moins un tarif est obligatoire.
+          </p>
         </div>
 
         <!-- Category + Brand -->
@@ -705,10 +808,28 @@ async function deleteProduct(p: Product) {
 
       <!-- ── Footer ── -->
       <template #footer>
+        <!-- Résumé des champs manquants si l'utilisateur a tenté de soumettre -->
+        <div
+          v-if="!formValid && Object.keys(touched).length > 0"
+          class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+        >
+          <p class="mb-1 text-body-sm font-semibold text-amber-700">Champs requis manquants :</p>
+          <ul class="list-inside list-disc space-y-0.5">
+            <li
+              v-for="(msg, field) in fieldErrors"
+              :key="field"
+              class="text-caption text-amber-700"
+            >
+              {{ msg }}
+            </li>
+          </ul>
+        </div>
+
         <div class="flex items-center gap-3">
           <button
-            :disabled="saving || !form.name.trim() || !form.slug.trim()"
-            class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:opacity-50"
+            :disabled="saving || !formValid"
+            class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+            :title="!formValid ? 'Remplissez les champs obligatoires' : ''"
             @click="save"
           >
             <Icon
