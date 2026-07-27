@@ -230,7 +230,7 @@ ordersRouter.get('/:id', requireAuth, async (req, res, next) => {
   try {
     const order = await prisma.order.findUnique({
       where: { id: String(req.params['id']) },
-      include: { events: { orderBy: { createdAt: 'asc' } } },
+      include: { items: true, events: { orderBy: { createdAt: 'asc' } } },
     });
     if (!order) return next(new HttpError(404, 'order_not_found'));
 

@@ -44,12 +44,12 @@ docker compose up --build
 
 This starts:
 
-| Service | URL | Notes |
-|---------|-----|-------|
-| Frontend (Nuxt) | http://localhost:3000 | hot reload |
-| Backend API | http://localhost:3001/api | hot reload, auto migrate + seed on boot |
-| Postgres | localhost:5432 | db `eztech_dev`, user/pass `postgres`/`postgres` |
-| Adminer (DB GUI) | http://localhost:8080 | visualize/query the database |
+| Service          | URL                       | Notes                                            |
+| ---------------- | ------------------------- | ------------------------------------------------ |
+| Frontend (Nuxt)  | http://localhost:3000     | hot reload                                       |
+| Backend API      | http://localhost:3001/api | hot reload, auto migrate + seed on boot          |
+| Postgres         | localhost:5432            | db `eztech_dev`, user/pass `postgres`/`postgres` |
+| Adminer (DB GUI) | http://localhost:8080     | visualize/query the database                     |
 
 Adminer login: **System** PostgreSQL · **Server** `postgres` · **Username** `postgres` ·
 **Password** `postgres` · **Database** `eztech_dev` (the server is pre-filled).
@@ -74,15 +74,16 @@ To disable demo/catalog seeding, set `SEED_DEMO=false` / `SEED_CATALOG=false` in
 Self-hosted **GlitchTip** (error tracking) and **Umami** (web analytics) live in a separate, opt-in
 overlay. They are **not** started by `docker compose up` — day-to-day dev stays lightweight, and the app
 sends no telemetry unless you configure it. Bring them up alongside the app with both compose files:
+8089
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.observability.yml up --build
 ```
 
-| Service | URL | Notes |
-|---------|-----|-------|
+| Service            | URL                   | Notes                           |
+| ------------------ | --------------------- | ------------------------------- |
 | GlitchTip (errors) | http://localhost:8000 | self-register the first account |
-| Umami (analytics) | http://localhost:3002 | default login `admin` / `umami` |
+| Umami (analytics)  | http://localhost:3002 | default login `admin` / `umami` |
 
 > GlitchTip runs Django + a worker + Valkey, so the overlay is RAM-hungry — fine for a demo laptop,
 > but expect it to use noticeably more memory than the app alone.
@@ -137,41 +138,41 @@ npm run dev                   # http://localhost:3001
 
 ### Frontend (`frontend/.env`)
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_USE_MOCK` | `true` | Use local JSON mock data instead of API |
-| `VITE_API_URL` | `http://localhost:3001/api` | Backend API URL (when mock is disabled) |
+| Variable        | Default                     | Description                             |
+| --------------- | --------------------------- | --------------------------------------- |
+| `VITE_USE_MOCK` | `true`                      | Use local JSON mock data instead of API |
+| `VITE_API_URL`  | `http://localhost:3001/api` | Backend API URL (when mock is disabled) |
 
 ## Test Credentials
 
 These accounts are seeded into the real database (`npm run seed:demo`, run automatically by the Docker
 dev stack) and also exist as frontend mock accounts:
 
-| Role | Email | Password |
-|------|-------|----------|
-| Customer | `marie@example.com` | `password123` |
-| Customer | `thomas@example.com` | `password123` |
-| Rider | `rider@eztech.fr` | `riderpass123` |
-| Admin | `admin@eztech.fr` | `change-me` |
+| Role     | Email                | Password       |
+| -------- | -------------------- | -------------- |
+| Customer | `marie@example.com`  | `password123`  |
+| Customer | `thomas@example.com` | `password123`  |
+| Rider    | `rider@eztech.fr`    | `riderpass123` |
+| Admin    | `admin@eztech.fr`    | `change-me`    |
 
 > The admin password comes from `ADMIN_PASSWORD` (set to `change-me` in `docker-compose.yml`; change it
 > for your own environment). The rider/customer accounts come from the demo seed.
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Nuxt.js 4 (Vue 3, Composition API) |
-| Styling | Tailwind CSS v4 |
-| UI Components | shadcn-vue + Radix Vue |
-| Icons | Phosphor (via @nuxt/icon) |
-| Fonts | Inter, JetBrains Mono (via @nuxt/fonts) |
-| Backend | Node.js + Express.js (Phase 2) |
-| Database | PostgreSQL + MongoDB (Phase 2) |
-| Real-time | Socket.io (Phase 2) |
-| Payments | Stripe (Phase 2) |
-| Auth | JWT + Google OAuth (Phase 2) |
-| Containerization | Docker + Docker Compose (Phase 2) |
+| Layer            | Technology                              |
+| ---------------- | --------------------------------------- |
+| Frontend         | Nuxt.js 4 (Vue 3, Composition API)      |
+| Styling          | Tailwind CSS v4                         |
+| UI Components    | shadcn-vue + Radix Vue                  |
+| Icons            | Phosphor (via @nuxt/icon)               |
+| Fonts            | Inter, JetBrains Mono (via @nuxt/fonts) |
+| Backend          | Node.js + Express.js (Phase 2)          |
+| Database         | PostgreSQL + MongoDB (Phase 2)          |
+| Real-time        | Socket.io (Phase 2)                     |
+| Payments         | Stripe (Phase 2)                        |
+| Auth             | JWT + Google OAuth (Phase 2)            |
+| Containerization | Docker + Docker Compose (Phase 2)       |
 
 ## Build
 

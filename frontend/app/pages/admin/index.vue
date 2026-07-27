@@ -7,8 +7,8 @@ definePageMeta({
 
 useHead({ title: "Dashboard Admin — EzTech" });
 
-const config = useRuntimeConfig();
-const auth = useAuthStore();
+const { adminFetch, fmtMoney } = useAdminApi()
+const auth = useAuthStore()
 
 // ── Live stats from real API ─────────────────────────────────────────────────
 const orders = ref<
@@ -24,13 +24,7 @@ const loadingStats = ref(true);
 onMounted(async () => {
   auth.hydrate();
   try {
-    const data = await $fetch<{ orders: typeof orders.value }>(
-      `${config.public.apiUrl}/orders`,
-      {
-        credentials: "include",
-        headers: auth.token ? { Authorization: `Bearer ${auth.token}` } : {},
-      },
-    );
+    const data = await adminFetch<{ orders: typeof orders.value }>('/orders')
     orders.value = data.orders;
   } catch {
     /* stats stay at 0 */
@@ -160,12 +154,6 @@ const navSections = [
   },
 ];
 
-function fmtMoney(n: number) {
-  return n.toLocaleString("fr-FR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
 </script>
 
 <template>
