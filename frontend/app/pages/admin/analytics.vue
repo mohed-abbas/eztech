@@ -1,13 +1,13 @@
 <script setup lang="ts">
 
-definePageMeta({ layout: 'default', middleware: ['auth', 'role'], role: 'admin' })
+definePageMeta({ layout: 'admin', middleware: ['auth', 'role'], role: 'admin' })
 useHead({ title: 'Analytics — Admin EzTech' })
 
 // ── Dynamic chart import (client-only) ────────────────────────────────────────
 // Top-level imports of chart.js / vue-chartjs break Vite SSR module resolution.
 // We lazy-load everything inside onMounted so the server never touches these modules.
-const LineChart = shallowRef(null)
-const BarChart = shallowRef(null)
+const LineChart = shallowRef<Component | null>(null)
+const BarChart = shallowRef<Component | null>(null)
 const chartsReady = ref(false)
 
 onMounted(async () => {
@@ -133,7 +133,7 @@ const ordersLineData = computed(() => {
   const counts: Record<string, number> = Object.fromEntries(labels.map(l => [l, 0]))
   periodOrders.value.forEach(o => {
     const k = orderDayLabel(o.createdAt)
-    if (k in counts) counts[k]++
+    if (k in counts) counts[k] = (counts[k] ?? 0) + 1
   })
   return {
     labels,
@@ -160,7 +160,7 @@ const revenueBarData = computed(() => {
     .filter(o => o.paymentStatus === 'paid')
     .forEach(o => {
       const k = orderDayLabel(o.createdAt)
-      if (k in rev) rev[k] += Number(o.total)
+      if (k in rev) rev[k] = (rev[k] ?? 0) + Number(o.total)
     })
   return {
     labels,

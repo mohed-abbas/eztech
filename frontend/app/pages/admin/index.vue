@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
-  layout: "default",
+  layout: "admin",
   middleware: ["auth", "role"],
   role: "admin",
 });
@@ -24,8 +24,12 @@ const loadingStats = ref(true);
 onMounted(async () => {
   auth.hydrate();
   try {
-    const data = await adminFetch<{ orders: typeof orders.value }>('/orders')
-    orders.value = data.orders;
+    // /admin/orders, not /orders: in production nginx path-splits /api/orders to the Nuxt BFF,
+    // which answers with a bare remapped array (no `orders` key, no paymentStatus, storefront
+    // status labels). /api/admin/orders is not split, so it always reaches Express (see
+    // backend/src/routes/index.ts). Same endpoint admin/orders.vue uses.
+    const data = await adminFetch<{ orders: typeof orders.value }>('/admin/orders')
+    orders.value = data?.orders ?? [];
   } catch {
     /* stats stay at 0 */
   } finally {
@@ -78,15 +82,8 @@ const navSections = [
         color: "from-primary-500 to-primary-600",
         badge: null as null | (() => number),
       },
-      {
-        to: "/admin/warehouse",
-        label: "Entrepôts",
-        description:
-          "Gérer les entrepôts, affecter des responsables, voir le stock",
-        icon: "ph:warehouse",
-        color: "from-accent-500 to-accent-600",
-        badge: null,
-      },
+      // Carte « Entrepôts » retirée : la page cible n'existe pas. Elle revient
+      // en J2 avec l'UI entrepôts du module 6.
     ],
   },
   {
@@ -111,7 +108,7 @@ const navSections = [
     ],
   },
   {
-    title: "Utilisateurs & Zones",
+    title: "Utilisateurs",
     items: [
       {
         to: "/admin/users",
@@ -129,14 +126,8 @@ const navSections = [
         color: "from-amber-500 to-amber-600",
         badge: null,
       },
-      {
-        to: "/admin/zones",
-        label: "Zones de service",
-        description: "Dessiner et gérer les polygones de livraison via Leaflet",
-        icon: "ph:map-pin-area",
-        color: "from-rose-500 to-rose-600",
-        badge: null,
-      },
+      // Carte « Zones de service » retirée : la page cible n'existe pas. Elle
+      // revient en J4 avec l'éditeur de polygones Leaflet.
     ],
   },
   {
@@ -157,35 +148,19 @@ const navSections = [
 </script>
 
 <template>
-  <div class="min-h-screen bg-neutral-50">
-    <!-- ═══ Hero ═══ -->
-    <div class="relative overflow-hidden bg-section-dark px-6 py-14 sm:px-10">
+  <div>
+    <!-- ═══ Bandeau stats (live) ═══ -->
+    <!-- Le titre « Panneau d'administration » vit desormais dans la nav du layout admin. -->
+    <div class="relative overflow-hidden rounded-2xl bg-section-dark px-5 py-6 sm:px-8">
       <div
-        class="pointer-events-none absolute -right-20 -top-20 size-96 rounded-full bg-primary-500/15 blur-3xl"
+        class="pointer-events-none absolute -right-20 -top-20 size-80 rounded-full bg-primary-500/15 blur-3xl"
       />
       <div
-        class="pointer-events-none absolute -bottom-16 -left-16 size-80 rounded-full bg-primary-400/10 blur-2xl"
-      />
-      <div
-        class="pointer-events-none absolute left-1/3 top-1/2 size-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-600/8 blur-3xl"
+        class="pointer-events-none absolute -bottom-16 -left-16 size-64 rounded-full bg-primary-400/10 blur-2xl"
       />
 
-      <div class="relative mx-auto max-w-7xl">
-        <div class="flex items-center gap-3 mb-6">
-          <div
-            class="flex size-12 items-center justify-center rounded-2xl bg-primary-500 shadow-lg shadow-primary-500/30"
-          >
-            <Icon name="ph:gauge" class="size-6 text-white" />
-          </div>
-          <div>
-            <p
-              class="text-caption font-semibold uppercase tracking-widest text-primary-400"
-            >
-              Panneau d'administration
-            </p>
-            <h1 class="text-h2 font-bold text-white">Dashboard</h1>
-          </div>
-        </div>
+      <div class="relative">
+        <h1 class="mb-4 text-h4 font-semibold text-white">Vue d'ensemble</h1>
 
         <!-- Live stat cards -->
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -261,7 +236,7 @@ const navSections = [
     </div>
 
     <!-- ═══ Nav sections ═══ -->
-    <div class="mx-auto max-w-7xl px-6 py-10 sm:px-10 space-y-10">
+    <div class="mt-8 space-y-10">
       <div v-for="section in navSections" :key="section.title">
         <h2
           class="mb-4 text-caption font-bold uppercase tracking-widest text-text-muted"
