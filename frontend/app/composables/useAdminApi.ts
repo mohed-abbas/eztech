@@ -77,7 +77,7 @@ export function useAdminApi() {
   // ── Formatters ─────────────────────────────────────────────────────────────
 
   function fmtMoney(n: number | string): string {
-    return Number(n).toFixed(2)
+    return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   }
 
   return { adminFetch, withAuth, fmtMoney, authHeaders, csrfHeaders }
