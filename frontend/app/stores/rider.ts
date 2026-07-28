@@ -366,7 +366,12 @@ export const useRiderStore = defineStore('rider', {
         if (next === 'delivered') this.activeDelivery = null
         return
       }
-      const res = await this._api(`/orders/${orderId}/status`, { method: 'PATCH', body: { status: next, ...(note ? { note } : {}) } }) as { order: DeliveryOrder }
+      // `/admin/orders/...` et non `/orders/...` : en production nginx route /api/orders vers le BFF
+      // Nuxt, qui n'expose aucun handler pour /status — la requete repondait 404 et AUCUN livreur ne
+      // pouvait faire avancer une course (rider_assigned -> ... -> delivered). Le prefixe /api/admin
+      // n'est pas intercepte et atteint Express. Ce n'est pas une elevation de privilege : la route
+      // porte requireRole('rider') et lit l'identite du livreur dans le token (orders.ts:332).
+      const res = await this._api(`/admin/orders/${orderId}/status`, { method: 'PATCH', body: { status: next, ...(note ? { note } : {}) } }) as { order: DeliveryOrder }
       if (res.order.status === 'delivered' || res.order.status === 'cancelled') this.activeDelivery = null
       else this.activeDelivery = normalizeOrder(res.order)
     },
