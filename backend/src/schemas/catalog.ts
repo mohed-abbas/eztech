@@ -11,7 +11,16 @@ export const ProductQuerySchema = z.object({
   sort: z.enum(['price_asc', 'price_desc', 'newest']).default('newest'),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  // admin-only: when 'true' the isActive filter is skipped (enforced server-side via requireRole)
+  includeInactive: z.enum(['true', 'false']).optional(),
 });
+
+// Le formulaire admin envoie `null` pour un champ texte laisse vide. Les colonnes correspondantes
+// (Product.description, Product.imageUrl) sont NOT NULL avec DEFAULT '' : on accepte donc le null en
+// entree et on le ramene a '', qui est la representation "pas de valeur" de ce schema. Sans ce
+// transform, `z.string().optional()` repondait 422 validation_failed, et un null laisse passer tel
+// quel jusqu'a Prisma ferait 500 (clean() ne filtre que `undefined`).
+const emptiable = z.string().nullable().optional().transform((v) => (v === null ? '' : v));
 
 const pricing = {
   pricingType: z.enum(['flat', 'tiered']),
@@ -25,10 +34,11 @@ const pricing = {
 const ProductFields = z.object({
   name: z.string().min(1),
   slug,
-  description: z.string().optional(),
+  description: emptiable,
+  // categoryId reste requis a la creation — un produit sans categorie casse les filtres du catalogue
   categoryId: z.string().uuid(),
-  brandId: z.string().uuid().nullable().optional(),
-  imageUrl: z.string().optional(),
+  brandId: z.string().uuid().nullable().optional(), // colonne reellement nullable, elle
+  imageUrl: emptiable,
   ...pricing,
   compatibilityTags: z.array(z.string()).optional(),
   stock: z.number().int().nonnegative().optional(),

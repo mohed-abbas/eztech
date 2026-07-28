@@ -182,6 +182,17 @@ async function removeAddress(id: string) {
   }
 }
 
+async function setDefault(id: string) {
+  if (!user.value) return
+  try {
+    await auth.setDefaultAddress(id)
+    flashSuccess('Adresse par défaut mise à jour.')
+  }
+  catch {
+    flashSuccess('Échec de la mise à jour de l\'adresse par défaut.')
+  }
+}
+
 function clearAddressError(field: string) {
   addressErrors[field] = ''
 }
@@ -216,17 +227,14 @@ async function saveVehicle() {
   if (!user.value) return
   savingVehicle.value = true
   try {
-    // vraie persistance via l'API livreur (la meme que /rider/account)
-    const rider = useRiderStore()
-    await rider.updateProfile({
+    // PATCH /api/users/me : owner-scoped, accepte les champs vehicule pour tous les roles.
+    // (l'ancienne route PUT /api/rider/profile est derriere requireRole('rider') et renvoie 403
+    //  des qu'un autre role edite cet onglet)
+    await auth.updateProfile({
       vehicleType: vehicleForm.vehicleType,
       licenseNumber: vehicleForm.licenseNumber.trim(),
       insuranceNumber: vehicleForm.insuranceNumber.trim(),
     })
-    user.value.vehicleType = vehicleForm.vehicleType
-    user.value.licenseNumber = vehicleForm.licenseNumber.trim()
-    user.value.insuranceNumber = vehicleForm.insuranceNumber.trim()
-    auth.persist()
     editingVehicle.value = false
     flashSuccess('Informations véhicule mises à jour.')
   }
@@ -494,23 +502,41 @@ function vehicleIcon(type?: string) {
                   v-for="(addr, index) in user.addresses"
                   :key="addr.id"
                   v-motion="fadeUp(index * 80)"
-                  class="group flex items-start justify-between rounded-xl bg-surface-purple p-4 transition-colors hover:bg-surface-lilac"
+                  class="group flex flex-col gap-3 rounded-xl bg-surface-purple p-4 transition-colors hover:bg-surface-lilac sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div class="flex items-start gap-4">
                     <div class="flex size-10 items-center justify-center rounded-lg bg-primary-100">
                       <Icon name="ph:map-pin" class="size-5 text-primary-600" />
                     </div>
                     <div>
-                      <p class="text-body-sm font-semibold text-text-primary">{{ addr.label }}</p>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="text-body-sm font-semibold text-text-primary">{{ addr.label }}</p>
+                        <span
+                          v-if="addr.isDefault"
+                          class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2 py-0.5 text-caption font-semibold text-primary-700"
+                        >
+                          <Icon name="ph:star-fill" class="size-3" />
+                          Par défaut
+                        </span>
+                      </div>
                       <p class="text-body-sm text-text-muted">{{ addr.street }}</p>
                       <p class="text-caption text-text-muted">{{ addr.zipCode }} {{ addr.city }}</p>
                     </div>
                   </div>
-                  <div class="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button variant="ghost" size="icon-sm" @click="startEditAddress(addr.id)">
+                  <div class="flex shrink-0 items-center gap-1 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                    <Button
+                      v-if="!addr.isDefault"
+                      variant="ghost"
+                      size="pill-sm"
+                      @click="setDefault(addr.id)"
+                    >
+                      <Icon name="ph:star" class="size-4 text-text-muted" />
+                      Définir par défaut
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" aria-label="Modifier l'adresse" @click="startEditAddress(addr.id)">
                       <Icon name="ph:pencil-simple" class="size-4 text-text-muted" />
                     </Button>
-                    <Button variant="ghost" size="icon-sm" @click="removeAddress(addr.id)">
+                    <Button variant="ghost" size="icon-sm" aria-label="Supprimer l'adresse" @click="removeAddress(addr.id)">
                       <Icon name="ph:trash" class="size-4 text-error" />
                     </Button>
                   </div>
@@ -518,13 +544,22 @@ function vehicleIcon(type?: string) {
               </div>
 
               <!-- Empty state -->
-              <div v-else-if="user.addresses.length === 0 && editingAddress === null" class="py-8 text-center">
-                <div class="mx-auto mb-4 flex size-14 items-center justify-center rounded-full bg-surface-purple">
-                  <Icon name="ph:map-pin" class="size-7 text-primary-400" />
-                </div>
-                <p class="text-body-sm font-medium text-text-secondary">Aucune adresse enregistrée</p>
-                <p class="mt-1 text-caption text-text-muted">Ajoutez une adresse de livraison pour commencer</p>
-              </div>
+              <EmptyState
+                v-else-if="user.addresses.length === 0 && editingAddress === null"
+                title="Aucune adresse enregistrée"
+                description="Ajoutez une adresse de livraison pour commencer"
+                class="border-0 p-8 shadow-none"
+              >
+                <template #icon>
+                  <Icon name="ph:map-pin" class="size-8 text-primary-400" />
+                </template>
+                <template #actions>
+                  <Button variant="gradient" size="pill-sm" @click="startAddAddress">
+                    <Icon name="ph:plus" class="size-4" />
+                    Ajouter
+                  </Button>
+                </template>
+              </EmptyState>
 
               <!-- Address form (add/edit) -->
               <form v-if="editingAddress !== null" class="space-y-4" novalidate @submit.prevent="saveAddress">
@@ -786,25 +821,6 @@ function vehicleIcon(type?: string) {
                     </Button>
                   </div>
                 </form>
-              </CardContent>
-            </Card>
-
-            <Separator />
-
-            <!-- Danger zone -->
-            <Card v-motion="fadeUp(100)" class="overflow-hidden border-error/20">
-              <CardHeader class="bg-error/5 px-6 py-5">
-                <CardTitle class="text-h4 font-semibold text-error">Zone de danger</CardTitle>
-                <CardDescription class="mt-1">Actions irréversibles sur le compte</CardDescription>
-              </CardHeader>
-              <CardContent class="px-6 py-5">
-                <p class="mb-4 text-body-sm text-text-muted">
-                  Une fois votre compte supprimé, toutes vos données, commandes et historique de location seront définitivement effacés. Cette action est irréversible.
-                </p>
-                <Button variant="destructive" size="pill-sm" disabled title="Account deletion coming in Phase 2">
-                  <Icon name="ph:trash" class="size-4" />
-                  Supprimer le compte
-                </Button>
               </CardContent>
             </Card>
           </div>

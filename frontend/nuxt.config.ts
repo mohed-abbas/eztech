@@ -28,8 +28,17 @@ export default defineNuxtConfig({
     // structurally-diverging `rollup`/`vite` type identities (vite's own PluginContextMeta.viteVersion
     // augmentation isn't visible from both sides) — a known Vite 7 + Nitro type-checking quirk, not a
     // real dependency mismatch. No override/resolution can fix a version skew that doesn't exist.
-    plugins: [tailwindcss()]
+    plugins: [tailwindcss()],
+    optimizeDeps: {
+      include: ['chart.js', 'vue-chartjs'],
+    },
   },
+  // chart.js ships ES modules that Nitro's SSR bundler can't handle without explicit transpilation.
+  // vue-chartjs is included for the same reason (it re-exports chart.js internals).
+  build: {
+    transpile: ['chart.js', 'vue-chartjs'],
+  },
+
   shadcn: {
     prefix: '',
     componentDir: './app/components/ui'

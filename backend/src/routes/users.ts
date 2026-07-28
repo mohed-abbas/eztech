@@ -65,13 +65,19 @@ usersRouter.get('/me/addresses', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /api/users/me/addresses — ajouter une adresse
+// POST /api/users/me/addresses — ajouter une adresse.
+// La toute premiere adresse d'un compte devient automatiquement l'adresse par defaut : sans cela le
+// checkout n'aurait aucune adresse a preselectionner et retomberait sur un ordre arbitraire.
 usersRouter.post('/me/addresses', requireAuth, async (req, res, next) => {
   const result = CreateAddressSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
+  const userId = req.user!.sub;
   try {
-    const address = await prisma.address.create({ data: { ...result.data, userId: req.user!.sub } });
+    const address = await prisma.$transaction(async (tx) => {
+      const existing = await tx.address.count({ where: { userId } });
+      return tx.address.create({ data: { ...result.data, userId, isDefault: existing === 0 } });
+    });
     res.status(201).json({ address });
   } catch (err) {
     next(err);
@@ -101,13 +107,45 @@ usersRouter.patch('/me/addresses/:addressId', requireAuth, async (req, res, next
   }
 });
 
-// DELETE /api/users/me/addresses/:addressId — supprimer une adresse dont on est proprietaire
-usersRouter.delete('/me/addresses/:addressId', requireAuth, async (req, res, next) => {
+// PATCH /api/users/me/addresses/:addressId/default — designer une adresse comme adresse par defaut.
+// Corps vide : la cible est entierement portee par l'URL, il n'y a donc rien a valider.
+// Tout se joue dans une seule transaction pour qu'il n'existe jamais deux adresses par defaut, meme
+// transitoirement. Comme le PATCH voisin, la promotion passe par updateMany garde par userId : une
+// adresse appartenant a un autre compte renvoie 404 exactement comme un id inexistant (aucune fuite
+// d'existence). Repond avec la liste complete relue pour que le client remplace son tableau d'un bloc.
+usersRouter.patch('/me/addresses/:addressId/default', requireAuth, async (req, res, next) => {
+  const userId = req.user!.sub;
+  const addressId = String(req.params['addressId']);
   try {
-    const deleted = await prisma.address.deleteMany({
-      where: { id: String(req.params['addressId']), userId: req.user!.sub },
+    const addresses = await prisma.$transaction(async (tx) => {
+      const promoted = await tx.address.updateMany({ where: { id: addressId, userId }, data: { isDefault: true } });
+      if (promoted.count === 0) throw new HttpError(404, 'address_not_found');
+      await tx.address.updateMany({ where: { userId, id: { not: addressId } }, data: { isDefault: false } });
+      return tx.address.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } });
     });
-    if (deleted.count === 0) return next(new HttpError(404, 'address_not_found'));
+    res.json({ addresses });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/users/me/addresses/:addressId — supprimer une adresse dont on est proprietaire.
+// Si l'adresse supprimee etait celle par defaut, la plus ancienne restante prend le relais dans la
+// meme transaction : sinon le compte se retrouverait sans adresse par defaut du tout.
+usersRouter.delete('/me/addresses/:addressId', requireAuth, async (req, res, next) => {
+  const userId = req.user!.sub;
+  const addressId = String(req.params['addressId']);
+  try {
+    await prisma.$transaction(async (tx) => {
+      // lecture gardee par userId : une adresse etrangere renvoie null, comme un id inexistant
+      const target = await tx.address.findFirst({ where: { id: addressId, userId }, select: { isDefault: true } });
+      const deleted = await tx.address.deleteMany({ where: { id: addressId, userId } });
+      if (deleted.count === 0) throw new HttpError(404, 'address_not_found');
+      if (target?.isDefault) {
+        const fallback = await tx.address.findFirst({ where: { userId }, orderBy: { createdAt: 'asc' } });
+        if (fallback) await tx.address.update({ where: { id: fallback.id }, data: { isDefault: true } });
+      }
+    });
     res.status(204).end();
   } catch (err) {
     next(err);
@@ -135,6 +173,24 @@ usersRouter.get('/:id', requireAuth, requireRole('admin'), async (req, res, next
   const user = await prisma.user.findUnique({ where: { id } });
   if (!user) return next(new HttpError(404, 'user_not_found'));
   res.json({ user: buildUserResponse(user) });
+});
+
+// GET /api/users/:id/rider-documents — admin only; the onboarding review panel needs to see a
+// candidate's uploaded documents. It cannot reuse GET /api/rider/documents: that router is gated
+// wholesale by requireRole('rider') (routes/rider.ts:29) and scoped to req.user!.sub, so an admin
+// token gets 403 there. Loosening the rider router would widen every rider endpoint, hence this
+// dedicated admin path. The files themselves are already admin-readable (routes/uploads.ts:12-16).
+usersRouter.get('/:id/rider-documents', requireAuth, requireRole('admin'), async (req, res, next) => {
+  const id = String(req.params['id']);
+  try {
+    const documents = await prisma.riderDocument.findMany({
+      where: { riderId: id },
+      orderBy: { uploadedAt: 'desc' },
+    });
+    res.json({ documents });
+  } catch (err) {
+    next(err);
+  }
 });
 
 // PATCH /api/users/:id/rider-application — admin approves/rejects a rider onboarding application
