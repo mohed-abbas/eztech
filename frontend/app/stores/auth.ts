@@ -61,6 +61,10 @@ function isRiderPayload(p: RegisterPayload): p is RegisterRiderPayload {
 // dedupes concurrent token refreshes (several requests can 401 at once)
 let refreshInFlight: Promise<boolean> | null = null
 
+// same idea for the startup session probe: middleware, plugin and a burst of pages must not
+// fire N /auth/me + N /auth/refresh round trips for one and the same session.
+let validateInFlight: Promise<boolean> | null = null
+
 // double-submit CSRF: echo the readable ez_csrf cookie back in the x-csrf-token header on
 // state-changing requests (Phase 7). Client-only — SSR requests carry the cookie header directly.
 function csrfHeader(): Record<string, string> {
@@ -79,19 +83,38 @@ export const useAuthStore = defineStore('auth', {
     // reason (429, 5xx, network). It means "auth state unknown", which is NOT the same as
     // "logged out" — the auth middleware must not bounce the user to /login on it.
     sessionUnresolved: false,
+    // true once the backend has confirmed the session during this app load (login, register or a
+    // successful /auth/me probe). It travels in the SSR payload, so a session already proven on
+    // the server is not probed a second time on hydration.
+    sessionValidated: false,
+    // true once the backend definitively rejected the session and nothing is left to refresh.
+    // It travels in the SSR payload too, so client-side hydrate() drops the stale localStorage
+    // blob instead of putting the user's name back in the app bar.
+    sessionRevoked: false,
   }),
 
   getters: {
-    // user presence is the source of truth — the session may be carried by an httpOnly cookie
-    // (SSR / cookie-only) with no in-memory token (Phase 7).
+    // user presence stays the source of truth — the session can legitimately be carried by the
+    // httpOnly ez_access cookie with no in-memory token (SSR / cookie-only, Phase 7), so
+    // `!!user && !!token` would log out every cookie-only and server-rendered visitor.
+    // A dead session no longer reads as authenticated because validateSession() clears `user`
+    // instead: the flag is only as trustworthy as the state behind it.
     isAuthenticated: state => !!state.user,
     role: state => state.user?.role ?? null,
   },
 
   actions: {
+    // Restores the header-path credentials from localStorage. It proves NOTHING about the session
+    // being alive: the blob outlives the 15-minute access cookie by days, which is exactly how a
+    // dead session kept rendering the user's name. validateSession() is what settles it.
     hydrate() {
       if (!import.meta.client || this.hydrated) return
       this.hydrated = true
+      // the server render already established this session is gone — purge, don't resurrect
+      if (this.sessionRevoked) {
+        localStorage.removeItem(AUTH_STORAGE_KEY)
+        return
+      }
       const stored = localStorage.getItem(AUTH_STORAGE_KEY)
       if (!stored) return
       try {
@@ -104,7 +127,9 @@ export const useAuthStore = defineStore('auth', {
           return
         }
         if (parsed.user && parsed.token) {
-          this.user = parsed.user
+          // never overwrite a user resolved server-side by /auth/me with the persisted copy:
+          // the payload one is authoritative and fresher.
+          if (!this.user) this.user = parsed.user
           this.token = parsed.token
           this.refreshToken = parsed.refreshToken ?? null
         }
@@ -136,7 +161,21 @@ export const useAuthStore = defineStore('auth', {
       this.user = null
       this.token = null
       this.refreshToken = null
+      this.sessionValidated = false
+      this.sessionUnresolved = false
+      this.sessionRevoked = true
+      // persist() already removes the blob when there is no user, but leaving no stale identity
+      // behind IS the point of this action — remove it explicitly rather than by side effect.
+      if (import.meta.client) localStorage.removeItem(AUTH_STORAGE_KEY)
       this.persist()
+    },
+
+    // marks the in-memory session as proven live (login / register / social login) so the next
+    // init() does not spend an /auth/me probe on a session we just created ourselves.
+    markSessionLive() {
+      this.sessionValidated = true
+      this.sessionUnresolved = false
+      this.sessionRevoked = false
     },
 
     // exchanges the refresh token (cookie or in-memory) for a fresh access token; returns false if it can't
@@ -187,40 +226,108 @@ export const useAuthStore = defineStore('auth', {
       this.user = res.user
     },
 
-    // one-shot session bootstrap, safe on both server and client. Restores the header-path token from
-    // localStorage (client) and, when a session cookie is present but no user is loaded, fetches /me.
-    //
-    // Errors are classified, never blanket-swallowed. `await this.me().catch(() => {})` used to
-    // treat ANY failure as "logged out": one 429 from the shared auth rate limit (or any backend
-    // hiccup) left `user` null, and the auth middleware then redirected a perfectly valid session
-    // to /login. Only 401/403 actually mean the session is gone.
-    async init(): Promise<void> {
-      if (import.meta.client) this.hydrate()
-      if (this.user || !useCookie('ez_csrf').value) return
-
-      // one cheap retry: a transient blip usually clears within a few hundred ms, and this runs
-      // once per navigation, not per request.
+    // Single /auth/me round trip, classified. 401/403 is the ONLY definitive "logged out" answer;
+    // 429 (shared auth rate limit), 5xx and network failures merely mean "unknown" and get one
+    // cheap retry — treating them as a logout is what used to bounce valid sessions to /login.
+    // 'revoked' (account deleted / role changed) is dead in a way no refresh can repair.
+    async probeSession(): Promise<'alive' | 'dead' | 'revoked' | 'unknown'> {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           await this.me()
-          this.sessionUnresolved = false
-          return
+          return 'alive'
         }
         catch (err: unknown) {
-          const status = (err as { status?: number, statusCode?: number, response?: { status?: number } })
-          const code = status?.status ?? status?.statusCode ?? status?.response?.status ?? 0
-          if (code === 401 || code === 403) {
-            // definitive: the session really is invalid. Drop it so the UI stops claiming
-            // otherwise, then let the middleware redirect.
-            this.sessionUnresolved = false
-            this.clearSession()
-            return
+          const e = err as {
+            status?: number
+            statusCode?: number
+            response?: { status?: number, _data?: { error?: string } }
+            data?: { error?: string }
           }
-          // transient (429 / 5xx / network): keep whatever session we already have.
-          this.sessionUnresolved = true
+          const status = e?.status ?? e?.statusCode ?? e?.response?.status ?? 0
+          const code = e?.data?.error ?? e?.response?._data?.error ?? null
+          if (code === 'user_revoked') return 'revoked'
+          if (status === 401 || status === 403) return 'dead'
+          // transient blip: usually clears within a few hundred ms, and this runs once per app
+          // load, not per request.
           if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 300))
         }
       }
+      return 'unknown'
+    },
+
+    // Resolves the restored session against the backend and settles the three possible answers:
+    //   alive     → sessionValidated, the app bar is telling the truth
+    //   unknown   → sessionUnresolved, keep the session (transient backend failure)
+    //   dead      → clearSession(), the name leaves the app bar and localStorage is purged
+    //
+    // Exactly ONE refresh attempt per validation: the second probe cannot re-enter that branch,
+    // so a failed refresh can never trigger another one. Concurrent callers share a single run.
+    async validateSession(): Promise<boolean> {
+      if (validateInFlight) return validateInFlight
+      // read before the first await: a Nuxt composable needs the request context, which is not
+      // guaranteed once a store action has resumed from an await during SSR.
+      const renewable = import.meta.server ? !!useCookie('ez_refresh').value : true
+      validateInFlight = (async () => {
+        let outcome = await this.probeSession()
+
+        // Only the browser can refresh: it holds the httpOnly ez_refresh cookie and is the only
+        // side that can receive the rotated Set-Cookie back. A server-side attempt would send no
+        // cookie and could not hand the new one to the browser, so we skip it there.
+        if (outcome === 'dead' && import.meta.client && await this.refresh()) {
+          outcome = await this.probeSession()
+        }
+
+        if (outcome === 'alive') {
+          this.sessionValidated = true
+          this.sessionUnresolved = false
+          this.sessionRevoked = false
+          return true
+        }
+
+        if (outcome === 'unknown') {
+          // auth state is unknown, NOT logged out — the middleware reads sessionUnresolved as
+          // "do not bounce" and the page's own fetches surface a real error if the API is down.
+          this.sessionUnresolved = true
+          return false
+        }
+
+        // The access cookie lives 15 minutes, the refresh cookie 7 days: on the server a plain
+        // 'dead' usually just means "the access token expired". The client will renew it within
+        // the same page load, so hand the render through as unresolved instead of destroying a
+        // session that is about to come back. 'revoked' gets no such benefit of the doubt.
+        if (import.meta.server && outcome === 'dead' && renewable) {
+          this.sessionUnresolved = true
+          return false
+        }
+
+        this.clearSession()
+        return false
+      })().finally(() => { validateInFlight = null })
+      return validateInFlight
+    },
+
+    // one-shot session bootstrap, safe on both server and client. Restores the header-path token
+    // from localStorage (client), then VALIDATES whatever it ended up with — a restored blob is
+    // never trusted on its own, which is what let a dead session keep rendering a user.
+    async init(): Promise<void> {
+      if (import.meta.client) this.hydrate()
+
+      const { isMock } = useMock()
+      if (isMock.value) return
+
+      // a session may exist either because we just restored one, or because the browser still
+      // carries the readable CSRF cookie issued alongside the httpOnly session cookies.
+      if (!this.user && !useCookie('ez_csrf').value) {
+        // genuinely anonymous: make sure no leftover "unknown" flag reaches the middleware
+        this.sessionUnresolved = false
+        return
+      }
+
+      // already proven live during this app load — typically server-side, the flag arrives in the
+      // SSR payload — so hydration does not spend a second /auth/me on it.
+      if (this.sessionValidated) return
+
+      await this.validateSession()
     },
 
     async login(email: string, password: string): Promise<User> {
@@ -243,6 +350,7 @@ export const useAuthStore = defineStore('auth', {
           const { password: _, ...userData } = found
           this.user = userData as User
           this.token = `mock-jwt-${found.id}-${Date.now()}`
+          this.markSessionLive()
           this.persist()
           return this.user!
         }
@@ -257,6 +365,7 @@ export const useAuthStore = defineStore('auth', {
         this.user = response.user
         this.token = response.token
         this.refreshToken = response.refreshToken ?? null
+        this.markSessionLive()
         this.persist()
         return this.user!
       }
@@ -280,6 +389,7 @@ export const useAuthStore = defineStore('auth', {
         this.user = response.user
         this.token = response.token
         this.refreshToken = response.refreshToken ?? null
+        this.markSessionLive()
         this.persist()
         return this.user!
       }
@@ -325,6 +435,7 @@ export const useAuthStore = defineStore('auth', {
 
           this.user = newUser
           this.token = `mock-jwt-${newUser.id}-${Date.now()}`
+          this.markSessionLive()
           this.persist()
           return newUser
         }
@@ -338,6 +449,7 @@ export const useAuthStore = defineStore('auth', {
         this.user = response.user
         this.token = response.token
         this.refreshToken = response.refreshToken ?? null
+        this.markSessionLive()
         this.persist()
         return this.user!
       }
@@ -569,10 +681,8 @@ export const useAuthStore = defineStore('auth', {
           headers: csrfHeader(),
         }).catch(() => {})
       }
-      this.user = null
-      this.token = null
-      this.refreshToken = null
-      this.persist()
+      // same teardown as an expired session (state + localStorage), plus the redirect
+      this.clearSession()
       navigateTo('/login')
     },
   },
