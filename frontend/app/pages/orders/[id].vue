@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { estimateEtaSeconds, formatEta } from '~/lib/eta'
 import type { BackendOrderStatus } from '~/lib/orderStatus'
+import { canCancel } from '~/stores/orders'
 // '~~' (not '~') resolves to the frontend project root — '~' points at app/, which has no
 // server/ subtree — so this is the only alias that reaches the Nitro route's exported type.
 import type { TrackingOrder } from '~~/server/api/orders/[id].get'
@@ -25,7 +26,7 @@ const auth = useAuthStore()
 // useRequestFetch forwards the incoming request's cookies to the BFF on SSR (Phase 7), so a
 // cookie-only session authenticates during server render — no more "introuvable" on first paint.
 // The Authorization header still carries the header-path token when present (native/tests).
-const { data: order, pending, error } = await useFetch<TrackingOrder>(
+const { data: order, pending, error, refresh } = await useFetch<TrackingOrder>(
   () => `/api/orders/${orderId.value}`,
   {
     // useRequestFetch() is typed as `H3Event$Fetch | typeof $fetch`; useFetch's `$fetch` option only
@@ -45,6 +46,16 @@ const { data: order, pending, error } = await useFetch<TrackingOrder>(
 // and exposes the reactive rider position + the showMap gate (live picked_up/in_transit).
 const tracking = useOrderTracking(orderId.value, order.value ? { id: order.value.id, status: order.value.status } : null)
 const { riderPos, status: liveStatus, showMap, reconnecting, lastUpdate } = tracking
+
+// `liveStatus` n'est amorce QU'UNE FOIS au setup puis mis a jour par les seuls evenements
+// socket `order-status`. Une action locale qui refetch la commande (annulation -> refresh())
+// laissait donc `liveStatus` fige sur l'ancien statut, et comme `currentStatus` fait
+// `liveStatus || order.status`, le `||` court-circuitait la valeur fraiche : badge, timeline
+// et carte « Annuler » restaient bloques sur l'etat d'avant. On resynchronise donc sur la
+// commande refetchee — le serveur reste la source de verite, aucun statut n'est ecrit a la main.
+watch(() => order.value?.status, (s) => {
+  if (s) liveStatus.value = s
+})
 
 // the effective live status: the composable's status once it has seeded, else the fetched one
 const currentStatus = computed<BackendOrderStatus>(() =>
@@ -160,6 +171,47 @@ async function scheduleReturn() {
     schedulingReturn.value = false
   }
 }
+// ─── Annuler la commande (H7) ──────────────────────────────────────────────
+// Cette page rend le vocabulaire BRUT Prisma ; canCancel() couvre les deux vocabulaires
+// (voir stores/orders.ts). En mode mock la commande vient de data/mock/orders.json et
+// n'a aucune ligne en base — pas de bouton, l'appel repondrait 404.
+const { isMock } = useMock()
+const showCancel = computed(() =>
+  !isMock.value
+  && !!order.value
+  && !ordersStore.localOrderIds.has(order.value.id)
+  && canCancel(currentStatus.value),
+)
+
+const cancelOpen = ref(false)
+const cancelling = ref(false)
+const cancelError = ref('')
+
+function closeCancel() {
+  if (cancelling.value) return
+  cancelOpen.value = false
+  cancelError.value = ''
+}
+
+async function confirmCancel() {
+  if (!order.value) return
+  cancelling.value = true
+  cancelError.value = ''
+  try {
+    await ordersStore.cancelOrder(order.value.id)
+    cancelOpen.value = false
+    // Relecture serveur : le badge, la timeline et les evenements doivent venir de la base,
+    // jamais d'un statut ecrit cote client.
+    await refresh()
+  }
+  catch (err) {
+    cancelError.value = err instanceof Error ? err.message : "L'annulation a échoué."
+  }
+  finally {
+    cancelling.value = false
+  }
+}
+
 const showMapCard = computed(() => showMap.value || isDelivered.value)
 const mapCollapsed = ref(false)
 // Position figée une fois livré : dernière position connue, sinon la destination
@@ -425,6 +477,34 @@ const etaLabel = computed<string | null>(() => {
             </div>
           </Card>
 
+          <!-- Annuler la commande (avant récupération par le livreur) -->
+          <Card v-if="showCancel" class="p-5" data-testid="cancel-order-card">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div class="flex items-center gap-3">
+                <div class="flex size-9 shrink-0 items-center justify-center rounded-full bg-red-50">
+                  <Icon name="ph:x-circle" class="size-4.5 text-error" />
+                </div>
+                <div>
+                  <h3 class="text-body font-semibold text-text-primary">Annuler la commande</h3>
+                  <p class="text-body-sm text-text-muted">
+                    Possible tant que le livreur n'a pas récupéré le colis.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                data-testid="cancel-order"
+                class="shrink-0 text-error hover:bg-red-50 hover:text-error"
+                @click="cancelOpen = true"
+              >
+                Annuler
+              </Button>
+            </div>
+            <p v-if="cancelError && !cancelOpen" data-testid="cancel-error" class="mt-3 text-body-sm text-error">
+              {{ cancelError }}
+            </p>
+          </Card>
+
           <!-- Planifier un retour (commande livrée) -->
           <Card v-if="isDelivered" class="p-5" data-testid="schedule-return">
             <div class="mb-3 flex items-center gap-3">
@@ -539,5 +619,49 @@ const etaLabel = computed<string | null>(() => {
         </div>
       </div>
     </div>
+
+    <!-- Confirmation d'annulation -->
+    <UiModal
+      :open="cancelOpen"
+      title="Annuler cette commande ?"
+      size="md"
+      @close="closeCancel"
+    >
+      <div class="space-y-4">
+        <p v-if="order" class="text-body-sm text-text-secondary">
+          Commande <strong class="text-text-primary">{{ order.reference ?? order.id }}</strong> —
+          {{ order.total.toFixed(2) }} &euro;
+        </p>
+        <div class="flex items-start gap-3 rounded-xl bg-surface-purple border border-primary-100 px-4 py-3">
+          <Icon name="ph:arrows-clockwise" class="mt-0.5 size-5 shrink-0 text-primary-600" />
+          <p class="text-body-sm text-text-secondary">
+            Annulation gratuite : vous serez intégralement remboursé sous 5 à 10 jours ouvrés.
+          </p>
+        </div>
+        <p class="text-body-sm text-text-muted">
+          Cette action est définitive : la commande ne pourra pas être réactivée.
+        </p>
+        <p v-if="cancelError" data-testid="cancel-modal-error" class="text-body-sm text-error">
+          {{ cancelError }}
+        </p>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <Button variant="outline" :disabled="cancelling" @click="closeCancel">
+            Retour
+          </Button>
+          <Button
+            variant="destructive"
+            data-testid="cancel-confirm"
+            :disabled="cancelling"
+            @click="confirmCancel"
+          >
+            <Icon v-if="cancelling" name="ph:spinner-gap" class="size-4 animate-spin" />
+            {{ cancelling ? 'Annulation…' : 'Confirmer l\'annulation' }}
+          </Button>
+        </div>
+      </template>
+    </UiModal>
   </div>
 </template>

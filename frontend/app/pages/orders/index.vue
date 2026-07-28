@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ACTIVE_STATUSES, STATUS_CONFIG, type OrderStatus } from '~/stores/orders'
+import { ACTIVE_STATUSES, STATUS_CONFIG, canCancel, type Order, type OrderStatus } from '~/stores/orders'
 
 definePageMeta({
   layout: 'default',
@@ -37,6 +37,50 @@ function formatDate(iso: string): string {
     month: 'long',
     year: 'numeric',
   })
+}
+
+// ─── Annulation (H7) ────────────────────────────────────────────────────────
+// Le bouton n'apparait que sur les commandes que le backend accepterait encore d'annuler.
+// Les commandes locales (createOrder/simulateDelivery) et le mode mock n'ont pas de ligne en
+// base : l'appel repondrait 404, donc pas de bouton.
+const { isMock } = useMock()
+
+function isCancellable(order: Order): boolean {
+  return !isMock.value && !store.localOrderIds.has(order.id) && canCancel(order.status)
+}
+
+const cancelTarget = ref<Order | null>(null)
+const cancelling = ref(false)
+const cancelError = ref('')
+
+function openCancel(order: Order) {
+  cancelTarget.value = order
+  cancelError.value = ''
+}
+
+function closeCancel() {
+  if (cancelling.value) return
+  cancelTarget.value = null
+  cancelError.value = ''
+}
+
+async function confirmCancel() {
+  if (!cancelTarget.value) return
+  cancelling.value = true
+  cancelError.value = ''
+  try {
+    await store.cancelOrder(cancelTarget.value.id)
+    cancelTarget.value = null
+    // Rechargement serveur : l'onglet « Annulées » doit se remplir depuis la base,
+    // pas depuis un statut ecrit a la main cote client.
+    await store.hydrate(true)
+  }
+  catch (err) {
+    cancelError.value = err instanceof Error ? err.message : "L'annulation a échoué."
+  }
+  finally {
+    cancelling.value = false
+  }
 }
 </script>
 
@@ -207,6 +251,18 @@ function formatDate(iso: string): string {
                   <p class="text-h4 font-semibold text-text-primary">{{ order.total.toFixed(2) }} &euro;</p>
                   <p class="text-caption text-text-muted">{{ store.itemCount(order) }} article{{ store.itemCount(order) > 1 ? 's' : '' }}</p>
                 </div>
+                <!-- La carte entiere est un NuxtLink : .prevent.stop evite d'ouvrir le detail. -->
+                <Button
+                  v-if="isCancellable(order)"
+                  variant="outline"
+                  size="sm"
+                  data-testid="cancel-order"
+                  class="shrink-0 text-error hover:bg-red-50 hover:text-error"
+                  @click.prevent.stop="openCancel(order)"
+                >
+                  <Icon name="ph:x-circle" class="size-4" />
+                  Annuler
+                </Button>
                 <Icon
                   name="ph:arrow-right"
                   class="size-5 text-neutral-300 transition-transform group-hover:translate-x-1 group-hover:text-primary-500"
@@ -262,5 +318,49 @@ function formatDate(iso: string): string {
         </div>
       </template>
     </div>
+
+    <!-- Confirmation d'annulation -->
+    <UiModal
+      :open="cancelTarget !== null"
+      title="Annuler cette commande ?"
+      size="md"
+      @close="closeCancel"
+    >
+      <div class="space-y-4">
+        <p class="text-body-sm text-text-secondary">
+          Commande <strong class="text-text-primary">{{ cancelTarget?.id }}</strong> —
+          {{ cancelTarget?.total.toFixed(2) }} &euro;
+        </p>
+        <div class="flex items-start gap-3 rounded-xl bg-surface-purple border border-primary-100 px-4 py-3">
+          <Icon name="ph:arrows-clockwise" class="mt-0.5 size-5 shrink-0 text-primary-600" />
+          <p class="text-body-sm text-text-secondary">
+            Annulation gratuite : vous serez intégralement remboursé sous 5 à 10 jours ouvrés.
+          </p>
+        </div>
+        <p class="text-body-sm text-text-muted">
+          Cette action est définitive : la commande ne pourra pas être réactivée.
+        </p>
+        <p v-if="cancelError" data-testid="cancel-error" class="text-body-sm text-error">
+          {{ cancelError }}
+        </p>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <Button variant="outline" :disabled="cancelling" @click="closeCancel">
+            Retour
+          </Button>
+          <Button
+            variant="destructive"
+            data-testid="cancel-confirm"
+            :disabled="cancelling"
+            @click="confirmCancel"
+          >
+            <Icon v-if="cancelling" name="ph:spinner-gap" class="size-4 animate-spin" />
+            {{ cancelling ? 'Annulation…' : 'Confirmer l\'annulation' }}
+          </Button>
+        </div>
+      </template>
+    </UiModal>
   </div>
 </template>
