@@ -45,6 +45,11 @@ RUN rm -rf \
   node_modules/.bin/tsc node_modules/.bin/tsserver node_modules/.bin/vitest
 COPY --from=build /app/dist ./dist
 COPY prisma ./prisma
+# Create the upload root INSIDE the image so the named volume mounted there in production inherits
+# this ownership on first use. Docker seeds an empty named volume from the image path it covers; if
+# the path did not exist, the volume would be created root-owned and every write as nodeapp would
+# fail with EACCES.
+RUN mkdir -p /app/uploads/rider-documents
 RUN useradd --system --uid 1001 nodeapp && chown -R nodeapp:nodeapp /app
 USER nodeapp
 EXPOSE 3001
