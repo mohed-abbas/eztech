@@ -155,6 +155,19 @@ describe('socket realtime tracking (RED — implementation lands in Wave 2)', ()
     expect(await moved).toMatchObject({ lat: PARIS.lat, lng: PARIS.lng });
   });
 
+  it('status replayed on subscribe', async () => {
+    // Les rooms sont par socket : une transition emise pendant une deconnexion (coupure reseau,
+    // expiration du jeton, rechargement de page) est perdue pour ce client. Le join doit donc
+    // rejouer le statut COURANT, sinon le badge de suivi reste fige jusqu'a la transition suivante.
+    const { customer, order } = await seedAssignedOrder();
+    const sock = track(await connectWith(mintToken({ sub: customer.id, role: 'customer' }), port));
+
+    const replayed = waitFor<{ orderId: string; status: string }>(sock, 'order-status');
+    sock.emit('subscribe:order', { orderId: order.id });
+
+    expect(await replayed).toMatchObject({ orderId: order.id, status: 'picked_up' });
+  });
+
   it('handshake rejects bad jwt', async () => {
     // TRACK-05: handshake rejects bad/missing JWT (connect_error); a valid token connects.
     await expect(connectWith('garbage-token', port)).rejects.toBeTruthy();

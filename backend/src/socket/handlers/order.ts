@@ -3,7 +3,7 @@ import { prisma } from '../../lib/prisma.js';
 import { getMongo } from '../../lib/mongo.js';
 import { ensureMongo } from './mongo-ready.js';
 import { orderRoom } from '../rooms.js';
-import { RIDER_MOVED } from '../events.js';
+import { ORDER_STATUS, RIDER_MOVED } from '../events.js';
 import { logger } from '../../lib/logger.js';
 
 // subscribe:order handler (D-10, Pattern 4, TRACK-02/04).
@@ -38,7 +38,7 @@ export function registerOrderHandler(socket: AppSocket): void {
 
       const order = await prisma.order.findUnique({
         where: { id: orderId },
-        select: { customerId: true, riderId: true },
+        select: { customerId: true, riderId: true, status: true },
       });
 
       // byte-identical to routes/orders.ts:215
@@ -50,6 +50,13 @@ export function registerOrderHandler(socket: AppSocket): void {
       }
 
       void socket.join(orderRoom(orderId));
+
+      // Rejoue le statut COURANT au moment du join, symetrique du rejeu de position ci-dessous.
+      // Les rooms sont par socket : toute transition emise pendant qu'un client etait deconnecte
+      // (coupure reseau, expiration du jeton, rechargement de page) etait definitivement perdue,
+      // et le badge de suivi restait fige sur l'ancien statut jusqu'a la transition SUIVANTE.
+      // Avec ce rejeu, une re-souscription suffit a se resynchroniser.
+      socket.emit(ORDER_STATUS, { orderId, status: order.status });
 
       // last-known position from Mongo → immediate rider-moved (named fields, D-12). If Mongo is
       // unavailable the join still succeeds; the map simply stays blank until the first live fix.

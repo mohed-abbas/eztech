@@ -179,7 +179,7 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
         <CardTitle class="flex items-center justify-between gap-3 text-h4">
           <span class="flex min-w-0 items-center gap-2">
             <Icon name="ph:truck" class="size-5 shrink-0 text-primary-600" />
-            <span class="truncate">{{ rider.activeDelivery.reference }}</span>
+            <span class="truncate">Livraison en cours · {{ rider.activeDelivery.reference }}</span>
           </span>
           <span class="shrink-0 text-primary-600">{{ eur(rider.activeDelivery.riderFee) }}</span>
         </CardTitle>
