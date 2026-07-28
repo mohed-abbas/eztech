@@ -20,21 +20,51 @@ const orders = ref<
   }[]
 >([]);
 const loadingStats = ref(true);
+// Une erreur avalée affichait « 0 commande / 0 € », impossible à distinguer d'un système
+// réellement vide. On la remonte pour que 401/403/500 soient visibles, avec un « Réessayer ».
+const statsError = ref<string | null>(null);
 
-onMounted(async () => {
-  auth.hydrate();
+// Enveloppe inattendue : message dédié. Marqueur explicite plutôt qu'un `e.message` générique,
+// sinon l'erreur réseau d'ofetch (« [GET] "…": <no response> Failed to fetch ») remonterait
+// telle quelle, en anglais, dans l'interface.
+const SHAPE_ERROR = "Réponse inattendue de l'API : « orders » manquant.";
+
+function statsErrorMessage(e: unknown): string {
+  const err = e as { data?: { error?: string }; statusCode?: number };
+  const code = err?.data?.error;
+  if (code === "missing_token" || code === "invalid_token" || err?.statusCode === 401)
+    return "Session expirée : reconnectez-vous pour voir les statistiques.";
+  if (code === "forbidden" || err?.statusCode === 403)
+    return "Accès refusé : ces statistiques sont réservées aux administrateurs.";
+  if (e instanceof Error && e.message === SHAPE_ERROR) return SHAPE_ERROR;
+  if (err?.statusCode && err.statusCode >= 500)
+    return "Le serveur a renvoyé une erreur : les statistiques n'ont pas pu être calculées.";
+  return "Impossible de charger les statistiques : le serveur est injoignable.";
+}
+
+async function loadStats() {
+  loadingStats.value = true;
+  statsError.value = null;
   try {
     // /admin/orders, not /orders: in production nginx path-splits /api/orders to the Nuxt BFF,
     // which answers with a bare remapped array (no `orders` key, no paymentStatus, storefront
     // status labels). /api/admin/orders is not split, so it always reaches Express (see
     // backend/src/routes/index.ts). Same endpoint admin/orders.vue uses.
     const data = await adminFetch<{ orders: typeof orders.value }>('/admin/orders')
-    orders.value = data?.orders ?? [];
-  } catch {
-    /* stats stay at 0 */
+    // Une enveloppe inattendue (tableau nu du BFF) ne doit pas passer pour « aucune commande ».
+    if (!Array.isArray(data?.orders)) throw new Error(SHAPE_ERROR);
+    orders.value = data.orders;
+  } catch (e) {
+    orders.value = [];
+    statsError.value = statsErrorMessage(e);
   } finally {
     loadingStats.value = false;
   }
+}
+
+onMounted(() => {
+  auth.hydrate();
+  loadStats();
 });
 
 const stats = computed(() => {
@@ -45,6 +75,14 @@ const stats = computed(() => {
       "picked_up",
       "in_transit",
     ].includes(o.status),
+  ).length;
+
+  // Distinct de `active` : le raccourci « Commandes en attente » ouvre
+  // /admin/orders?status=pending_assignment, filtre que la page applique désormais réellement.
+  // Afficher `active` (4 statuts) sur ce lien promettait un nombre que le tableau filtré
+  // (1 seul statut) ne pouvait pas atteindre.
+  const pending = orders.value.filter(
+    (o) => o.status === "pending_assignment",
   ).length;
 
   const revenue = orders.value
@@ -61,6 +99,7 @@ const stats = computed(() => {
   return {
     total: orders.value.length,
     active,
+    pending,
     revenue,
     todayOrders,
     delivered: orders.value.filter((o) => o.status === "delivered").length,
@@ -169,6 +208,25 @@ const navSections = [
       <div class="relative">
         <h1 class="mb-4 text-h4 font-semibold text-white">Vue d'ensemble</h1>
 
+        <!-- Bandeau d'erreur : sans lui, un 401/403/500 s'affichait comme « 0 commande / 0 € ». -->
+        <div
+          v-if="statsError"
+          class="mb-4 flex flex-col gap-3 rounded-2xl border border-red-400/30 bg-red-500/15 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p class="flex items-start gap-2 text-body-sm font-medium text-red-100">
+            <Icon name="ph:warning-circle" class="mt-0.5 size-4 shrink-0" />
+            {{ statsError }}
+          </p>
+          <button
+            :disabled="loadingStats"
+            class="inline-flex shrink-0 items-center gap-2 self-start rounded-xl bg-white/15 px-4 py-2 text-body-sm font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+            @click="loadStats()"
+          >
+            <Icon name="ph:arrows-clockwise" class="size-4" />
+            {{ loadingStats ? "Chargement…" : "Réessayer" }}
+          </button>
+        </div>
+
         <!-- Live stat cards -->
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <!-- Total commandes -->
@@ -181,6 +239,8 @@ const navSections = [
                 v-if="loadingStats"
                 class="h-3 w-10 animate-pulse rounded bg-white/20"
               />
+              <!-- « — » et pas 0 : un chiffre faux est pire qu'une absence de chiffre. -->
+              <span v-else-if="statsError" class="text-h3 font-bold text-red-200">—</span>
               <span v-else class="text-h3 font-bold text-white">{{
                 stats.total
               }}</span>
@@ -198,6 +258,7 @@ const navSections = [
                 v-if="loadingStats"
                 class="h-3 w-8 animate-pulse rounded bg-white/20"
               />
+              <span v-else-if="statsError" class="text-h3 font-bold text-red-200">—</span>
               <span v-else class="text-h3 font-bold text-white">{{
                 stats.active
               }}</span>
@@ -215,6 +276,7 @@ const navSections = [
                 v-if="loadingStats"
                 class="h-3 w-8 animate-pulse rounded bg-white/20"
               />
+              <span v-else-if="statsError" class="text-h3 font-bold text-red-200">—</span>
               <span v-else class="text-h3 font-bold text-white">{{
                 stats.todayOrders
               }}</span>
@@ -232,6 +294,7 @@ const navSections = [
                 v-if="loadingStats"
                 class="h-3 w-16 animate-pulse rounded bg-white/20"
               />
+              <span v-else-if="statsError" class="text-h3 font-bold text-red-200">—</span>
               <span v-else class="text-h3 font-bold text-white"
                 >{{ fmtMoney(stats.revenue) }} €</span
               >
@@ -304,11 +367,13 @@ const navSections = [
           >
             <Icon name="ph:hourglass" class="size-4" />
             Commandes en attente
+            <!-- stats.pending (et pas stats.active) : ce lien filtre sur le seul statut
+                 pending_assignment, le badge doit annoncer le nombre de lignes qui s'afficheront. -->
             <span
-              v-if="!loadingStats"
+              v-if="!loadingStats && !statsError"
               class="rounded-full bg-amber-200 px-1.5 py-0.5 text-caption font-bold"
             >
-              {{ stats.active }}
+              {{ stats.pending }}
             </span>
           </NuxtLink>
 

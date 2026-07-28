@@ -55,6 +55,7 @@ const { adminFetch, fmtMoney } = useAdminApi()
 // ── State ────────────────────────────────────────────────────────────────────
 const auth = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 
 const orders = ref<AdminOrder[]>([])
 const loading = ref(true)
@@ -136,16 +137,33 @@ const STATUS_OPTIONS = [
   { value: 'cancelled', label: 'Annulée' },
 ]
 
-onMounted(() => {
-  // Le raccourci « En attente de livreur » du tableau de bord (/admin/orders?status=…) était
-  // inerte : la query n'était jamais lue. On la valide contre STATUS_OPTIONS pour qu'une valeur
-  // inconnue ne vide pas silencieusement le tableau.
-  const wanted = Array.isArray(route.query.status) ? route.query.status[0] : route.query.status
-  if (typeof wanted === 'string' && STATUS_OPTIONS.some(o => o.value === wanted)) {
-    statusFilter.value = wanted
-  }
-  fetchOrders()
+// ── Filtre statut ↔ URL ───────────────────────────────────────────────────────
+// Le raccourci « En attente de livreur » du tableau de bord (/admin/orders?status=…) était
+// inerte : la query n'était jamais lue. On la valide contre STATUS_OPTIONS pour qu'une valeur
+// inconnue ne vide pas silencieusement le tableau.
+// La lecture se faisait dans onMounted, donc UNE SEULE FOIS : Vue réutilise l'instance du
+// composant quand on arrive sur /admin/orders?status=… depuis /admin/orders déjà monté, et
+// Précédent/Suivant du navigateur ne remontent pas non plus la page — le filtre restait figé.
+// Un `watch(immediate)` sur la query règle les trois cas.
+function normalizeStatusQuery(raw: unknown): string {
+  const wanted = Array.isArray(raw) ? raw[0] : raw
+  return typeof wanted === 'string' && STATUS_OPTIONS.some(o => o.value === wanted) ? wanted : 'all'
+}
+
+watch(() => route.query.status, (raw) => {
+  const next = normalizeStatusQuery(raw)
+  // Garde anti-boucle : changer le <select> réécrit l'URL, ce qui redéclenche ce watcher.
+  if (next !== statusFilter.value) statusFilter.value = next
+}, { immediate: true })
+
+// Sens inverse : le filtre choisi au <select> est recopié dans l'URL, pour qu'un rechargement
+// le conserve et que la vue filtrée soit partageable par simple copier-coller.
+watch(statusFilter, (value) => {
+  if (normalizeStatusQuery(route.query.status) === value) return
+  router.replace({ query: { ...route.query, status: value === 'all' ? undefined : value } })
 })
+
+onMounted(fetchOrders)
 
 // `<input type="date">` renvoie toujours 'YYYY-MM-DD' — on découpe plutôt que de laisser
 // Date() choisir le fuseau (ISO date-only ⇒ UTC).
