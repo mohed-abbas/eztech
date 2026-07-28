@@ -18,6 +18,7 @@ set -euo pipefail
 #   ./scripts/deploy.sh --skip-build --sha abc123   # pre-built images path — kept for parity, unused
 #   ./scripts/deploy.sh --rollback                 # start previous slot, flip back
 #   ./scripts/deploy.sh --seed                     # one-off idempotent admin seed on the active slot
+#   ./scripts/deploy.sh --seed-demo                # demo accounts + EZDEMO- orders (soutenance data)
 # ============================================================================
 
 # --- Configuration ---
@@ -164,12 +165,34 @@ run_seed() {
         error ".env.production not found at ${PROJECT_DIR}/.env.production"; exit 1
     fi
     log "Seeding admin user on backend-${slot} (idempotent)..."
-    # The prod image strips tsx (see backend/Dockerfile); the admin seed is precompiled to
-    # dist/seed/seed.js during `npm run build` (tsconfig.seed.json) so it runs on plain node.
+    # The prod image strips tsx (see backend/Dockerfile); the seeds are precompiled during
+    # `npm run build` (tsconfig.seed.json) so they run on plain node. The path carries the prisma/
+    # segment because tsconfig.seed.json roots at the package (demo-orders.ts imports src/lib/pricing).
     docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
-        --entrypoint "node dist/seed/seed.js" \
+        --entrypoint "node dist/seed/prisma/seed.js" \
         "backend-${slot}" 2>&1 | tee -a "${LOG_FILE}"
     success "Seed completed"
+}
+
+# Demo dataset: warehouse manager, riders, customers and a spread of paid/delivered EZDEMO- orders so
+# the analytics dashboard and the four-role walkthrough have real data. NOT part of a normal deploy —
+# invoke explicitly with `./scripts/deploy.sh --seed-demo`. Idempotent: it deletes and regenerates its
+# own EZDEMO- orders and upserts its accounts, leaving real orders untouched.
+seed_demo() {
+    local slot; slot=$(get_active_slot)
+    if [[ "${slot}" == "none" ]]; then
+        error "No active slot to seed — deploy first"; exit 1
+    fi
+    if [[ -f "${PROJECT_DIR}/.env.production" ]]; then
+        set -a; source "${PROJECT_DIR}/.env.production"; set +a
+    else
+        error ".env.production not found at ${PROJECT_DIR}/.env.production"; exit 1
+    fi
+    log "Seeding DEMO dataset on backend-${slot} (idempotent)..."
+    docker compose -f "${COMPOSE_FILE}" run --rm --no-deps \
+        --entrypoint "node dist/seed/prisma/seed-demo.js" \
+        "backend-${slot}" 2>&1 | tee -a "${LOG_FILE}"
+    success "Demo seed completed"
 }
 
 cleanup_images() {
@@ -316,17 +339,19 @@ Usage: $(basename "$0") [options]
   --skip-build --sha S   skip build, deploy pre-built images tagged for sha S
   --rollback             start the previous slot, flip nginx back, stop current slot
   --seed                 run the idempotent admin seed against the active slot
+  --seed-demo            run the demo dataset seed (accounts + EZDEMO- orders) — for the demo/soutenance
   -h, --help             show this help
 USAGE
 }
 
 main() {
-    local do_rollback=false do_seed=false skip_build=false no_cache=false custom_sha=""
+    local do_rollback=false do_seed=false do_seed_demo=false skip_build=false no_cache=false custom_sha=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --rollback) do_rollback=true; shift ;;
             --seed) do_seed=true; shift ;;
+            --seed-demo) do_seed_demo=true; shift ;;
             --skip-build) skip_build=true; shift ;;
             --no-cache) no_cache=true; shift ;;
             --sha) custom_sha="$2"; shift 2 ;;
@@ -344,6 +369,11 @@ main() {
 
     if [[ "${do_seed}" == "true" ]]; then
         run_seed
+        exit 0
+    fi
+
+    if [[ "${do_seed_demo}" == "true" ]]; then
+        seed_demo
         exit 0
     fi
 

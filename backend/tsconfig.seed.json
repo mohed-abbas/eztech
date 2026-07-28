@@ -2,10 +2,24 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "rootDir": "prisma",
+    // rootDir doit couvrir prisma/ ET src/ : demo-orders.ts reutilise src/lib/pricing.ts pour que les
+    // commandes de demo soient tarifees exactement comme les vraies. La sortie est donc
+    // dist/seed/prisma/<seed>.js (et non dist/seed/<seed>.js).
+    "rootDir": ".",
     "outDir": "dist/seed",
     "sourceMap": false
   },
-  "include": ["prisma/seed.ts"],
+  // Tous les seeds sont compiles, pas seulement seed.ts. L'image de production ne contient ni tsx ni
+  // les devDependencies : le seul moyen d'amorcer des donnees sur le VPS est `node dist/seed/<x>.js`.
+  // Tant que seul seed.ts etait inclus, seed-demo (comptes de demo + commandes payees/livrees) etait
+  // impossible a executer en production — d'ou une base de prod sans responsable d'entrepot et sans
+  // historique de commandes, alors que le fichier existait depuis des semaines.
+  "include": [
+    "prisma/seed.ts",
+    "prisma/seed-demo.ts",
+    "prisma/seed-catalog.ts",
+    "prisma/seed-zones.ts",
+    "prisma/demo-orders.ts"
+  ],
   "exclude": ["node_modules", "dist", "src", "tests"]
 }
