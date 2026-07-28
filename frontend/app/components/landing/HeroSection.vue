@@ -5,8 +5,11 @@
 const { featuredProducts } = useLandingContent()
 const { heroFadeUp } = useMotionPresets()
 
-const leftCards = computed(() => featuredProducts.slice(0, 2))
-const rightCards = computed(() => featuredProducts.slice(2, 4))
+// featuredProducts is a computed ref over the live catalog — it is empty until the
+// BFF answers (and stays empty if the catalog has no featured product), so both
+// slices must tolerate an empty array.
+const leftCards = computed(() => (featuredProducts.value ?? []).slice(0, 2))
+const rightCards = computed(() => (featuredProducts.value ?? []).slice(2, 4))
 </script>
 
 <template>

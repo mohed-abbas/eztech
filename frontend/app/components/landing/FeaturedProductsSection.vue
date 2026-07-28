@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Featured equipment grid. Uses the generic ProductCard so the same
 // component can be reused by the catalog, search, and cart views.
-const { featuredProducts } = useLandingContent()
+// The products are the real catalog rows flagged `featured` (see useLandingContent).
+const { featuredProducts, featuredPending } = useLandingContent()
 const { fadeUp } = useMotionPresets()
 </script>
 
@@ -26,14 +27,33 @@ const { fadeUp } = useMotionPresets()
         </NuxtLink>
       </div>
 
-      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div v-if="featuredPending" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div v-for="n in 4" :key="n" class="animate-pulse rounded-xl border border-neutral-200 bg-neutral-50 p-4">
+          <div class="mb-3 h-5 w-2/3 rounded bg-neutral-100" />
+          <div class="mb-3 h-3 w-1/3 rounded bg-neutral-100" />
+          <div class="mb-3 h-28 rounded-md bg-neutral-100" />
+          <hr class="my-3 border-neutral-100">
+          <div class="flex items-center justify-between">
+            <div class="h-7 w-20 rounded bg-neutral-100" />
+            <div class="h-9 w-24 rounded-full bg-neutral-100" />
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="featuredProducts.length" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <ProductCard
           v-for="(product, idx) in featuredProducts"
           :key="product.name"
           v-motion="fadeUp(idx * 80)"
           :product="product"
+          :to="product.to"
         />
       </div>
+
+      <p v-else class="text-body text-neutral-500">
+        Aucun équipement à la une pour le moment.
+        <NuxtLink to="/products" class="font-medium text-primary-600 hover:underline">Voir tout le catalogue</NuxtLink>
+      </p>
     </div>
   </section>
 </template>

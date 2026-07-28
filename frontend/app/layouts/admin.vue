@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // Navigation admin — n'expose que des pages qui existent réellement.
-// /admin/zones (zones de service) revient en J4 avec l'éditeur de polygones Leaflet.
 const links = [
   { to: '/admin', label: 'Tableau de bord', icon: 'ph:gauge', exact: true },
   { to: '/admin/orders', label: 'Commandes', icon: 'ph:receipt' },
   { to: '/admin/products', label: 'Produits', icon: 'ph:package' },
   { to: '/admin/categories', label: 'Catégories', icon: 'ph:tag' },
   { to: '/admin/warehouses', label: 'Entrepôts', icon: 'ph:warehouse' },
+  { to: '/admin/zones', label: 'Zones de service', icon: 'ph:map-trifold' },
   { to: '/admin/users', label: 'Utilisateurs', icon: 'ph:users' },
   { to: '/admin/riders', label: 'Candidatures livreurs', icon: 'ph:motorcycle' },
   { to: '/admin/analytics', label: 'Analytics', icon: 'ph:chart-line-up' },

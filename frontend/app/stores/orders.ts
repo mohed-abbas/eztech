@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { mapOrderStatus } from '~/lib/orderStatus'
 
 export type OrderStatus =
   | 'pending'
@@ -139,6 +140,57 @@ export const STATUS_CONFIG: Record<OrderStatus, { label: string, icon: string, c
 }
 
 const ORDERS_STORAGE_KEY = 'ez-orders'
+
+// ─── Annulation client (H7) ────────────────────────────────────────────────
+// Les deux pages commandes parlent des vocabulaires DIFFERENTS, par conception :
+//  - /orders (liste)   : statuts d'AFFICHAGE, remappes par le BFF (server/api/orders.ts)
+//  - /orders/:id (detail) : statuts BRUTS Prisma, volontairement preserves par
+//    server/api/orders/[id].get.ts
+// Un seul predicat couvre les deux, sinon le bouton apparait sur les mauvaises lignes.
+// Reference d'autorite : backend/src/routes/orders.ts POST /:id/cancel refuse
+// picked_up | in_transit | delivered (409 not_cancellable) et un paymentStatus refunded
+// ou un statut cancelled (409 already_cancelled).
+const CANCELLABLE_STATUSES = new Set<string>([
+  // vocabulaire brut backend
+  'awaiting_payment',
+  'pending_assignment',
+  'at_warehouse',
+  'rider_assigned',
+  // vocabulaire d'affichage frontend (rider_assigned est commun aux deux)
+  'pending',
+  'confirmed',
+  'preparing',
+])
+
+/** Vrai si le backend accepterait encore d'annuler cette commande. Accepte les deux vocabulaires. */
+export function canCancel(status: string | null | undefined): boolean {
+  if (!status) return false
+  return CANCELLABLE_STATUSES.has(status)
+}
+
+/** Erreur d'annulation deja traduite en francais, avec le code backend d'origine. */
+export class OrderCancelError extends Error {
+  constructor(message: string, public code: string) {
+    super(message)
+    this.name = 'OrderCancelError'
+  }
+}
+
+const CANCEL_ERROR_MESSAGES: Record<string, string> = {
+  not_cancellable: 'Cette commande ne peut plus être annulée : le livreur a déjà récupéré le colis.',
+  already_cancelled: 'Cette commande est déjà annulée.',
+  forbidden: "Vous n'êtes pas autorisé à annuler cette commande.",
+  order_not_found: 'Cette commande est introuvable.',
+}
+
+const CANCEL_ERROR_FALLBACK = "L'annulation a échoué. Réessayez dans quelques instants."
+
+function toCancelError(err: unknown): OrderCancelError {
+  // ofetch expose le corps JSON parse sur `.data` — ici { error, details } (backend/src/middleware/error.ts)
+  const data = (err as { data?: { error?: string } } | undefined)?.data
+  const code = typeof data?.error === 'string' ? data.error : 'unknown'
+  return new OrderCancelError(CANCEL_ERROR_MESSAGES[code] ?? CANCEL_ERROR_FALLBACK, code)
+}
 
 export const useOrdersStore = defineStore('orders', {
   state: () => ({
@@ -353,6 +405,55 @@ export const useOrdersStore = defineStore('orders', {
         },
       })
       return res.return.reference
+    },
+
+    /**
+     * Annule une commande cote backend (H7) : remboursement Stripe integral, restauration du
+     * stock entrepot et OrderEvent 'cancelled' sont faits dans la transaction serveur.
+     * Leve une OrderCancelError deja traduite ; ne modifie l'etat local qu'apres la reponse.
+     */
+    async cancelOrder(orderId: string): Promise<void> {
+      // Une commande locale (createOrder / simulateDelivery) n'a pas de ligne en base :
+      // l'appel repondrait 404. Les pages masquent deja le bouton, ceci est le garde-fou.
+      if (this.localOrderIds.has(orderId)) {
+        throw new OrderCancelError(CANCEL_ERROR_FALLBACK, 'local_order')
+      }
+
+      const config = useRuntimeConfig()
+      const auth = useAuthStore()
+      const csrf = useCookie('ez_csrf').value
+
+      try {
+        // /admin/orders/:id/cancel, PAS /orders/:id/cancel : en production nginx detourne
+        // /api/orders vers le BFF Nuxt, qui n'a aucun handler d'ecriture — POST
+        // /api/orders/:id/cancel y repond 404 (verifie en prod : {"statusMessage":"Page not
+        // found: /api/orders/abc123/cancel"}) alors que /api/admin/orders/:id/cancel atteint
+        // toujours Express (401 missing_token). Meme raison que admin/index.vue loadStats et
+        // le double montage dans backend/src/routes/index.ts.
+        // Ce n'est PAS une escalade de privileges : ordersRouter ne porte aucun requireRole, le
+        // handler est requireAuth seul et autorise lui-meme `role === 'admin' || customerId === sub`.
+        // Le prefixe /admin n'est ici qu'un contournement du routage nginx.
+        const res = await $fetch<{ order: { id: string, status: string } }>(
+          `${config.public.apiUrl}/admin/orders/${orderId}/cancel`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+              ...(csrf ? { 'x-csrf-token': csrf } : {}),
+            },
+          },
+        )
+
+        // Le handler renvoie la commande au format BRUT Prisma ; la liste parle le vocabulaire
+        // d'affichage, donc on passe par la table de correspondance au lieu d'ecrire 'cancelled'.
+        const local = this.orders.find(o => o.id === orderId)
+        if (local) local.status = mapOrderStatus(res.order.status)
+      }
+      catch (err) {
+        if (err instanceof OrderCancelError) throw err
+        throw toCancelError(err)
+      }
     },
 
     /** Simulate delivery cycle: advances status every `intervalMs` through all steps. Returns cancel function. */

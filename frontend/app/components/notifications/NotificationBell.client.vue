@@ -69,6 +69,14 @@ async function handleSelect(n: AppNotification) {
           <span v-if="!n.read" class="mt-1 size-1.5 shrink-0 rounded-full bg-primary-500" />
         </DropdownMenuItem>
       </div>
+
+      <!-- entry point to the full page — the bell only ever holds the first page -->
+      <DropdownMenuSeparator />
+      <DropdownMenuItem as-child class="cursor-pointer justify-center px-3 py-2.5 focus:bg-neutral-50">
+        <NuxtLink to="/notifications" class="block w-full text-center text-xs font-medium text-primary-600">
+          Voir toutes les notifications
+        </NuxtLink>
+      </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
 </template>

@@ -4,11 +4,15 @@ import type { FeaturedProduct } from '~/composables/useLandingContent'
 // Generic product card built on design-system tokens. Used by the
 // featured section on the landing page and intended for reuse on the
 // catalog, search, and cart-recommendations views.
-defineProps<{
+const props = defineProps<{
   product: FeaturedProduct
   to?: string
   ctaLabel?: string
 }>()
+
+// A product carrying its own destination wins; the explicit `to` prop stays as an
+// override for callers that build the link themselves (catalog grid).
+const target = computed(() => props.product.to ?? props.to ?? '/products')
 </script>
 
 <template>
@@ -45,7 +49,7 @@ defineProps<{
         <span class="text-caption font-medium text-neutral-500">Jour</span>
       </div>
       <NuxtLink
-        :to="to ?? '/products'"
+        :to="target"
         class="bg-neutral-800 hover:bg-neutral-900 rounded-full text-white px-4 py-2 text-body-sm font-medium transition-colors"
       >
         {{ ctaLabel ?? 'Louer' }}

@@ -31,7 +31,7 @@ type ApiProduct = {
   dailyPrice: string | null
   weeklyPrice: string | null
   stock: number
-  category: { slug: string }
+  category: { slug: string; name: string; icon: string | null }
 }
 
 const HIGH_TECH = new Set([
@@ -43,9 +43,17 @@ const HIGH_TECH = new Set([
   'cat_adapters',
 ])
 
-// the frontend keys categories by mock id (cat_*); map the API's category slug back onto it
+type MockCategory = { id: string; name: string; slug: string; icon: string }
+
+// LEGACY (declared limitation): products/[id].vue keys a hardcoded label map on the mock cat_* ids,
+// so `categoryId` still carries the mock id. New consumers must use `categorySlug` instead — it is
+// the real Category.slug from the database and the key the catalog filters and /api/categories share.
 const slugToMockCategory = new Map(
-  (categoriesData as { id: string; slug: string }[]).map((c) => [c.slug, c.id]),
+  (categoriesData as MockCategory[]).map((c) => [c.slug, c.id]),
+)
+
+const mockCategoryById = new Map(
+  (categoriesData as MockCategory[]).map((c) => [c.id, c]),
 )
 
 const flatten = (p: ProductPrice) => p.flat ?? p.daily ?? p.hourly ?? p.weekly ?? 0
@@ -59,6 +67,9 @@ function fromMock() {
       name: p.name,
       description: p.description,
       categoryId: p.categoryId,
+      categorySlug: mockCategoryById.get(p.categoryId)?.slug ?? p.categoryId,
+      categoryName: mockCategoryById.get(p.categoryId)?.name ?? 'Tech',
+      categoryIcon: mockCategoryById.get(p.categoryId)?.icon ?? 'ph:package',
       image: p.image,
       featured: p.featured,
       rating: p.rating,
@@ -82,6 +93,9 @@ export default defineEventHandler(async () => {
       name: p.name,
       description: p.description,
       categoryId: slugToMockCategory.get(p.category.slug) ?? p.category.slug,
+      categorySlug: p.category.slug,
+      categoryName: p.category.name,
+      categoryIcon: p.category.icon ?? 'ph:package',
       image: p.imageUrl,
       featured: p.featured,
       rating: p.rating != null ? Number(p.rating) : 0,

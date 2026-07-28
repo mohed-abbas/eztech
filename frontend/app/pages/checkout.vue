@@ -356,7 +356,7 @@ function submitMockPayment() {
     const orderId = createMockOrder()
     trackCheckoutSuccess()
     clearCart()
-    setTimeout(() => navigateTo(`/orders/${orderId}`), 1200)
+    setTimeout(() => navigateTo(`/order-confirmation?order=${orderId}`), 1200)
   }, 2000)
 }
 
@@ -452,7 +452,7 @@ async function submitLivePayment() {
   trackCheckoutSuccess()
   clearCart()
   void ordersStore.hydrate(true)
-  setTimeout(() => navigateTo(`/orders/${orderId}`), 1200)
+  setTimeout(() => navigateTo(`/order-confirmation?order=${orderId}`), 1200)
 }
 
 function submitPayment() {
