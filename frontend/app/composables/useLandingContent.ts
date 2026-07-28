@@ -14,6 +14,8 @@ export interface FeaturedProduct {
   icon3: string
   spec3: string
   heroIcon: string
+  /** Product photo. Optional — ProductCard falls back to `heroIcon` when absent or broken. */
+  imageUrl?: string | null
   /** Per-product destination. Optional so the catalog can keep passing `to` explicitly. */
   to?: string
 }
@@ -44,6 +46,7 @@ export function catalogToFeatured(p: CatalogProduct): FeaturedProduct {
     type: p.categoryName ?? 'Tech',
     price: eur.format(Number(p.price) || 0),
     heroIcon: p.categoryIcon ?? 'ph:package',
+    imageUrl: p.image ?? null,
     icon1: 'ph:star',
     spec1: p.rating ? `${p.rating}` : '—',
     icon2: 'ph:cube',

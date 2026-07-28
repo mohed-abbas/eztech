@@ -25,7 +25,7 @@ const year = new Date().getFullYear()
     <div class="mx-auto max-w-7xl rounded-3xl border border-neutral-200 bg-white p-8 lg:p-10">
       <div class="flex flex-col lg:flex-row items-start justify-between gap-8">
         <div class="max-w-md flex flex-col gap-5">
-          <NuxtLink to="/" class="flex items-center gap-2">
+          <NuxtLink to="/" class="flex items-center gap-2 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white">
             <div class="size-9 rounded-full bg-primary-500 flex items-center justify-center">
               <Icon name="ph:package" class="size-4 text-white" />
             </div>
@@ -48,7 +48,7 @@ const year = new Date().getFullYear()
                 v-for="link in catalogLinks"
                 :key="link.label"
                 :to="link.to"
-                class="hover:text-neutral-800 transition-colors"
+                class="rounded-sm hover:text-neutral-800 active:text-neutral-900 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               >
                 {{ link.label }}
               </NuxtLink>
@@ -61,7 +61,7 @@ const year = new Date().getFullYear()
                 v-for="link in accountLinks"
                 :key="link.label"
                 :to="link.to"
-                class="hover:text-neutral-800 transition-colors"
+                class="rounded-sm hover:text-neutral-800 active:text-neutral-900 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               >
                 {{ link.label }}
               </NuxtLink>

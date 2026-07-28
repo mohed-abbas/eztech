@@ -280,7 +280,7 @@ const emptyTitle = computed(() =>
         </p>
       </div>
       <button
-        class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+        class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         @click="fetchRiders"
       >
         <Icon name="ph:arrows-clockwise" class="size-4" />
@@ -298,7 +298,7 @@ const emptyTitle = computed(() =>
         :key="t.value"
         role="tab"
         :aria-selected="tab === t.value"
-        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-body-sm font-medium transition"
+        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-body-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         :class="tab === t.value
           ? 'bg-primary-600 text-white shadow-sm'
           : 'text-text-secondary hover:bg-neutral-50'"
@@ -344,7 +344,7 @@ const emptyTitle = computed(() =>
         {{ error }}
       </p>
       <button
-        class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700"
+        class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         @click="fetchRiders"
       >
         Réessayer
@@ -403,7 +403,7 @@ const emptyTitle = computed(() =>
               <button
                 v-if="r.riderApplicationStatus !== 'approved'"
                 :disabled="acting === r.id"
-                class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-body-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-body-sm font-semibold text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="review(r, 'approved')"
               >
                 <Icon
@@ -416,7 +416,7 @@ const emptyTitle = computed(() =>
               <button
                 v-if="r.riderApplicationStatus !== 'rejected'"
                 :disabled="acting === r.id"
-                class="inline-flex items-center gap-1.5 rounded-xl border border-error/30 px-4 py-2 text-body-sm font-semibold text-error transition hover:bg-error/5 disabled:cursor-not-allowed disabled:opacity-40"
+                class="inline-flex items-center gap-1.5 rounded-xl border border-error/30 px-4 py-2 text-body-sm font-semibold text-error transition hover:bg-error/5 disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="review(r, 'rejected')"
               >
                 <Icon name="ph:x" class="size-4" />
@@ -425,7 +425,7 @@ const emptyTitle = computed(() =>
               <button
                 v-if="r.riderApplicationStatus === 'rejected'"
                 :disabled="acting === r.id"
-                class="inline-flex items-center gap-1.5 rounded-xl border border-neutral-200 px-4 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                class="inline-flex items-center gap-1.5 rounded-xl border border-neutral-200 px-4 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="review(r, 'pending')"
               >
                 <Icon name="ph:arrow-counter-clockwise" class="size-4" />
@@ -464,7 +464,7 @@ const emptyTitle = computed(() =>
 
           <!-- Documents -->
           <button
-            class="mt-3 inline-flex items-center gap-1.5 text-body-sm font-medium text-primary-700 transition hover:underline"
+            class="mt-3 inline-flex items-center gap-1.5 text-body-sm font-medium text-primary-700 transition hover:underline outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             @click="toggleDocuments(r)"
           >
             <Icon
@@ -530,7 +530,7 @@ const emptyTitle = computed(() =>
               </div>
               <button
                 :disabled="downloading === d.id"
-                class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-4 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+                class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 px-4 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="downloadDocument(d)"
               >
                 <Icon

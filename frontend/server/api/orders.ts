@@ -14,6 +14,8 @@ interface ApiOrderItem {
 
 interface ApiOrder {
   id: string
+  // human-readable order number (EZ-42B155). The orders list shows this, not the UUID.
+  reference?: string | null
   status: string
   customerId: string | null
   riderId: string | null
@@ -39,6 +41,10 @@ function fromMock() {
 function remap(o: ApiOrder) {
   return {
     id: o.id,
+    // carry the reference through, exactly as server/api/orders/[id].get.ts already does —
+    // without it the orders list headed every card with a raw UUID (same remap()-drops-a-field
+    // shape as the H3 item-name bug below).
+    reference: o.reference ?? null,
     userId: o.customerId ?? 'guest',
     items: (o.items ?? []).map((i) => ({
       productId: i.productId ?? '',

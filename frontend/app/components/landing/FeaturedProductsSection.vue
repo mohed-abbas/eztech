@@ -27,17 +27,14 @@ const { fadeUp } = useMotionPresets()
         </NuxtLink>
       </div>
 
-      <div v-if="featuredPending" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <div v-for="n in 4" :key="n" class="animate-pulse rounded-xl border border-neutral-200 bg-neutral-50 p-4">
-          <div class="mb-3 h-5 w-2/3 rounded bg-neutral-100" />
-          <div class="mb-3 h-3 w-1/3 rounded bg-neutral-100" />
-          <div class="mb-3 h-28 rounded-md bg-neutral-100" />
-          <hr class="my-3 border-neutral-100">
-          <div class="flex items-center justify-between">
-            <div class="h-7 w-20 rounded bg-neutral-100" />
-            <div class="h-9 w-24 rounded-full bg-neutral-100" />
-          </div>
-        </div>
+      <div
+        v-if="featuredPending"
+        role="status"
+        aria-busy="true"
+        aria-label="Chargement des équipements à la une"
+        class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        <ProductCardSkeleton v-for="n in 4" :key="n" />
       </div>
 
       <div v-else-if="featuredProducts.length" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">

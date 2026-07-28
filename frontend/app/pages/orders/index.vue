@@ -152,19 +152,32 @@ async function confirmCancel() {
     <div class="mx-auto max-w-7xl px-6 py-10 sm:px-10">
       <!-- Loading — treat "not yet hydrated" as loading so the empty state never flashes
            before the client fetch runs (SSR returns un-hydrated). Yields to the error state. -->
-      <div v-if="!store.error && (store.loading || !store.hydrated)" class="py-20 text-center text-text-muted">
-        Chargement des commandes...
+      <div
+        v-if="!store.error && (store.loading || !store.hydrated)"
+        role="status"
+        aria-busy="true"
+        aria-label="Chargement des commandes"
+        class="space-y-4"
+      >
+        <OrderCardSkeleton v-for="n in 3" :key="n" />
       </div>
 
       <!-- Error -->
-      <div v-else-if="store.error" class="py-20 text-center">
-        <p class="text-text-muted">
-          Impossible de charger vos commandes pour le moment.
-        </p>
-        <Button variant="outline" size="sm" class="mt-4" @click="store.hydrate(true)">
-          Réessayer
-        </Button>
-      </div>
+      <EmptyState
+        v-else-if="store.error"
+        title="Impossible de charger vos commandes"
+        description="Une erreur est survenue lors du chargement de vos commandes. Veuillez réessayer."
+      >
+        <template #icon>
+          <Icon name="ph:warning-circle" class="size-10 text-error" />
+        </template>
+        <template #actions>
+          <Button variant="gradient" size="pill" class="font-semibold" @click="store.hydrate(true)">
+            <Icon name="ph:arrow-clockwise" class="size-4" />
+            Réessayer
+          </Button>
+        </template>
+      </EmptyState>
 
       <!-- Empty State -->
       <EmptyState
@@ -191,7 +204,7 @@ async function confirmCancel() {
           <button
             v-for="f in filters"
             :key="f.key"
-            class="shrink-0 rounded-full px-4 py-2 text-body-sm font-medium transition-all"
+            class="shrink-0 rounded-full px-4 py-2 text-body-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2"
             :class="activeFilter === f.key
               ? 'bg-primary-600 text-white'
               : 'bg-white text-text-secondary border border-neutral-200 hover:bg-neutral-50'"
@@ -202,18 +215,28 @@ async function confirmCancel() {
         </div>
 
         <!-- Orders List -->
-        <div v-if="filteredOrders.length === 0" class="rounded-2xl border border-neutral-200 bg-white p-12 text-center">
-          <Icon name="ph:magnifying-glass" class="mx-auto size-10 text-neutral-300" />
-          <p class="mt-3 text-body font-medium text-text-primary">Aucune commande trouvée</p>
-          <p class="mt-1 text-body-sm text-text-muted">Essayez un autre filtre</p>
-        </div>
+        <EmptyState
+          v-if="filteredOrders.length === 0"
+          title="Aucune commande trouvée"
+          description="Aucune commande ne correspond à ce filtre. Essayez un autre onglet."
+        >
+          <template #icon>
+            <Icon name="ph:magnifying-glass" class="size-10 text-primary-500" />
+          </template>
+          <template #actions>
+            <Button variant="gradient" size="pill" class="font-semibold" @click="activeFilter = 'all'">
+              <Icon name="ph:list-bullets" class="size-4" />
+              Voir toutes les commandes
+            </Button>
+          </template>
+        </EmptyState>
 
         <div v-else class="space-y-4">
           <NuxtLink
             v-for="order in filteredOrders"
             :key="order.id"
             :to="`/orders/${order.id}`"
-            class="group block rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-all hover:border-primary-300 hover:shadow-md sm:p-6"
+            class="group block rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm transition-all hover:border-primary-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2 sm:p-6"
           >
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <!-- Left: Order Info -->
@@ -226,7 +249,7 @@ async function confirmCancel() {
                 </div>
                 <div>
                   <div class="flex flex-wrap items-center gap-2">
-                    <p class="text-body font-semibold text-text-primary">{{ order.id }}</p>
+                    <p class="text-body font-semibold text-text-primary">{{ order.reference ?? order.id }}</p>
                     <span
                       class="inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-caption font-medium"
                       :class="[STATUS_CONFIG[order.status].color, STATUS_CONFIG[order.status].bg, STATUS_CONFIG[order.status].border]"
@@ -328,7 +351,7 @@ async function confirmCancel() {
     >
       <div class="space-y-4">
         <p class="text-body-sm text-text-secondary">
-          Commande <strong class="text-text-primary">{{ cancelTarget?.id }}</strong> —
+          Commande <strong class="text-text-primary">{{ cancelTarget?.reference ?? cancelTarget?.id }}</strong> —
           {{ cancelTarget?.total.toFixed(2) }} &euro;
         </p>
         <div class="flex items-start gap-3 rounded-xl bg-surface-purple border border-primary-100 px-4 py-3">

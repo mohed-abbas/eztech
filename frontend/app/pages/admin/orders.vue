@@ -531,22 +531,25 @@ const cancelBanner = computed(() => {
     <!-- ═══ Main Content ═══ -->
     <div class="mx-auto max-w-7xl px-6 py-8 sm:px-10">
       <!-- Filters bar -->
-      <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <!-- Search -->
-        <div class="relative flex-1">
+      <!-- sm:flex-wrap: the five controls need ~745px, so between the sm breakpoint (640px)
+           and ~825px the row could not fit them and pushed « Actualiser » off-screen. -->
+      <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <!-- Search. min-w keeps it usable once the bar wraps, instead of collapsing to a
+             sliver because flex-1 gives it a 0 basis. -->
+        <div class="relative min-w-[14rem] flex-1">
           <Icon name="ph:magnifying-glass" class="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
           <input
             v-model="searchQuery"
             type="search"
             placeholder="Référence, client, adresse..."
-            class="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-body-sm text-text-primary placeholder:text-neutral-400 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-body-sm text-text-primary placeholder:text-neutral-400 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
         </div>
 
         <!-- Status -->
         <select
           v-model="statusFilter"
-          class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm text-text-primary focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+          class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
           <option v-for="s in STATUS_OPTIONS" :key="s.value" :value="s.value">
             {{ s.label }}
@@ -557,16 +560,16 @@ const cancelBanner = computed(() => {
         <input
           v-model="dateFrom"
           type="date"
-          class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm text-text-primary focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+          class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
         <input
           v-model="dateTo"
           type="date"
-          class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm text-text-primary focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+          class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm text-text-primary focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
 
         <button
-          class="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+          class="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="fetchOrders"
         >
           <Icon name="ph:arrows-clockwise" class="size-4" />
@@ -586,7 +589,7 @@ const cancelBanner = computed(() => {
           {{ error }}
         </p>
         <button
-          class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700"
+          class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="fetchOrders"
         >
           Réessayer
@@ -692,7 +695,7 @@ const cancelBanner = computed(() => {
                 </p>
               </div>
               <button
-                class="flex size-9 items-center justify-center rounded-xl text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600"
+                class="flex size-9 items-center justify-center rounded-xl text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="closeModal"
               >
                 <Icon name="ph:x" class="size-5" />
@@ -865,17 +868,17 @@ const cancelBanner = computed(() => {
                     type="text"
                     :placeholder="REFUND_CONFIRM_WORD"
                     autocomplete="off"
-                    class="flex-1 rounded-xl border border-amber-300 bg-white px-4 py-2 text-body-sm text-text-primary placeholder:text-neutral-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-100"
+                    class="flex-1 rounded-xl border border-amber-300 bg-white px-4 py-2 text-body-sm text-text-primary placeholder:text-neutral-400 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-600"
                   >
                   <button
-                    class="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+                    class="rounded-xl border border-neutral-200 bg-white px-4 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     @click="resetRefundConfirm()"
                   >
                     Annuler
                   </button>
                   <button
                     :disabled="refunding || refundConfirmText.trim().toUpperCase() !== REFUND_CONFIRM_WORD"
-                    class="rounded-xl bg-error px-4 py-2 text-body-sm font-semibold text-white transition hover:bg-error/90 disabled:cursor-not-allowed disabled:opacity-50"
+                    class="rounded-xl bg-error px-4 py-2 text-body-sm font-semibold text-white transition hover:bg-error/90 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     @click="refundOrder(selectedOrder.id)"
                   >
                     {{ refunding ? 'Remboursement...' : 'Confirmer le remboursement' }}
@@ -895,7 +898,7 @@ const cancelBanner = computed(() => {
                 <button
                   v-if="isCancellable(selectedOrder)"
                   :disabled="cancelling"
-                  class="flex items-center gap-2 rounded-xl bg-error px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-error/90 disabled:opacity-50"
+                  class="flex items-center gap-2 rounded-xl bg-error px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-error/90 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   @click="cancelOrder(selectedOrder.id)"
                 >
                   <Icon name="ph:x-circle" class="size-4" />
@@ -906,7 +909,7 @@ const cancelBanner = computed(() => {
                 <button
                   v-else-if="canRefund(selectedOrder)"
                   :disabled="refunding || showRefundConfirm"
-                  class="flex items-center gap-2 rounded-xl bg-error px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-error/90 disabled:opacity-50"
+                  class="flex items-center gap-2 rounded-xl bg-error px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-error/90 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   @click="showRefundConfirm = true"
                 >
                   <Icon name="ph:arrow-u-up-left" class="size-4" />

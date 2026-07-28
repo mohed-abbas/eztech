@@ -14,10 +14,11 @@ defineEmits<{
 <template>
   <button
     type="button"
-    class="w-full text-left rounded-xl border p-4 transition-all"
+    class="w-full text-left rounded-xl border p-4 transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
     :class="selected
       ? 'border-primary-500 bg-primary-50/30 ring-2 ring-primary-500/20'
-      : 'border-neutral-200 hover:border-neutral-300 bg-white'"
+      : 'border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 active:bg-neutral-100 bg-white'"
+    :aria-pressed="selected"
     @click="$emit('select', address.id)"
   >
     <div class="flex items-start gap-3">
@@ -31,10 +32,10 @@ defineEmits<{
         <p class="font-semibold text-text-primary">
           {{ address.label }}
         </p>
-        <p class="text-sm text-text-secondary">
+        <p class="text-body-sm text-text-secondary">
           {{ address.street }}
         </p>
-        <p class="text-sm text-text-muted">
+        <p class="text-body-sm text-text-muted">
           {{ address.zipCode }} {{ address.city }}
         </p>
       </div>

@@ -30,7 +30,7 @@ function onInput(e: Event) {
   <div class="flex items-center border border-neutral-200 rounded-lg overflow-hidden">
     <button
       type="button"
-      class="w-8 h-9 flex items-center justify-center text-text-secondary hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed"
+      class="w-8 h-9 flex items-center justify-center text-text-secondary transition-colors hover:bg-neutral-50 active:bg-neutral-100 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset disabled:opacity-40 disabled:cursor-not-allowed"
       :disabled="disabled || qty <= min"
       aria-label="Diminuer la quantité"
       @click="dec"
@@ -43,13 +43,13 @@ function onInput(e: Event) {
       :min="min"
       :max="max"
       :disabled="disabled"
-      class="w-12 h-9 text-center font-medium text-text-primary bg-white focus:outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+      class="w-12 h-9 text-center font-medium text-text-primary bg-white outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
       aria-label="Quantité"
       @input="onInput"
     >
     <button
       type="button"
-      class="w-8 h-9 flex items-center justify-center text-text-secondary hover:bg-neutral-50 disabled:opacity-40 disabled:cursor-not-allowed"
+      class="w-8 h-9 flex items-center justify-center text-text-secondary transition-colors hover:bg-neutral-50 active:bg-neutral-100 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset disabled:opacity-40 disabled:cursor-not-allowed"
       :disabled="disabled || qty >= max"
       aria-label="Augmenter la quantité"
       @click="inc"

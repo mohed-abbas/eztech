@@ -258,35 +258,6 @@ authRouter.post('/resend-verification', async (req, res, next) => {
   res.status(200).json({ message: 'if that account exists and is unverified, a link has been sent' });
 });
 
-// POST /api/auth/change-password — authenticated rotation. Verifies the current password before
-// setting the new one (H5). requireAuth ensures we rotate only the caller's own credential.
-authRouter.post('/change-password', requireAuth, async (req, res, next) => {
-  const result = ChangePasswordSchema.safeParse(req.body);
-  if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
-
-  const { currentPassword, newPassword } = result.data;
-  try {
-    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
-    if (!user) return next(new HttpError(404, 'user_not_found'));
-
-    const ok = await verifyPassword(currentPassword, user.passwordHash);
-    if (!ok) return next(new HttpError(400, 'invalid_current_password'));
-
-    const passwordHash = await hashPassword(newPassword);
-    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
-
-    // evict every existing session, then re-issue one for the current device so the caller stays
-    // logged in while any other (possibly stolen) session is invalidated (06-REVIEW blocker).
-    await revokeAllRefreshTokens(user.id);
-    const token = signAccessToken({ sub: user.id, role: user.role });
-    const refreshToken = await generateRefreshToken(user.id);
-    const csrfToken = setAuthCookies(res, { token, refreshToken });
-    res.status(200).json({ message: 'password changed successfully', token, refreshToken, csrfToken });
-  } catch (err) {
-    next(err);
-  }
-});
-
 // POST /api/auth/google — Google Identity Services sign-in. The browser posts the GIS ID token as
 // `credential`; we verify it against GOOGLE_CLIENT_ID, then upsert the user by verified email and
 // issue our own JWT + httpOnly cookies (same session shape as register/login, Phase 7).

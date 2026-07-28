@@ -103,10 +103,12 @@ watch(
       class="mx-auto max-w-7xl h-full flex items-center justify-between px-4 sm:px-6 lg:px-8"
     >
       <!-- Left: Logo + Nav links -->
-      <div class="flex items-center gap-8">
+      <!-- min-w-0 so the nav can never push the right-hand cluster (bell + account menu)
+           out of the fixed header, which has no scrollbar to recover it. -->
+      <div class="flex min-w-0 items-center gap-8">
         <NuxtLink
           to="/products"
-          class="flex items-center gap-2.5 group shrink-0"
+          class="flex items-center gap-2.5 group shrink-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           <div
             class="size-9 rounded-full bg-primary-500 flex items-center justify-center transition-transform duration-300 group-hover:scale-110"
@@ -119,12 +121,15 @@ watch(
         </NuxtLink>
 
         <!-- Desktop nav links -->
-        <nav class="hidden md:flex items-center gap-1">
+        <!-- lg, not md: the widest nav (rider, 7 items) needs ~1019px before the right-hand
+             cluster still fits. Switching at md left the bell and account menu off-screen
+             between 768px and ~1018px with no way to scroll to them. -->
+        <nav class="hidden lg:flex min-w-0 items-center gap-1">
           <NuxtLink
             v-for="item in navItems"
             :key="item.to"
             :to="item.to"
-            class="relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+            class="relative flex items-center gap-1.5 px-3 py-2 rounded-lg text-body-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             :class="
               isActive(item.to)
                 ? 'text-primary-600 bg-primary-50'
@@ -138,12 +143,12 @@ watch(
       </div>
 
       <!-- Right: Cart + Avatar + Mobile toggle -->
-      <div class="flex items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2">
         <!-- Cart button (customers only) -->
         <NuxtLink
           v-if="showCart"
           to="/cart"
-          class="relative flex items-center justify-center size-10 rounded-lg transition-colors"
+          class="relative flex items-center justify-center size-10 rounded-lg transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           :class="
             isActive('/cart')
               ? 'text-primary-600 bg-primary-50'
@@ -177,10 +182,14 @@ watch(
         <div
           v-if="isAuthenticated"
           ref="dropdownRef"
-          class="relative hidden md:block"
+          class="relative hidden lg:block"
         >
           <button
-            class="flex items-center gap-2 rounded-full p-1 pr-3 transition-colors hover:bg-neutral-50"
+            class="flex items-center gap-2 rounded-full p-1 pr-3 transition-colors hover:bg-neutral-50 active:bg-neutral-100 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+            type="button"
+            :aria-expanded="dropdownOpen"
+            aria-haspopup="menu"
+            aria-label="Menu du compte"
             @click.stop="dropdownOpen = !dropdownOpen"
           >
             <div
@@ -236,7 +245,7 @@ watch(
                 <NuxtLink
                   v-if="user?.role == 'admin'"
                   to="/admin"
-                  class="flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
+                  class="flex items-center gap-3 px-4 py-2.5 text-body-sm text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset"
                   @click="dropdownOpen = false"
                 >
                   <Icon name="ph:gauge" class="size-4 text-neutral-400" />
@@ -245,7 +254,7 @@ watch(
 
                 <NuxtLink
                   to="/profile"
-                  class="flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
+                  class="flex items-center gap-3 px-4 py-2.5 text-body-sm text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset"
                   @click="dropdownOpen = false"
                 >
                   <Icon name="ph:user-circle" class="size-4 text-neutral-400" />
@@ -255,7 +264,7 @@ watch(
                 <NuxtLink
                   v-if="role === 'customer'"
                   to="/orders"
-                  class="flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors"
+                  class="flex items-center gap-3 px-4 py-2.5 text-body-sm text-neutral-700 hover:bg-neutral-50 active:bg-neutral-100 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset"
                   @click="dropdownOpen = false"
                 >
                   <Icon name="ph:receipt" class="size-4 text-neutral-400" />
@@ -267,7 +276,8 @@ watch(
 
               <div class="py-1">
                 <button
-                  class="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  class="flex w-full items-center gap-3 px-4 py-2.5 text-body-sm text-error hover:bg-error/5 active:bg-error/10 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-inset"
+                  type="button"
                   @click="handleLogout"
                 >
                   <Icon name="ph:sign-out" class="size-4" />
@@ -280,7 +290,8 @@ watch(
 
         <!-- Mobile hamburger -->
         <button
-          class="md:hidden flex items-center justify-center size-10 rounded-lg text-neutral-500 hover:bg-neutral-50 transition-colors"
+          class="lg:hidden flex items-center justify-center size-10 rounded-lg text-neutral-500 hover:bg-neutral-50 active:bg-neutral-100 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          type="button"
           aria-label="Ouvrir le menu"
           :aria-expanded="mobileOpen"
           aria-controls="mobile-menu"
@@ -312,14 +323,14 @@ watch(
       <div
         v-if="mobileOpen"
         id="mobile-menu"
-        class="md:hidden absolute top-full inset-x-0 bg-white/95 backdrop-blur-xl border-b border-neutral-200/60 shadow-lg"
+        class="lg:hidden absolute top-full inset-x-0 bg-white/95 backdrop-blur-xl border-b border-neutral-200/60 shadow-lg"
       >
         <nav class="px-4 py-3 space-y-1">
           <NuxtLink
             v-for="item in navItems"
             :key="item.to"
             :to="item.to"
-            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-body-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             :class="
               isActive(item.to)
                 ? 'text-primary-600 bg-primary-50'
@@ -359,7 +370,7 @@ watch(
           <div class="space-y-1">
             <NuxtLink
               to="/profile"
-              class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-neutral-600 hover:bg-neutral-50 transition-colors"
+              class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-body-sm font-medium text-neutral-600 hover:bg-neutral-50 active:bg-neutral-100 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               @click="closeMobile"
             >
               <Icon name="ph:user-circle" class="size-4 text-neutral-400" />
@@ -367,7 +378,8 @@ watch(
             </NuxtLink>
 
             <button
-              class="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+              class="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-body-sm font-medium text-error hover:bg-error/5 active:bg-error/10 transition-colors outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              type="button"
               @click="handleLogout"
             >
               <Icon name="ph:sign-out" class="size-4" />

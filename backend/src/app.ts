@@ -10,7 +10,7 @@ import { uploadsRouter } from './routes/uploads.js';
 import { errorHandler } from './middleware/error.js';
 import { notFoundHandler } from './middleware/notFound.js';
 import { csrfProtection } from './middleware/csrf.js';
-import { authLimiter } from './middleware/rateLimit.js';
+import { authLimiter, RATE_LIMITED_AUTH_PATHS } from './middleware/rateLimit.js';
 
 export function buildApp() {
   const app = express();
@@ -45,9 +45,18 @@ export function buildApp() {
       credentials: true,
     }),
   );
-  // Thin express-rate-limit backstop on /api/auth (D-04) — see middleware/rateLimit.ts for why
-  // nginx is primary. Never mounted on /socket.io/, which bypasses this Express app entirely.
-  app.use('/api/auth', authLimiter);
+  // Thin express-rate-limit backstop on the CREDENTIAL endpoints of /api/auth (D-04) — see
+  // middleware/rateLimit.ts for why nginx is primary. Never mounted on /socket.io/, which
+  // bypasses this Express app entirely.
+  //
+  // Deliberately per-route, NOT `app.use('/api/auth', ...)`. The limiter is 50 requests per
+  // 15 min PER IP, and the frontend calls GET /api/auth/me on every navigation (stores/auth.ts
+  // init()). Mounting it on the whole router meant ~50 page views logged a user out, and every
+  // user behind one NAT/office/carrier gateway shared that budget. /me and /logout carry no
+  // guessable secret, so they get no limiter; everything that verifies a credential does.
+  // La liste vit dans middleware/rateLimit.ts pour qu'un test puisse verifier qu'aucune route
+  // d'authentification n'y echappe (tests/auth-rate-limit.test.ts).
+  app.use([...RATE_LIMITED_AUTH_PATHS], authLimiter);
   // Stripe webhook needs the UNPARSED body for signature verification, so it must be mounted
   // with express.raw BEFORE the global express.json and OUTSIDE the /api router (Pitfall 1).
   // Server-to-server (no browser Origin) — intentionally not in the CORS allowlist.

@@ -63,7 +63,8 @@ const hasRealImage = computed(() =>
             </p>
           </div>
           <button
-            class="text-text-muted hover:text-error transition-colors shrink-0"
+            type="button"
+            class="text-text-muted hover:text-error active:text-error/80 transition-colors shrink-0 rounded-lg p-1 -m-1 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             aria-label="Supprimer"
             @click="emit('remove', item.productId)"
           >

@@ -54,7 +54,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
             </h2>
             <slot v-else name="header" />
             <button
-              class="ml-auto flex size-9 shrink-0 items-center justify-center rounded-xl text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600"
+              class="ml-auto flex size-9 shrink-0 items-center justify-center rounded-xl text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-600 active:bg-neutral-200 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+              type="button"
               aria-label="Fermer"
               @click="emit('close')"
             >

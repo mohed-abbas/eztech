@@ -572,7 +572,7 @@ async function setActive(p: Product, isActive: boolean) {
             </p>
           </div>
           <button
-            class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-body-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-600"
+            class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-body-sm font-semibold text-white shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-600 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             @click="openCreate"
           >
             <Icon name="ph:plus" class="size-4" />
@@ -595,12 +595,12 @@ async function setActive(p: Product, isActive: boolean) {
             v-model="searchQuery"
             type="search"
             placeholder="Rechercher un produit..."
-            class="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
         </div>
         <select
           v-model="categoryFilter"
-          class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+          class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
           <option value="all">Toutes les catégories</option>
           <option v-for="c in categories" :key="c.id" :value="c.id">
@@ -624,7 +624,7 @@ async function setActive(p: Product, isActive: boolean) {
           </span>
         </label>
         <button
-          class="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+          class="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="fetchAll"
         >
           <Icon name="ph:arrows-clockwise" class="size-4" /> Actualiser
@@ -638,7 +638,7 @@ async function setActive(p: Product, isActive: boolean) {
       >
         <Icon name="ph:warning-circle" class="mt-0.5 size-4 shrink-0" />
         <span class="flex-1">{{ rowError }}</span>
-        <button class="shrink-0 font-medium underline" @click="rowError = null">
+        <button class="shrink-0 font-medium underline outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white" @click="rowError = null">
           Fermer
         </button>
       </div>
@@ -666,7 +666,7 @@ async function setActive(p: Product, isActive: boolean) {
         />
         <p class="text-body font-medium text-error">{{ error }}</p>
         <button
-          class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700"
+          class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="fetchAll"
         >
           Réessayer
@@ -684,7 +684,7 @@ async function setActive(p: Product, isActive: boolean) {
         /></template>
         <template #actions>
           <button
-            class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-emerald-600"
+            class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-emerald-600 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             @click="openCreate"
           >
             <Icon name="ph:plus" class="size-4" /> Créer un produit
@@ -706,16 +706,15 @@ async function setActive(p: Product, isActive: boolean) {
         >
           <!-- Image -->
           <div class="relative h-40 overflow-hidden bg-neutral-100">
-            <img
-              v-if="p.imageUrl"
+            <ProductImage
               :src="p.imageUrl"
               :alt="p.name"
-              class="size-full object-cover transition duration-300 group-hover:scale-105"
-              :class="{ 'grayscale': !p.isActive }"
-            >
-            <div v-else class="flex size-full items-center justify-center">
-              <Icon name="ph:image" class="size-10 text-neutral-300" />
-            </div>
+              :img-class="[
+                'size-full object-cover transition duration-300 group-hover:scale-105',
+                p.isActive ? '' : 'grayscale',
+              ]"
+              icon-class="size-10 text-neutral-300"
+            />
             <!-- Badges -->
             <div class="absolute left-3 top-3 flex gap-1.5">
               <span
@@ -779,7 +778,7 @@ async function setActive(p: Product, isActive: boolean) {
             <!-- Actions -->
             <div class="mt-4 flex items-center gap-2">
               <button
-                class="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2 text-body-sm font-medium text-text-secondary transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                class="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 py-2 text-body-sm font-medium text-text-secondary transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="openEdit(p)"
               >
                 <Icon name="ph:pencil-simple" class="size-4" /> Modifier
@@ -789,7 +788,7 @@ async function setActive(p: Product, isActive: boolean) {
                 :disabled="toggling === p.id"
                 title="Désactiver"
                 aria-label="Désactiver"
-                class="flex size-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-400 transition hover:border-error/30 hover:bg-error/5 hover:text-error disabled:opacity-40"
+                class="flex size-9 items-center justify-center rounded-xl border border-neutral-200 text-neutral-400 transition hover:border-error/30 hover:bg-error/5 hover:text-error disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="setActive(p, false)"
               >
                 <Icon
@@ -806,7 +805,7 @@ async function setActive(p: Product, isActive: boolean) {
               <button
                 v-else
                 :disabled="toggling === p.id"
-                class="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-body-sm font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-40"
+                class="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-body-sm font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="setActive(p, true)"
               >
                 <Icon
@@ -848,8 +847,8 @@ async function setActive(p: Product, isActive: boolean) {
             placeholder="Nom du produit"
             class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
             :class="err('name')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-neutral-200 focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('name')"
           >
           <p v-if="err('name')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -870,8 +869,8 @@ async function setActive(p: Product, isActive: boolean) {
             placeholder="mon-produit"
             class="w-full rounded-xl border bg-neutral-50 px-4 py-2.5 font-mono text-body-sm focus:outline-none focus:ring-2"
             :class="err('slug')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-neutral-200 focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('slug')"
           >
           <p v-if="err('slug')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -892,7 +891,7 @@ async function setActive(p: Product, isActive: boolean) {
             v-model="form.description"
             rows="3"
             placeholder="Description du produit..."
-            class="w-full resize-none rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full resize-none rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
 
@@ -908,8 +907,8 @@ async function setActive(p: Product, isActive: boolean) {
             placeholder="https://..."
             class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
             :class="err('imageUrl')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-neutral-200 focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('imageUrl')"
           >
           <p v-if="err('imageUrl')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -921,11 +920,12 @@ async function setActive(p: Product, isActive: boolean) {
             v-if="form.imageUrl"
             class="mt-2 h-28 w-full overflow-hidden rounded-xl border border-neutral-100 bg-neutral-50"
           >
-            <img
+            <ProductImage
               :src="form.imageUrl"
-              alt="preview"
-              class="size-full object-cover"
-            >
+              alt="Aperçu de l'image du produit"
+              img-class="size-full object-cover"
+              icon-class="size-8 text-neutral-300"
+            />
           </div>
         </div>
 
@@ -973,8 +973,8 @@ async function setActive(p: Product, isActive: boolean) {
             placeholder="0.00"
             class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
             :class="err('flatPrice')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-neutral-200 focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('flatPrice')"
             @input="touch('flatPrice')"
           >
@@ -999,8 +999,8 @@ async function setActive(p: Product, isActive: boolean) {
                 placeholder="0.00"
                 class="w-full rounded-xl border px-3 py-2 text-body-sm focus:outline-none focus:ring-2"
                 :class="err(t.key)
-                  ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-                  : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+                  ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+                  : 'border-neutral-200 focus:border-primary-500 focus:ring-primary-500'"
                 @blur="touchTier(t.key)"
                 @input="touchTier(t.key)"
                 @change="touchTier(t.key)"
@@ -1037,8 +1037,8 @@ async function setActive(p: Product, isActive: boolean) {
             placeholder="0"
             class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
             :class="err('stock')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-neutral-200 focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('stock')"
             @input="touch('stock')"
           >
@@ -1064,8 +1064,8 @@ async function setActive(p: Product, isActive: boolean) {
               v-model="form.categoryId"
               class="w-full rounded-xl border px-3 py-2.5 text-body-sm focus:outline-none focus:ring-2"
               :class="err('categoryId')
-                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-                : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+                : 'border-neutral-200 focus:border-primary-500 focus:ring-primary-500'"
               @blur="touch('categoryId')"
               @change="touch('categoryId')"
             >
@@ -1089,7 +1089,7 @@ async function setActive(p: Product, isActive: boolean) {
             >
             <select
               v-model="form.brandId"
-              class="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+              class="w-full rounded-xl border border-neutral-200 px-3 py-2.5 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="">Aucune</option>
               <option v-for="b in brands" :key="b.id" :value="b.id">
@@ -1179,7 +1179,7 @@ async function setActive(p: Product, isActive: boolean) {
                champs comme visités et affiche les erreurs avant tout appel API. -->
           <button
             :disabled="saving"
-            class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+            class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             :class="{ 'opacity-70': !formValid && submitAttempted }"
             :title="!formValid ? 'Remplissez les champs obligatoires' : ''"
             @click="save"
@@ -1199,7 +1199,7 @@ async function setActive(p: Product, isActive: boolean) {
             }}
           </button>
           <button
-            class="rounded-xl border border-neutral-200 px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+            class="rounded-xl border border-neutral-200 px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             @click="closeModal"
           >
             Annuler

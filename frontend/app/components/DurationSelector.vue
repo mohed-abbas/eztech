@@ -32,13 +32,13 @@ function onUnitChange(e: Event) {
       :value="value"
       type="number"
       min="1"
-      class="w-16 h-9 px-2 text-center border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+      class="w-16 h-9 px-2 text-center border border-neutral-200 rounded-lg transition outline-none hover:border-neutral-300 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-primary-500 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
       aria-label="Valeur de durée"
       @input="onValueInput"
     >
     <select
       :value="unit"
-      class="h-9 px-2 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+      class="h-9 px-2 border border-neutral-200 rounded-lg text-body-sm bg-white transition outline-none hover:border-neutral-300 focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:border-primary-500"
       aria-label="Unité de durée"
       @change="onUnitChange"
     >

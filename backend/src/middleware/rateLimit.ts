@@ -1,5 +1,30 @@
 import rateLimit from 'express-rate-limit';
 
+// Les routes de /api/auth qui verifient un secret devinable et doivent donc porter le backstop.
+// Volontairement une liste explicite plutot que `app.use('/api/auth', ...)` : le limiteur est de
+// 50 requetes / 15 min / IP et le front appelle GET /api/auth/me a chaque navigation, donc monter
+// le limiteur sur tout le routeur deconnectait l'utilisateur au bout d'une cinquantaine de pages —
+// et tous les utilisateurs derriere un meme NAT partageaient ce budget.
+//
+// `/me` et `/logout` en sont exclus a dessein : ils n'exposent aucun secret devinable (`/me` exige
+// deja un token valide). Toute NOUVELLE route de auth.ts qui verifie un mot de passe, un token de
+// reinitialisation ou une identite externe doit etre ajoutee ici — le test
+// backend/tests/auth-rate-limit.test.ts echoue sinon.
+export const RATE_LIMITED_AUTH_PATHS = [
+  '/api/auth/login',
+  '/api/auth/register',
+  '/api/auth/refresh',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email',
+  '/api/auth/resend-verification',
+  '/api/auth/change-password',
+  '/api/auth/google',
+] as const;
+
+// Les seules routes de /api/auth legitimement non limitees.
+export const UNLIMITED_AUTH_PATHS = ['/me', '/logout'] as const;
+
 // Thin app-layer backstop for /api/auth. nginx's `eztech_auth` limit_req zone (rate=5r/m, plan
 // 08-07) is the PRIMARY limiter (D-04) — it fronts every request before it reaches this process.
 // This limiter only matters if traffic somehow bypasses nginx, so it is deliberately looser than

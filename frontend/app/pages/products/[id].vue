@@ -295,13 +295,15 @@ function addToCart() {
                   </span>
                 </div>
 
-                <!-- CTA buttons -->
+                <!-- CTA buttons. The primary button is `w-full sm:flex-1`, never a bare
+                     `flex-1`: while the container is flex-col, flex-basis:0 applies to the
+                     vertical axis and collapses the button's h-14 to ~26px. -->
                 <div class="flex flex-col sm:flex-row gap-3">
                   <Button
                     v-if="!isOutOfStock"
                     size="lg"
                     :variant="added ? 'default' : 'gradient'"
-                    class="flex-1 rounded-full h-14 text-base"
+                    class="w-full sm:flex-1 rounded-full h-14 text-base"
                     :class="added ? 'bg-success hover:bg-success' : ''"
                     @click="addToCart"
                   >
@@ -313,7 +315,7 @@ function addToCart() {
                     v-else
                     size="lg"
                     variant="secondary"
-                    class="flex-1 rounded-full h-14 text-base cursor-not-allowed"
+                    class="w-full sm:flex-1 rounded-full h-14 text-base cursor-not-allowed"
                     disabled
                   >
                     <Icon name="lucide:package-x" class="size-5" />
@@ -383,7 +385,9 @@ function addToCart() {
       <section class="bg-neutral-50 border-t border-neutral-100">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 lg:py-16">
           <Tabs default-value="description" class="w-full">
-            <TabsList class="w-full sm:w-auto rounded-xl bg-surface-lilac p-1 h-auto">
+            <!-- The three triggers measure 433px and do not shrink; at 375px a centred w-full
+                 list bled ~29px off BOTH edges. Scroll the strip instead of overflowing the page. -->
+            <TabsList class="w-full sm:w-auto max-w-full justify-start overflow-x-auto rounded-xl bg-surface-lilac p-1 h-auto">
               <TabsTrigger value="description" class="rounded-lg px-5 py-2.5 text-body-sm data-[state=active]:bg-white data-[state=active]:text-primary-700 data-[state=active]:shadow-sm">
                 <Icon name="lucide:file-text" class="mr-1.5 size-4" />
                 Description
@@ -509,7 +513,10 @@ function addToCart() {
                 Notre équipe est disponible 7j/7 pour vous conseiller et trouver l'équipement idéal pour vos besoins.
               </p>
             </div>
-            <div class="flex items-center gap-3">
+            <!-- Stacks below sm: the two whitespace-nowrap px-8 pills measure 476px together,
+                 which overflowed a 375px viewport by 50px and pushed the first button off the
+                 left edge, where it could not be scrolled back into view. -->
+            <div class="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
               <Button as-child variant="gradient" size="pill" class="h-14 px-8 text-base">
                 <NuxtLink to="/products">
                   <Icon name="lucide:search" class="size-5" />

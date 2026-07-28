@@ -411,7 +411,7 @@ const barOptions = computed(() => ({
             <button
               v-for="p in [7, 30, 90] as const"
               :key="p"
-              class="rounded-xl px-4 py-2 text-body-sm font-medium transition"
+              class="rounded-xl px-4 py-2 text-body-sm font-medium transition outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               :class="period === p
                 ? 'bg-primary-500 text-white shadow-sm'
                 : 'text-neutral-400 hover:text-white'"
@@ -433,7 +433,7 @@ const barOptions = computed(() => ({
           {{ pageError }}
         </p>
         <button
-          class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700"
+          class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="loadAll"
         >
           Réessayer
@@ -564,7 +564,7 @@ const barOptions = computed(() => ({
           </template>
           <template #actions>
             <button
-              class="rounded-xl border border-neutral-200 px-5 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+              class="rounded-xl border border-neutral-200 px-5 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               @click="period = 90"
             >
               Voir les 90 derniers jours
@@ -597,7 +597,7 @@ const barOptions = computed(() => ({
                   {{ ordersError }}
                 </p>
                 <button
-                  class="rounded-xl border border-neutral-200 bg-white px-4 py-1.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+                  class="rounded-xl border border-neutral-200 bg-white px-4 py-1.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   @click="loadAll"
                 >
                   Réessayer
@@ -631,7 +631,7 @@ const barOptions = computed(() => ({
                   {{ revenueError }}
                 </p>
                 <button
-                  class="rounded-xl border border-neutral-200 bg-white px-4 py-1.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+                  class="rounded-xl border border-neutral-200 bg-white px-4 py-1.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   @click="loadAll"
                 >
                   Réessayer

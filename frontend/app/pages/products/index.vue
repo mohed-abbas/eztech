@@ -149,6 +149,7 @@ function toFeaturedProduct(p: Product): FeaturedProduct {
     type: getCategoryName(p),
     price: `€${Number(p.price).toFixed(2)}`,
     heroIcon: getCategoryIcon(p),
+    imageUrl: p.image ?? null,
     icon1: 'ph:star',
     spec1: p.rating ? `${p.rating}` : '—',
     icon2: 'ph:cube',
@@ -229,7 +230,7 @@ function toFeaturedProduct(p: Product): FeaturedProduct {
               v-if="search"
               type="button"
               aria-label="Effacer la recherche"
-              class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-neutral-400 transition-colors hover:bg-white/10 hover:text-white"
+              class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-neutral-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
               @click="search = ''"
             >
               <Icon name="ph:x" class="size-4" />
@@ -248,22 +249,13 @@ function toFeaturedProduct(p: Product): FeaturedProduct {
           <p class="text-body text-text-muted">Chargement des produits…</p>
         </div>
         <!-- Skeleton grid -->
-        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          <div v-for="n in 8" :key="n" class="animate-pulse rounded-xl border border-neutral-200 bg-white p-4">
-            <div class="mb-3 h-5 w-2/3 rounded bg-neutral-100" />
-            <div class="mb-3 h-3 w-1/3 rounded bg-neutral-100" />
-            <div class="mb-3 h-28 rounded-md bg-neutral-100" />
-            <div class="flex gap-2">
-              <div class="h-4 w-12 rounded bg-neutral-100" />
-              <div class="h-4 w-12 rounded bg-neutral-100" />
-              <div class="h-4 w-12 rounded bg-neutral-100" />
-            </div>
-            <hr class="my-3 border-neutral-100">
-            <div class="flex items-center justify-between">
-              <div class="h-7 w-20 rounded bg-neutral-100" />
-              <div class="h-9 w-24 rounded-full bg-neutral-100" />
-            </div>
-          </div>
+        <div
+          role="status"
+          aria-busy="true"
+          aria-label="Chargement des produits"
+          class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+        >
+          <ProductCardSkeleton v-for="n in 8" :key="n" />
         </div>
       </div>
 
@@ -324,7 +316,7 @@ function toFeaturedProduct(p: Product): FeaturedProduct {
               type="button"
               :aria-pressed="!activeCategory"
               :class="[
-                'inline-flex items-center gap-2 rounded-full px-4 py-2 text-body-sm font-medium transition-all',
+                'inline-flex items-center gap-2 rounded-full px-4 py-2 text-body-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2',
                 !activeCategory
                   ? 'bg-primary-500 text-white shadow-sm'
                   : 'bg-surface-purple border border-primary-100 text-text-secondary hover:border-primary-300 hover:text-primary-600',
@@ -340,7 +332,7 @@ function toFeaturedProduct(p: Product): FeaturedProduct {
               type="button"
               :aria-pressed="activeCategory === cat.slug"
               :class="[
-                'inline-flex items-center gap-2 rounded-full px-4 py-2 text-body-sm font-medium transition-all',
+                'inline-flex items-center gap-2 rounded-full px-4 py-2 text-body-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2',
                 activeCategory === cat.slug
                   ? 'bg-primary-500 text-white shadow-sm'
                   : 'bg-surface-purple border border-primary-100 text-text-secondary hover:border-primary-300 hover:text-primary-600',
