@@ -100,6 +100,14 @@ async function advance() {
 
 const nextStep = computed(() => rider.activeDelivery ? NEXT_STATUS[rider.activeDelivery.status] : undefined)
 
+// ─── Emission GPS pendant le transport ──────────────────────────────────────
+// Ce tableau de bord porte la meme carte de livraison active et le meme bouton d'avancement que
+// /rider/deliveries, mais il n'emettait aucune position : un livreur qui travaille depuis cet
+// ecran (c'est ici que se trouvent le bouton En ligne et le vivier de commandes) laissait la
+// carte du client vide. Le watch GPS est partage et compte ses references, donc passer d'un
+// ecran a l'autre ne double ni les fixes ni les emissions.
+const { sharing: gpsSharing } = useRiderGpsSharing(() => rider.activeDelivery)
+
 // ─── Contenu du colis ───────────────────────────────────────────────────────
 // Ecran telephone, livreur sur un vélo : on montre les premieres lignes et on compte le reste.
 const MAX_PREVIEW_ITEMS = 3
@@ -257,6 +265,15 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
           <Icon name="ph:warning-circle" class="mt-0.5 size-4 shrink-0" />
           <span>{{ advanceError }}</span>
         </p>
+
+        <!-- meme formulation que /rider/deliveries : le livreur doit savoir que sa position part -->
+        <div v-if="gpsSharing" class="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-body-sm text-success">
+          <span class="relative flex size-2">
+            <span class="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
+            <span class="relative inline-flex size-2 rounded-full bg-success" />
+          </span>
+          Position partagée en direct avec le client
+        </div>
       </CardContent>
 
       <CardFooter class="flex flex-wrap gap-2 p-0">
