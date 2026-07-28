@@ -13,6 +13,7 @@ import { warehousesRouter } from './warehouses.js';
 import { inventoryRouter } from './inventory.js';
 import { paymentsRouter } from './payments.js';
 import { notificationsRouter } from './notifications.js';
+import { analyticsRouter } from './analytics.js';
 
 export const apiRouter = Router();
 
@@ -30,6 +31,10 @@ apiRouter.use('/zones', zonesRouter);
 apiRouter.use('/warehouses', warehousesRouter);
 apiRouter.use('/inventory', inventoryRouter);
 apiRouter.use('/payments', paymentsRouter);
+// /api/analytics n'est PAS dans l'allowlist nginx detournee vers le BFF Nuxt (verifie en prod :
+// GET /api/analytics/orders-per-day repond 404 {"error":"not_found"}, le notFoundHandler Express),
+// donc pas d'alias /api/admin/analytics ni de changement nginx a prevoir.
+apiRouter.use('/analytics', analyticsRouter);
 
 // Production nginx path-splits a small allowlist of /api paths (products, orders, zones, config,
 // geocode) to the Nuxt BFF, which serves a storefront-shaped remap: /api/products answers with a
