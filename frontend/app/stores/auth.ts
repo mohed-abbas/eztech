@@ -75,6 +75,10 @@ export const useAuthStore = defineStore('auth', {
     refreshToken: null as string | null,
     loading: false,
     hydrated: false,
+    // true when a session cookie is present but /auth/me could NOT be resolved for a transient
+    // reason (429, 5xx, network). It means "auth state unknown", which is NOT the same as
+    // "logged out" — the auth middleware must not bounce the user to /login on it.
+    sessionUnresolved: false,
   }),
 
   getters: {
@@ -124,6 +128,15 @@ export const useAuthStore = defineStore('auth', {
       else {
         localStorage.removeItem(AUTH_STORAGE_KEY)
       }
+    },
+
+    // drops local session state without the server round-trip or the redirect that logout() does.
+    // Used when the backend has already told us the session is gone (401/403).
+    clearSession() {
+      this.user = null
+      this.token = null
+      this.refreshToken = null
+      this.persist()
     },
 
     // exchanges the refresh token (cookie or in-memory) for a fresh access token; returns false if it can't
@@ -176,10 +189,37 @@ export const useAuthStore = defineStore('auth', {
 
     // one-shot session bootstrap, safe on both server and client. Restores the header-path token from
     // localStorage (client) and, when a session cookie is present but no user is loaded, fetches /me.
+    //
+    // Errors are classified, never blanket-swallowed. `await this.me().catch(() => {})` used to
+    // treat ANY failure as "logged out": one 429 from the shared auth rate limit (or any backend
+    // hiccup) left `user` null, and the auth middleware then redirected a perfectly valid session
+    // to /login. Only 401/403 actually mean the session is gone.
     async init(): Promise<void> {
       if (import.meta.client) this.hydrate()
-      if (!this.user && useCookie('ez_csrf').value) {
-        await this.me().catch(() => {})
+      if (this.user || !useCookie('ez_csrf').value) return
+
+      // one cheap retry: a transient blip usually clears within a few hundred ms, and this runs
+      // once per navigation, not per request.
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          await this.me()
+          this.sessionUnresolved = false
+          return
+        }
+        catch (err: unknown) {
+          const status = (err as { status?: number, statusCode?: number, response?: { status?: number } })
+          const code = status?.status ?? status?.statusCode ?? status?.response?.status ?? 0
+          if (code === 401 || code === 403) {
+            // definitive: the session really is invalid. Drop it so the UI stops claiming
+            // otherwise, then let the middleware redirect.
+            this.sessionUnresolved = false
+            this.clearSession()
+            return
+          }
+          // transient (429 / 5xx / network): keep whatever session we already have.
+          this.sessionUnresolved = true
+          if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 300))
+        }
       }
     },
 

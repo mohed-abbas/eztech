@@ -65,13 +65,31 @@ async function handleSubmit() {
     await navigateTo(redirect || '/products')
   }
   catch (err: unknown) {
-    if (err instanceof Error) {
-      errors.general = err.message
-    }
-    else {
-      errors.general = 'Une erreur inattendue est survenue. Veuillez réessayer.'
-    }
+    errors.general = loginErrorMessage(err)
   }
+}
+
+// Maps a login failure onto French copy. Never surface `err.message` directly: ofetch builds it
+// as `[POST] "http://localhost:3001/api/auth/login": 429 Too Many Requests`, which leaked the
+// backend origin and untranslated English into the UI.
+function loginErrorMessage(err: unknown): string {
+  const e = err as {
+    status?: number
+    statusCode?: number
+    response?: { status?: number }
+    data?: { error?: string }
+    message?: string
+  }
+  const status = e?.status ?? e?.statusCode ?? e?.response?.status ?? 0
+
+  // mock mode throws a plain Error with copy already written for the user
+  if (status === 0 && err instanceof Error && !/^\[\w+\]/.test(err.message)) return err.message
+
+  if (status === 400 || status === 401) return 'Email ou mot de passe incorrect.'
+  if (status === 403) return 'Votre compte n\'est pas autorisé à se connecter. Contactez le support.'
+  if (status === 429) return 'Trop de tentatives de connexion. Réessayez dans quelques minutes.'
+  if (status >= 500) return 'Le service est momentanément indisponible. Réessayez dans un instant.'
+  return 'Une erreur inattendue est survenue. Veuillez réessayer.'
 }
 
 const { public: { useMock } } = useRuntimeConfig()
