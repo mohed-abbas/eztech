@@ -1,4 +1,5 @@
-import { test, expect, type Page, request as playwrightRequest } from '@playwright/test'
+import { test, expect, request as playwrightRequest } from '@playwright/test'
+import { waitForHydration } from './helpers'
 
 // Parcours livreur de bout en bout : inscription (via seed) → passage en ligne → acceptation
 // d'une commande → mises à jour de statut jusqu'à livrée → gains crédités.
@@ -15,14 +16,6 @@ const CUSTOMER_PASSWORD = process.env.E2E_PASSWORD ?? 'password123'
 
 // Les 4 transitions successives déclenchées par le livreur (libellés = NEXT_STATUS, stores/rider.ts).
 const ADVANCE_LABELS = ["Arrivé à l'entrepôt", 'Colis récupéré', 'En route vers le client', 'Livraison effectuée']
-
-// Attendre que Vue ait fini l'hydratation avant la première interaction (cf. smoke.spec.ts).
-async function waitForHydration(page: Page) {
-  await page.waitForFunction(() => {
-    const el = document.getElementById('__nuxt') as (HTMLElement & { __vue_app__?: unknown }) | null
-    return !!(el && el.__vue_app__)
-  })
-}
 
 // Crée une commande pending_assignment directement dans le pool via l'API et renvoie sa référence
 // unique. Auth par bearer token (les mutations en cookie exigent un jeton CSRF ; le bearer non).

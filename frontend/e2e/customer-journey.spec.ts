@@ -1,4 +1,5 @@
-import { test, expect, type Page, request as playwrightRequest } from '@playwright/test'
+import { test, expect, request as playwrightRequest } from '@playwright/test'
+import { waitForHydration } from './helpers'
 
 // Parcours client : inscription → catalogue → panier → checkout, puis suivi de commande.
 //
@@ -8,13 +9,6 @@ import { test, expect, type Page, request as playwrightRequest } from '@playwrig
 const API = process.env.E2E_API_URL ?? 'http://localhost:3001'
 const CUSTOMER_EMAIL = process.env.E2E_EMAIL ?? 'marie@example.com'
 const CUSTOMER_PASSWORD = process.env.E2E_PASSWORD ?? 'password123'
-
-async function waitForHydration(page: Page) {
-  await page.waitForFunction(() => {
-    const el = document.getElementById('__nuxt') as (HTMLElement & { __vue_app__?: unknown }) | null
-    return !!(el && el.__vue_app__)
-  })
-}
 
 test('parcours client : inscription → catalogue → panier → checkout', async ({ page }) => {
   const email = `cust-e2e-${Date.now()}@example.com`

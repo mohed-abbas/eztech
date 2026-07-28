@@ -1,4 +1,5 @@
 import { test, expect, type Page, request as playwrightRequest } from '@playwright/test'
+import { waitForHydration } from './helpers'
 
 // Parcours responsable d'entrepot : connexion → ajustement d'inventaire → inspection d'un retour.
 // Determinisme : le retour a inspecter est cree de bout en bout via l'API (client planifie → livreur
@@ -11,13 +12,6 @@ const CUSTOMER_EMAIL = process.env.E2E_EMAIL ?? 'marie@example.com'
 const CUSTOMER_PASSWORD = process.env.E2E_PASSWORD ?? 'password123'
 const RIDER_EMAIL = process.env.E2E_RIDER_EMAIL ?? 'rider@eztech.fr'
 const RIDER_PASSWORD = process.env.E2E_RIDER_PASSWORD ?? 'riderpass123'
-
-async function waitForHydration(page: Page) {
-  await page.waitForFunction(() => {
-    const el = document.getElementById('__nuxt') as (HTMLElement & { __vue_app__?: unknown }) | null
-    return !!(el && el.__vue_app__)
-  })
-}
 
 async function apiLogin(email: string, password: string) {
   const ctx = await playwrightRequest.newContext()

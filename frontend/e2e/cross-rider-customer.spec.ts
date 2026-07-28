@@ -1,4 +1,5 @@
-import { test, expect, type Page, request as playwrightRequest, type APIRequestContext } from '@playwright/test'
+import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test'
+import { waitForHydration } from './helpers'
 
 // Test croise livreur ↔ client : le client, sur sa page de suivi, voit les mises a jour du livreur
 // en TEMPS REEL (socket) sans jamais rafraichir la page.
@@ -13,13 +14,6 @@ const RIDER_PASSWORD = process.env.E2E_RIDER_PASSWORD ?? 'riderpass123'
 
 // laisse le temps au socket de propager l'evenement order-status
 const LIVE = { timeout: 20_000 }
-
-async function waitForHydration(page: Page) {
-  await page.waitForFunction(() => {
-    const el = document.getElementById('__nuxt') as (HTMLElement & { __vue_app__?: unknown }) | null
-    return !!(el && el.__vue_app__)
-  })
-}
 
 async function apiLogin(email: string, password: string) {
   const ctx = await playwrightRequest.newContext()
