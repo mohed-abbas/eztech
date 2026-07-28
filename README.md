@@ -2,195 +2,367 @@
 
 > Tech you need. Delivered in minutes.
 
-On-demand tech equipment rental delivery service for Paris. Users browse and rent tech gear (chargers, laptops, monitors, peripherals), and a gig rider picks it up from a warehouse and delivers it in minutes.
+On-demand tech equipment rental for Paris. Customers browse and rent gear (laptops, monitors,
+cameras, peripherals), pay with Stripe, and a gig rider collects the item from a warehouse and
+delivers it — with the delivery tracked live on a map. When the rental ends, the customer schedules
+a return, a rider picks it up, and a warehouse manager inspects it back into stock.
 
-## Prerequisites
+**Live:** <https://eztech.thecodeman.cloud>
 
-- Node.js 22+ (see `frontend/.nvmrc`)
-- npm
+---
 
-## Project Structure
+## Contents
+
+- [What it does](#what-it-does)
+- [Screenshots](#screenshots)
+- [Architecture](#architecture)
+- [Getting started](#getting-started)
+- [Environment variables](#environment-variables)
+- [Test credentials](#test-credentials)
+- [Tests and quality gates](#tests-and-quality-gates)
+- [Deployment](#deployment)
+- [Limits and possible improvements](#limits-and-possible-improvements)
+
+---
+
+## What it does
+
+The product is built around **four roles**, each with its own authenticated area.
+
+| Role | Can do |
+| --- | --- |
+| **Customer** | Browse and search the catalogue, rent by duration, pay by card, track the delivery live, cancel, schedule a return, manage addresses and profile |
+| **Rider** | Apply with documents, go online, receive and accept offers, advance a delivery through its statuses, stream GPS position, collect returns, see earnings |
+| **Warehouse manager** | Prepare outgoing orders, adjust stock per warehouse, inspect returned items back into stock or mark them damaged |
+| **Admin** | Oversee every order, refund, manage the catalogue and categories, approve rider applications, manage users, warehouses and delivery zones, read analytics |
+
+### Feature modules
+
+| # | Module | Highlights |
+| --- | --- | --- |
+| 1 | **Auth & users** | JWT in httpOnly cookies + CSRF, refresh rotation, email verification, password reset, Google sign-in, self-service profile and addresses |
+| 2 | **Catalogue & search** | Products, categories, brands, filters, sorting, pagination, flat vs tiered (hour/day/week) pricing |
+| 3 | **Orders & rental** | Cart, checkout, order lifecycle with an event timeline, cancellation with refund and stock restore, late fees on overdue rentals |
+| 4 | **Rider system** | Application and document upload, approval workflow, offer/decline with expiry, status transitions, earnings |
+| 5 | **Real-time tracking** | Socket.io rooms, rider GPS streamed to Mongo, live map (Leaflet), routed ETA, arrival geofencing |
+| 6 | **Warehouse** | Warehouses, per-warehouse stock, adjustments with an audit trail, order preparation, return inspection |
+| 7 | **Admin panel** | Dashboard, orders oversight, refunds, product/category CRUD, users, rider approvals, warehouses, zone editor |
+| 8 | **Notifications** | In-app bell + dedicated page, Socket.io push, email via Resend, per-user opt-out |
+| 9 | **Payments** | Stripe Payment Intents, webhooks with signature verification, saved cards for off-session charges, idempotent admin refunds |
+| 10 | **Infrastructure** | Docker Compose, CI on every PR, blue-green deploy, TLS, error tracking and analytics |
+
+### Delivery zones
+
+Checkout validates the delivery address against GeoJSON service-zone polygons (Turf.js), both in the
+UI and — authoritatively — on the server. Admins draw and edit zones on a map.
+
+---
+
+## Screenshots
+
+| Landing | Catalogue |
+| --- | --- |
+| ![Landing page](docs/screenshots/01-landing.png) | ![Catalogue](docs/screenshots/02-catalogue.png) |
+
+| Customer — orders | Rider — dashboard |
+| --- | --- |
+| ![Customer orders](docs/screenshots/03-customer-orders.png) | ![Rider dashboard](docs/screenshots/04-rider-dashboard.png) |
+
+> Captured from the live production deployment.
+
+---
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph client["Client"]
+        B["Browser<br/>Vue 3 SPA + SSR"]
+    end
+
+    subgraph edge["VPS — shared nginx"]
+        N["nginx<br/>TLS · rate limiting · path routing"]
+    end
+
+    subgraph app["Application containers (blue/green)"]
+        F["Nuxt 4 server<br/>SSR + BFF<br/>:3000"]
+        E["Express API<br/>REST + Socket.io<br/>:3001"]
+    end
+
+    subgraph data["Data"]
+        PG[("PostgreSQL<br/>Prisma — business data")]
+        MG[("MongoDB<br/>rider positions, TTL 24h")]
+    end
+
+    subgraph ext["External services"]
+        ST["Stripe<br/>payments · refunds · webhooks"]
+        RS["Resend<br/>transactional email"]
+        OS["OSRM / OpenRouteService<br/>routing + ETA"]
+        TL["GlitchTip · Umami<br/>errors · analytics"]
+    end
+
+    B -->|HTTPS| N
+    B <-->|WebSocket| N
+    N -->|"/ , /_nuxt/, BFF paths"| F
+    N -->|"/api/*, /socket.io/"| E
+    F -->|"server-side fetch"| E
+    E --> PG
+    E --> MG
+    E --> ST
+    E --> RS
+    E --> OS
+    ST -->|webhook| E
+    F -.-> TL
+    E -.-> TL
+```
+
+### Why a BFF sits in front of the API
+
+The Nuxt server exposes a small **backend-for-frontend** layer (`frontend/server/api/*`) that reshapes
+some backend responses for the storefront and keeps secrets (routing API keys) server-side. nginx
+routes a fixed allowlist of paths to it — `/api/products`, `/api/orders`, `/api/zones`, `/api/config`,
+`/api/geocode` — and everything else to Express.
+
+> **Important for contributors:** because that split exists, admin and rider screens deliberately call
+> `/api/admin/*` aliases for catalogue and order operations. Those aliases are mounted on the same
+> Express routers with the same guards; they exist only so the request is not intercepted by the BFF,
+> which has no write handlers and would silently turn a write into a read. Do not "simplify" them back
+> to `/api/products` or `/api/orders`.
+
+### Request lifecycle — placing an order
+
+```mermaid
+sequenceDiagram
+    participant C as Customer
+    participant F as Nuxt (SSR/BFF)
+    participant E as Express API
+    participant S as Stripe
+    participant R as Rider
+
+    C->>F: Checkout (address + duration)
+    F->>E: POST /api/orders
+    E->>E: Validate address against zone polygons
+    E->>S: Create PaymentIntent
+    S-->>C: 3-D Secure / card confirmation
+    S->>E: Webhook payment_intent.succeeded
+    E->>E: Mark paid, emit offer to available riders
+    E-->>R: Socket.io "new offer"
+    R->>E: Accept, then advance statuses
+    E-->>C: Socket.io "order-status" + rider position
+    C->>C: Live map updates without refresh
+```
+
+### Repository layout
 
 ```
 eztech/
-├── frontend/       # Nuxt.js 4 (Vue 3) — customer & rider UI
+├── frontend/                  # Nuxt 4 (Vue 3, Composition API)
 │   ├── app/
-│   │   ├── assets/css/        # Tailwind config & design tokens
-│   │   ├── components/ui/     # shadcn-vue components
-│   │   ├── composables/       # Vue composables (useAuth, useCart, useMock...)
-│   │   ├── data/mock/         # Mock JSON data for development
-│   │   ├── lib/               # Utilities (cn helper)
-│   │   └── pages/             # File-based routing
-│   └── public/                # Static assets
+│   │   ├── components/        # UI + shadcn-vue primitives
+│   │   ├── composables/       # tracking, sockets, notifications, admin API
+│   │   ├── layouts/           # default · auth · admin · warehouse
+│   │   ├── middleware/        # auth + role route guards
+│   │   ├── pages/             # file-based routing (customer, rider, warehouse, admin)
+│   │   └── stores/            # Pinia: auth, cart, orders, rider, warehouse
+│   ├── server/api/            # BFF routes (see note above)
+│   ├── e2e/                   # Playwright journeys
+│   └── tests/                 # Vitest unit tests
 │
-├── backend/        # Express.js API (Phase 2)
-│   └── ...
+├── backend/                   # Express + TypeScript
+│   ├── prisma/                # schema, migrations, seeds
+│   ├── src/
+│   │   ├── routes/            # 17 routers (auth, orders, payments, rider, …)
+│   │   ├── middleware/        # auth, roles, rate limiting, errors
+│   │   ├── lib/               # stripe, socket, notifications, mongo, zones
+│   │   └── jobs/              # node-cron (return reminders, late fees)
+│   └── tests/                 # Vitest integration tests (real DB)
 │
-└── README.md
+├── scripts/deploy.sh          # blue-green deployment
+└── docker-compose.yml         # dev stack
 ```
 
-## Getting Started
+---
 
-### Run everything with Docker (recommended for dev)
+## Getting started
 
-The fastest way to get the full stack running — Postgres + backend + frontend — with hot reload and a
-seeded database. The only prerequisite is **Docker Desktop**; you don't need Node or npm installed locally.
+### Prerequisites
 
-From the `eztech/` directory, create the three env files from their templates, set a JWT secret, then start:
+- **Docker Desktop** — the only requirement for the recommended path
+- Node.js **22.12+** and npm — only if you run natively (see `frontend/.nvmrc`)
+
+### Run everything with Docker (recommended)
+
+From `eztech/`, create the env files, set a JWT secret, then start:
 
 ```bash
-cp .env.example .env                      # infra: Postgres, JWT, shared ports
-cp backend/.env.example backend/.env      # backend: Stripe keys, admin seed account
-cp frontend/.env.example frontend/.env    # frontend: API URL, Stripe publishable key
+cp .env.example .env                      # infra: Postgres, JWT, ports
+cp backend/.env.example backend/.env      # Stripe keys, admin seed account
+cp frontend/.env.example frontend/.env    # API URL, Stripe publishable key
+```
 
-# JWT_SECRET ships EMPTY on purpose and compose refuses to start without it (min 32 chars).
-# Generate one and paste it into JWT_SECRET= in eztech/.env :
-openssl rand -base64 48
+`JWT_SECRET` ships **empty on purpose** and Compose refuses to start without it (min 32 chars):
 
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
+# paste the result into JWT_SECRET= in eztech/.env
+```
+
+Then:
+
+```bash
 docker compose up --build
 ```
 
-> **All three files are required** — `docker-compose.yml` loads `backend/.env` and `frontend/.env`
-> via `env_file`, and they are gitignored, so a fresh clone has none of them and `docker compose up`
-> fails until they exist. Apart from `JWT_SECRET`, the templates ship working dev defaults (Stripe
-> test placeholders included), so nothing else needs editing to boot.
+| Service | URL |
+| --- | --- |
+| Frontend | <http://localhost:3000> |
+| API | <http://localhost:3001/api> |
+| Adminer (DB UI) | <http://localhost:8080> |
 
-This starts:
+The stack runs migrations and seeds the catalogue and demo accounts automatically on first boot.
 
-| Service          | URL                       | Notes                                            |
-| ---------------- | ------------------------- | ------------------------------------------------ |
-| Frontend (Nuxt)  | http://localhost:3000     | hot reload                                       |
-| Backend API      | http://localhost:3001/api | hot reload, auto migrate + seed on boot          |
-| Postgres         | localhost:5432            | db `eztech_dev`, user/pass `postgres`/`postgres` |
-| Adminer (DB GUI) | http://localhost:8080     | visualize/query the database                     |
-
-Adminer login: **System** PostgreSQL · **Server** `postgres` · **Username** `postgres` ·
-**Password** `postgres` · **Database** `eztech_dev` (the server is pre-filled).
-
-The backend runs migrations and seeds on startup: admin user, full catalog (34 products), and demo
-rider/orders. Default admin: **`admin@eztech.fr` / `change-me`**.
-
-Common commands:
+### Run natively
 
 ```bash
-docker compose down          # stop
-docker compose down -v       # stop + wipe the database (re-seeds on next up)
-docker compose up --build    # rebuild after package.json dependency changes
-docker compose logs -f backend
-docker compose exec backend sh
-```
-
-To disable demo/catalog seeding, set `SEED_DEMO=false` / `SEED_CATALOG=false` in `docker-compose.yml`.
-
-### Telemetry / observability (optional, for the demo)
-
-Self-hosted **GlitchTip** (error tracking) and **Umami** (web analytics) live in a separate, opt-in
-overlay. They are **not** started by `docker compose up` — day-to-day dev stays lightweight, and the app
-sends no telemetry unless you configure it. Bring them up alongside the app with both compose files:
-8089
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.observability.yml up --build
-```
-
-| Service            | URL                   | Notes                           |
-| ------------------ | --------------------- | ------------------------------- |
-| GlitchTip (errors) | http://localhost:8000 | self-register the first account |
-| Umami (analytics)  | http://localhost:3002 | default login `admin` / `umami` |
-
-> GlitchTip runs Django + a worker + Valkey, so the overlay is RAM-hungry — fine for a demo laptop,
-> but expect it to use noticeably more memory than the app alone.
-
-**One-time wiring** (self-hosted tools mint their own keys, so this can't be fully pre-baked):
-
-1. Start the overlay (command above). Open GlitchTip → create an organization and a project → copy its **DSN**.
-2. Open Umami → add a website → copy its **website id**.
-3. Copy `.env.example` to `eztech/.env` (if you haven't already) and fill in:
-   - `NUXT_PUBLIC_SENTRY_DSN=http://<key>@localhost:8000/<project-id>` (browser)
-   - `NUXT_SENTRY_DSN` and `SENTRY_DSN` = same key but host `glitchtip:8080` (Nuxt server + backend, internal network)
-   - `NUXT_PUBLIC_UMAMI_HOST=http://localhost:3002` and `NUXT_PUBLIC_UMAMI_WEBSITE_ID=<id>`
-4. Restart the stack. Trigger an error and click around the app — errors land in GlitchTip, pageviews in Umami.
-
-> **Telemetry data is per-machine.** The GlitchTip account/project (and its DSN) and the Umami website
-> live in local Docker volumes (`glitchtip_postgres_data`, `umami_postgres_data`) — they are **not** in
-> git or the compose file. Each developer who runs the overlay gets a **fresh, empty** GlitchTip/Umami and
-> must do the one-time wiring above to get their **own** DSN/website-id. The DSN in your `.env` will not
-> work on someone else's machine. Your setup persists across `up`/`down` but is wiped by `down -v`. For a
-> shared/central instance, you'd host one GlitchTip everyone points at — that's the production model (Phase 7).
-
-With those env vars empty (the default), the Sentry SDK and Umami script are inert. This is the same
-switch you'd flip in production — the instrumentation code ships everywhere; only the config changes.
-
-### Run natively (without Docker)
-
-#### Frontend
-
-```bash
-cd frontend
-npm install
-cp .env.example .env
-npm run dev
-```
-
-Opens at [http://localhost:3000](http://localhost:3000).
-
-#### Backend
-
-```bash
+# backend
 cd backend
 npm install
-cp .env.example .env          # set DATABASE_URL + a 32+ char JWT_SECRET
-(cd .. && docker compose up -d postgres)   # Postgres only, from the root dev stack
-npx prisma migrate deploy
-npm run prisma:seed           # admin user
-npm run seed:catalog          # catalog (optional)
-npm run dev                   # http://localhost:3001
+npx prisma migrate dev
+npm run prisma:seed        # admin account
+npm run seed:catalog       # products
+npm run seed:demo          # customers, riders, warehouse manager, demo orders
+npm run dev                # http://localhost:3001
+
+# frontend (second terminal)
+cd frontend
+npm install
+npm run dev                # http://localhost:3000
 ```
 
-## Environment Variables
+---
+
+## Environment variables
+
+### Root (`.env`) — infrastructure
+
+| Variable | Description |
+| --- | --- |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Database credentials |
+| `JWT_SECRET` | **Required**, min 32 chars. Generate it; there is no default |
+| `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | Token lifetimes (`15m` / `30d`) |
+| `CORS_ORIGIN` | Allowed browser origin |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Seeded admin account |
+| `SEED_CATALOG` / `SEED_DEMO` | Seed on boot |
+
+### Backend (`backend/.env`)
+
+| Variable | Description |
+| --- | --- |
+| `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` | Stripe API keys |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_…`, must match the webhook destination |
+| `RESEND_API_KEY` | Transactional email (optional in dev) |
+| `GOOGLE_CLIENT_ID` | Google sign-in (optional) |
+| `ORS_API_KEY` | OpenRouteService; falls back to keyless OSRM when unset |
+| `DELIVERY_FEE` | Flat delivery fee |
 
 ### Frontend (`frontend/.env`)
 
-| Variable        | Default                     | Description                             |
-| --------------- | --------------------------- | --------------------------------------- |
-| `VITE_USE_MOCK` | `true`                      | Use local JSON mock data instead of API |
-| `VITE_API_URL`  | `http://localhost:3001/api` | Backend API URL (when mock is disabled) |
+| Variable | Default | Description |
+| --- | --- | --- |
+| `VITE_USE_MOCK` | `false` | Serve local JSON fixtures instead of the API |
+| `VITE_API_URL` | `http://localhost:3001/api` | Backend API base URL |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | — | Stripe publishable key (public by design) |
 
-## Test Credentials
+---
 
-These accounts are seeded into the real database (`npm run seed:demo`, run automatically by the Docker
-dev stack) and also exist as frontend mock accounts:
+## Test credentials
 
-| Role     | Email                | Password       |
-| -------- | -------------------- | -------------- |
-| Customer | `marie@example.com`  | `password123`  |
-| Customer | `thomas@example.com` | `password123`  |
-| Rider    | `rider@eztech.fr`    | `riderpass123` |
-| Admin    | `admin@eztech.fr`    | `change-me`    |
+Seeded by `npm run seed:demo`, run automatically by the Docker dev stack.
 
-> The admin password comes from `ADMIN_PASSWORD` (set to `change-me` in `docker-compose.yml`; change it
-> for your own environment). The rider/customer accounts come from the demo seed.
+| Role | Email | Password |
+| --- | --- | --- |
+| Customer | `marie@example.com` | `password123` |
+| Customer | `thomas@example.com` | `password123` |
+| Rider (approved) | `rider@eztech.fr` | `riderpass123` |
+| Rider (application pending) | `rider3@eztech.fr` | `riderpass123` |
+| Warehouse manager | `warehouse@eztech.fr` | `warehousepass123` |
+| Admin | `admin@eztech.fr` | `$ADMIN_PASSWORD` |
 
-## Tech Stack
+> The admin password is whatever you set in `ADMIN_PASSWORD`; it has no hardcoded default outside the
+> dev stack. Use `rider3@eztech.fr` to demonstrate the "application pending" gate.
 
-| Layer            | Technology                              |
-| ---------------- | --------------------------------------- |
-| Frontend         | Nuxt.js 4 (Vue 3, Composition API)      |
-| Styling          | Tailwind CSS v4                         |
-| UI Components    | shadcn-vue + Radix Vue                  |
-| Icons            | Phosphor (via @nuxt/icon)               |
-| Fonts            | Inter, JetBrains Mono (via @nuxt/fonts) |
-| Backend          | Node.js + Express.js (Phase 2)          |
-| Database         | PostgreSQL + MongoDB (Phase 2)          |
-| Real-time        | Socket.io (Phase 2)                     |
-| Payments         | Stripe (Phase 2)                        |
-| Auth             | JWT + Google OAuth (Phase 2)            |
-| Containerization | Docker + Docker Compose (Phase 2)       |
+---
 
-## Build
+## Tests and quality gates
 
 ```bash
-cd frontend
-npm run build
-npm run preview   # preview production build locally
+cd backend  && npm run lint && npm run typecheck && npm test
+cd frontend && npm run lint && npm run typecheck && npm test
+cd frontend && npm run e2e        # Playwright, needs the stack running
 ```
+
+Every pull request runs the same gates in CI:
+
+| Job | Checks |
+| --- | --- |
+| `backend` | ESLint, `tsc --noEmit`, build, **295 Vitest tests** against real Postgres + Mongo containers |
+| `frontend` | ESLint, `nuxi typecheck`, Vitest, production build |
+| `e2e-smoke` | Playwright journeys (customer, rider, warehouse, cross-role real-time) on the full Docker stack |
+| `docker-build` | Both images build |
+| `migration-safety` | Rejects destructive Prisma migrations |
+
+Backend tests run against real databases rather than mocks, so route guards, transactions and
+Prisma behaviour are exercised for real.
+
+---
+
+## Deployment
+
+Merging to `main` runs CI; a green CI triggers a **blue-green deploy** to the VPS.
+
+`scripts/deploy.sh` builds images on the server, starts the inactive colour, health-checks it,
+rewrites the nginx upstream to point at the new slot, validates the config, reloads nginx, then
+drains and stops the old slot. A failed health check leaves traffic on the previous slot, so a bad
+build cannot take the site down.
+
+Observability: **GlitchTip** for errors, **Umami** for privacy-friendly analytics.
+
+---
+
+## Limits and possible improvements
+
+Deliberate scoping decisions, stated plainly rather than hidden.
+
+### Known limits
+
+- **Product photography is missing.** `Product.imageUrl` points into `public/assets/products/`, which
+  is not populated, so the catalogue renders placeholder tiles.
+- **Content Security Policy is not nonce-based.** Production nginx still allows `'unsafe-inline'` and
+  `'unsafe-eval'` for Nuxt hydration. Moving to nonces via `nuxt-security` was deferred.
+- **The Stripe refund path is not covered end-to-end.** The endpoint is idempotent and unit-tested,
+  but no automated test exercises the real Stripe call; `lib/stripe.ts` has no test-mode branch.
+- **No frontend component tests.** `frontend/tests/` holds unit tests only — neither `@vue/test-utils`
+  nor `@nuxt/test-utils` is installed, so Nuxt pages using `definePageMeta` cannot be mounted. Page
+  behaviour is covered by Playwright instead.
+- **Analytics are computed on read.** No pre-aggregation and no index on `Order.createdAt`, so a
+  wide date range does a sequential scan. Fine at demo scale, not at production scale.
+- **"Active riders" cannot be period-scoped.** `User.riderOnline` is a boolean with no history table
+  and Mongo positions expire after 24h, so the endpoint reports `onlineNow` (point-in-time) and
+  `activeInPeriod` (riders with events in the window) as two distinct numbers rather than inventing one.
+- **Revenue is anchored on order creation**, not payment confirmation — there is no `paidAt` column,
+  so an order paid the day after checkout is bucketed on its checkout day. The response declares this.
+- **`Product.stock` and `WarehouseStock` are separate.** The storefront reads the former and
+  fulfilment the latter; nothing reconciles them.
+- **One flaky E2E test.** `cross-rider-customer.spec.ts` waits up to 15s for a socket event and
+  occasionally times out under CI load before passing on retry.
+
+### Possible improvements
+
+- Real product photography and an image upload pipeline
+- Nonce-based CSP; move the remaining inline styles out
+- Pre-aggregated analytics tables refreshed by the existing cron, plus the missing indexes
+- A `RiderSession` table to make rider activity properly period-scoped
+- `paidAt` on `Order` so revenue is anchored on payment
+- A single source of truth for stock
+- Component-test harness, and an `admin-journey` Playwright spec to complete the role matrix
+- Multi-city support: zones, warehouses and pricing are already per-record, so the model allows it
