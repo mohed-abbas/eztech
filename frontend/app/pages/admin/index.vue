@@ -130,6 +130,15 @@ const navSections = [
         color: "from-orange-500 to-orange-600",
         badge: null,
       },
+      {
+        to: "/admin/zones",
+        label: "Zones de service",
+        description:
+          "Tracer et ajuster les polygones de livraison utilisés par le checkout",
+        icon: "ph:map-trifold",
+        color: "from-indigo-500 to-indigo-600",
+        badge: null,
+      },
     ],
   },
   {
@@ -172,8 +181,6 @@ const navSections = [
         color: "from-amber-500 to-amber-600",
         badge: null,
       },
-      // Carte « Zones de service » retirée : la page cible n'existe pas. Elle
-      // revient en J4 avec l'éditeur de polygones Leaflet.
     ],
   },
   {

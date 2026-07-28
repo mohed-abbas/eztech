@@ -43,5 +43,17 @@ apiRouter.use('/analytics', analyticsRouter);
 // order API, so the same routers are additionally mounted under /api/admin/* — a prefix nginx does
 // not split, so it always reaches this app. No new handlers and no new permissions: the guards live
 // on the routers themselves and are unchanged.
+//
+// /zones is in that same allowlist and is the worst case of the three, because its writes fail
+// SILENTLY: measured against production on 2026-07-28, unauthenticated,
+//   POST  /api/zones                     -> 200 {"type":"FeatureCollection",...}  (no write, no 401)
+//   PATCH /api/zones/zone_paris_central  -> 404 {"statusCode":404,"statusMessage":"Page not found"}
+//   GET   /api/admin/zones               -> 404 {"error":"not_found"}   (this app's notFoundHandler,
+//                                           i.e. /api/admin/* does reach Express — only the mount
+//                                           was missing)
+// The admin zone editor (frontend/app/pages/admin/zones.vue) therefore calls /api/admin/zones only.
+// /zones stays mounted below because the storefront reads it through the BFF (useServiceZone.ts,
+// checkout).
 apiRouter.use('/admin/products', productsRouter);
 apiRouter.use('/admin/orders', ordersRouter);
+apiRouter.use('/admin/zones', zonesRouter);
