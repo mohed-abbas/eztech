@@ -80,10 +80,10 @@ async function prepare(o: OrderToPrepare) {
               </p>
             </div>
             <span v-if="o.preparedAt" class="shrink-0 rounded-full bg-emerald-100 px-3 py-1 text-caption font-semibold text-emerald-700">
-              <Icon name="ph:check" class="inline size-3" /> Prete
+              <Icon name="ph:check" class="inline size-3" /> Prête
             </span>
             <Button v-else size="sm" :disabled="preparingId === o.id" @click="prepare(o)">
-              <Icon name="ph:hand-arrow-down" class="mr-2 size-4" /> Prete pour le ramassage
+              <Icon name="ph:hand-arrow-down" class="mr-2 size-4" /> Prête pour le ramassage
             </Button>
           </CardContent>
         </Card>
