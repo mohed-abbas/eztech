@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { nuxtStubState, makeAuth } from './setup'
+import { nuxtStubState, makeAuth, resetNuxtState } from './setup'
 import {
   useRiderStore,
   NEXT_STATUS,
   DELIVERY_STATUS_LABEL,
+  advanceErrorMessage,
+  requiresPickupCode,
   type DeliveryOrder,
   type DeliveryStatus,
 } from '~/stores/rider'
+import { useNotificationState } from '~/composables/useNotifications'
 
 // build a backend-shaped order; riderFee is intentionally a string to mimic Prisma Decimal serialisation
 function makeOrder(over: Partial<Record<keyof DeliveryOrder, unknown>> = {}): Record<string, unknown> {
@@ -43,6 +46,9 @@ function routeFetch(table: Record<string, unknown>) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  // les notifications vivent dans un useState partage : sans reset, une cle survit d'un test a
+  // l'autre et le suivant lit les lignes du precedent.
+  resetNuxtState()
   nuxtStubState.isMock = false
   nuxtStubState.apiUrl = 'http://api.test/api'
   nuxtStubState.auth = makeAuth({ user: { id: 'rider-1', name: 'Test Rider', email: 'r@test.io', phone: '0600', createdAt: '2026-01-01' } })
@@ -188,6 +194,45 @@ describe('rider store — real API', () => {
     expect(nuxtStubState.fetch).toHaveBeenCalledWith('http://api.test/api/admin/orders/o1/status', expect.objectContaining({ method: 'PATCH', body: { status: 'at_warehouse', note: 'porte B' } }))
   })
 
+  // Passage de relais entrepot -> livreur : sans le code, le backend refuse desormais
+  // at_warehouse -> picked_up (409 order_not_prepared / 422 invalid_pickup_code).
+  it('advanceDelivery sends the pickup code the rider typed, normalised like the backend', async () => {
+    routeFetch({ '/admin/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'picked_up', riderId: 'rider-1', warehouseId: 'wh-1' }) } })
+    const store = useRiderStore()
+    store.activeDelivery = makeOrder({ id: 'o1', status: 'at_warehouse', riderId: 'rider-1', warehouseId: 'wh-1' }) as unknown as DeliveryOrder
+    await store.advanceDelivery('picked_up', undefined, ' k7h2mz ')
+    expect(nuxtStubState.fetch).toHaveBeenCalledWith(
+      'http://api.test/api/admin/orders/o1/status',
+      expect.objectContaining({ method: 'PATCH', body: { status: 'picked_up', pickupCode: 'K7H2MZ' } }),
+    )
+  })
+
+  it('advanceDelivery omits pickupCode entirely when the rider supplies none', async () => {
+    routeFetch({ '/admin/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'at_warehouse', riderId: 'rider-1' }) } })
+    const store = useRiderStore()
+    store.activeDelivery = makeOrder({ id: 'o1', status: 'rider_assigned', riderId: 'rider-1' }) as unknown as DeliveryOrder
+    await store.advanceDelivery('at_warehouse')
+    const body = (nuxtStubState.fetch.mock.calls[0]![1] as { body: Record<string, unknown> }).body
+    expect(body).toEqual({ status: 'at_warehouse' })
+  })
+
+  // La reponse de PATCH /status est la ligne Order brute : ni items[] ni events[]. Les remplacer
+  // ferait disparaitre le contenu du colis de l'ecran des la premiere transition.
+  it('advanceDelivery keeps the parcel contents the status response does not carry', async () => {
+    routeFetch({ '/admin/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'picked_up', riderId: 'rider-1', preparedAt: '2026-05-12T10:30:00Z' }) } })
+    const store = useRiderStore()
+    store.activeDelivery = makeOrder({
+      id: 'o1',
+      status: 'at_warehouse',
+      riderId: 'rider-1',
+      items: [{ id: 'i1', name: 'Perceuse', quantity: 2, imageUrl: null }],
+    }) as unknown as DeliveryOrder
+    await store.advanceDelivery('picked_up', undefined, 'K7H2MZ')
+    expect(store.activeDelivery?.status).toBe('picked_up')
+    expect(store.activeDelivery?.items).toEqual([{ id: 'i1', name: 'Perceuse', quantity: 2, imageUrl: null }])
+    expect(store.activeDelivery?.preparedAt).toBe('2026-05-12T10:30:00Z')
+  })
+
   it('fetchActive normalises or nulls the active delivery', async () => {
     routeFetch({ '/rider/orders/active': { order: makeOrder({ id: 'o1', status: 'rider_assigned', riderFee: '5' }) } })
     const store = useRiderStore()
@@ -241,14 +286,17 @@ describe('rider store — 401 handling', () => {
     expect(nuxtStubState.auth.refresh).toHaveBeenCalledTimes(1)
     expect(store.profile?.name).toBe('L')
     expect(nuxtStubState.auth.logout).not.toHaveBeenCalled()
+    expect(nuxtStubState.auth.clearSession).not.toHaveBeenCalled()
   })
 
-  it('logs out when the refresh also fails', async () => {
+  // Le chemin 401 partage (useAuthedFetch) efface la session locale au lieu d'appeler logout() :
+  // inutile de repartir vers un serveur qui vient de rejeter ce token.
+  it('clears the session when the refresh also fails', async () => {
     nuxtStubState.auth.refresh = vi.fn().mockResolvedValue(false)
     nuxtStubState.fetch.mockRejectedValueOnce(unauthorized())
     const store = useRiderStore()
     await store.fetchProfile()
-    expect(nuxtStubState.auth.logout).toHaveBeenCalledTimes(1)
+    expect(nuxtStubState.auth.clearSession).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -319,11 +367,33 @@ describe('rider store — returns', () => {
   })
 })
 
+// Le store ne stocke plus les notifications : il delegue a l'etat partage avec la cloche du
+// header (useNotifications). On seme donc cet etat-la, pas des proprietes du store — ce sont
+// desormais des getters en lecture seule.
 describe('rider store — notifications', () => {
+  function makeNotif(over: Record<string, unknown> = {}) {
+    return {
+      id: 'n1',
+      userId: 'rider-1',
+      type: 'new_order',
+      event: 'order.created',
+      channel: 'in_app',
+      orderId: null,
+      title: 'Nouvelle commande',
+      body: '',
+      read: false,
+      readAt: null,
+      scheduledAt: null,
+      sentAt: null,
+      createdAt: '2026-05-12T10:00:00Z',
+      ...over,
+    }
+  }
+
   it('fetchNotifications stores list + unread count', async () => {
-    routeFetch({ '/notifications': { notifications: [
-      { id: 'n1', type: 'new_order', title: 'Nouvelle commande', body: '', read: false, createdAt: '2026-05-12T10:00:00Z' },
-      { id: 'n2', type: 'earning_credited', title: 'Gain', body: '7€', read: true, createdAt: '2026-05-12T09:00:00Z' },
+    routeFetch({ '/notifications?page=1&limit=20': { notifications: [
+      makeNotif(),
+      makeNotif({ id: 'n2', type: 'earning_credited', title: 'Gain', body: '7€', read: true }),
     ], unreadCount: 1 } })
     const store = useRiderStore()
     await store.fetchNotifications()
@@ -333,9 +403,10 @@ describe('rider store — notifications', () => {
 
   it('markNotificationRead flips the flag, decrements the counter and calls the API', async () => {
     routeFetch({ '/notifications/n1/read': {} })
+    const shared = useNotificationState()
+    shared.notifications.value = [makeNotif()]
+    shared.unreadCount.value = 1
     const store = useRiderStore()
-    store.notifications = [{ id: 'n1', type: 'new_order', title: 't', body: '', read: false, createdAt: '2026-05-12T10:00:00Z' }]
-    store.unreadCount = 1
     await store.markNotificationRead('n1')
     expect(store.notifications[0]!.read).toBe(true)
     expect(store.unreadCount).toBe(0)
@@ -344,15 +415,15 @@ describe('rider store — notifications', () => {
 
   it('markAllNotificationsRead clears everything', async () => {
     routeFetch({ '/notifications/read-all': { updated: 2 } })
+    const shared = useNotificationState()
+    shared.notifications.value = [makeNotif(), makeNotif({ id: 'n2', type: 'return_scheduled', title: 't2' })]
+    shared.unreadCount.value = 2
     const store = useRiderStore()
-    store.notifications = [
-      { id: 'n1', type: 'new_order', title: 't', body: '', read: false, createdAt: '2026-05-12T10:00:00Z' },
-      { id: 'n2', type: 'return_scheduled', title: 't2', body: '', read: false, createdAt: '2026-05-12T09:00:00Z' },
-    ]
-    store.unreadCount = 2
     await store.markAllNotificationsRead()
     expect(store.notifications.every(n => n.read)).toBe(true)
     expect(store.unreadCount).toBe(0)
+    // la cloche du header lit exactement le meme compteur
+    expect(shared.unreadCount.value).toBe(0)
   })
 })
 
@@ -378,6 +449,24 @@ describe('rider store — status flow constants', () => {
     expect(chain).toEqual(['rider_assigned', 'at_warehouse', 'picked_up', 'in_transit', 'delivered'])
     // a delivered order has no further action
     expect(NEXT_STATUS['delivered']).toBeUndefined()
+  })
+
+  it('requiresPickupCode exempts a delivery job with no warehouse and gates a warehouse order', () => {
+    expect(requiresPickupCode({ warehouseId: 'wh-1', items: [] })).toBe(true)
+    expect(requiresPickupCode({ warehouseId: null, items: [] })).toBe(false)
+    // la projection livreur n'expose pas warehouseId : seules les commandes boutique ont des lignes
+    expect(requiresPickupCode({ items: [{ id: 'i1', name: 'Perceuse', quantity: 1, imageUrl: null }] })).toBe(true)
+    expect(requiresPickupCode({})).toBe(false)
+  })
+
+  it('advanceErrorMessage maps the two handover refusals and falls back otherwise', () => {
+    const notPrepared = advanceErrorMessage({ data: { error: 'order_not_prepared' } })
+    const badCode = advanceErrorMessage({ response: { _data: { error: 'invalid_pickup_code' } } })
+    expect(notPrepared).toContain('préparer')
+    expect(badCode).toContain('incorrect')
+    expect(notPrepared).not.toBe(badCode)
+    expect(advanceErrorMessage({ data: { error: 'invalid_transition' } })).toBe('Impossible de mettre à jour la livraison. Réessayez.')
+    expect(advanceErrorMessage(new Error('boom'), 'Action impossible')).toBe('Action impossible')
   })
 
   it('DELIVERY_STATUS_LABEL covers every status used in the flow', () => {

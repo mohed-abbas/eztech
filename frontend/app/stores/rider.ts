@@ -1,4 +1,11 @@
 import { defineStore } from 'pinia'
+import {
+  loadNotifications,
+  markAllNotificationsRead as markAllNotificationsReadShared,
+  markNotificationRead as markNotificationReadShared,
+  useNotificationState,
+  type AppNotification,
+} from '~/composables/useNotifications'
 
 // mirrors the backend OrderStatus enum
 export type DeliveryStatus =
@@ -44,6 +51,14 @@ export interface OrderEvent {
   createdAt: string
 }
 
+// contenu du colis, snapshot pris a la commande (backend RIDER_ORDER_SELECT.items)
+export interface DeliveryOrderItem {
+  id: string
+  name: string
+  quantity: number
+  imageUrl: string | null
+}
+
 export interface DeliveryOrder {
   id: string
   reference: string
@@ -61,6 +76,13 @@ export interface DeliveryOrder {
   deliveredAt: string | null
   createdAt: string
   updatedAt: string
+  // Renseigne des que l'entrepot a marque le colis pret. Le livreur voit SI c'est pret, jamais le
+  // code de ramassage associe : celui-ci ne sort pas du comptoir (backend routes/rider.ts:217).
+  preparedAt?: string | null
+  // Absent de la projection livreur aujourd'hui, present sur la reponse de PATCH /status (ligne
+  // Order brute) : d'ou l'optionnel. Voir requiresPickupCode().
+  warehouseId?: string | null
+  items?: DeliveryOrderItem[]
   events?: OrderEvent[]
 }
 
@@ -100,22 +122,11 @@ export interface ReturnPickup {
   createdAt: string
 }
 
-export type NotificationType = 'new_order' | 'return_scheduled' | 'earning_credited'
-
-export interface RiderNotification {
-  id: string
-  type: NotificationType
-  title: string
-  body: string
-  read: boolean
-  createdAt: string
-}
-
-export const NOTIFICATION_ICON: Record<NotificationType, string> = {
-  new_order: 'ph:package',
-  return_scheduled: 'ph:arrow-u-down-left',
-  earning_credited: 'ph:currency-eur',
-}
+// Les notifications du livreur sont exactement celles de la cloche du header : meme endpoint,
+// meme payload. Le type local decrivait un sous-ensemble des colonnes (pas d'orderId, pas de
+// readAt) alors que l'API renvoie la ligne complete — on s'aligne donc sur AppNotification,
+// seule forme exacte. Alias conserve pour les imports existants.
+export type RiderNotification = AppNotification
 
 export const RETURN_STATUS_LABEL: Record<ReturnStatus, string> = {
   scheduled: 'Planifié',
@@ -142,6 +153,47 @@ export const DELIVERY_STATUS_LABEL: Record<DeliveryStatus, string> = {
   cancelled: 'Annulé',
 }
 
+// --- Passage de relais entrepot -> livreur ----------------------------------
+// Le comptoir remet au livreur un code court (6 caracteres, backend lib/orders.ts) sans lequel la
+// transition at_warehouse -> picked_up est refusee. Ce code ne transite JAMAIS par une reponse
+// destinee au livreur : il est saisi a la main, jamais affiche.
+
+export const PICKUP_CODE_LENGTH = 6
+
+// Normalisation identique au backend (normalizePickupCode) : le livreur tape sur un telephone.
+export function normalizePickupCode(code: string): string {
+  return code.trim().toUpperCase()
+}
+
+// Une course sans entrepot — creation « delivery-job » directe, jeux de demo — n'a aucun comptoir
+// pour preparer le colis ni emettre un code : le backend l'exempte du controle, l'exiger ici
+// bloquerait le livreur pour toujours a at_warehouse.
+// La projection livreur (RIDER_ORDER_SELECT) n'expose pas encore warehouseId, donc on retombe sur
+// le seul signal disponible cote livreur : seules les commandes boutique portent des lignes, et ce
+// sont exactement celles qui se voient attribuer un entrepot a la creation (routes/orders.ts).
+export function requiresPickupCode(order: Pick<DeliveryOrder, 'warehouseId' | 'items'>): boolean {
+  if (order.warehouseId !== undefined) return order.warehouseId !== null
+  return (order.items?.length ?? 0) > 0
+}
+
+// $fetch leve une FetchError : le code metier se lit sur err.data.error, et selon l'appelant sur
+// err.response._data.error. Meme lecture que _api, une seule fois.
+export function readApiErrorCode(err: unknown): string | null {
+  const e = err as { data?: { error?: string }, response?: { _data?: { error?: string } } }
+  return e?.data?.error ?? e?.response?._data?.error ?? null
+}
+
+// Les deux refus du relais entrepot, traduits en consignes actionnables au comptoir.
+const ADVANCE_ERROR_MESSAGE: Record<string, string> = {
+  order_not_prepared: "L'entrepôt n'a pas encore fini de préparer ce colis. Patientez, le comptoir vous remettra le code dès qu'il est prêt.",
+  invalid_pickup_code: 'Code de ramassage incorrect. Vérifiez-le auprès du comptoir de l\'entrepôt.',
+}
+
+export function advanceErrorMessage(err: unknown, fallback = 'Impossible de mettre à jour la livraison. Réessayez.'): string {
+  const code = readApiErrorCode(err)
+  return (code && ADVANCE_ERROR_MESSAGE[code]) || fallback
+}
+
 // coerce Prisma Decimal (serialized as string) into a number; non-finite values fall back to 0
 // so the UI never renders "€NaN" from a malformed backend payload
 function num(v: unknown): number {
@@ -165,8 +217,6 @@ export const useRiderStore = defineStore('rider', {
     history: [] as EarningsHistoryItem[],
     returnsAvailable: [] as ReturnPickup[],
     returnsMine: [] as ReturnPickup[],
-    notifications: [] as RiderNotification[],
-    unreadCount: 0,
     loading: false,
     error: null as string | null,
   }),
@@ -175,6 +225,15 @@ export const useRiderStore = defineStore('rider', {
     isOnline: state => state.profile?.online ?? false,
     isApproved: state => state.profile?.applicationStatus === 'approved',
     activeReturn: state => state.returnsMine.find(r => r.status === 'accepted') ?? null,
+
+    // --- Notifications --------------------------------------------------------
+    // Le store ne stocke PLUS les notifications : la source de verite unique est
+    // useNotifications() (useState partage avec la cloche du header). Il y avait deux
+    // compteurs independants sur la meme donnee, donc « Tout marquer comme lu » cote livreur
+    // remettait le compteur Pinia a zero pendant que le badge de la cloche gardait son chiffre.
+    // Ces getters gardent les noms historiques lus par /rider/dashboard et /rider/notifications.
+    notifications: (): AppNotification[] => useNotificationState().notifications.value,
+    unreadCount: (): number => useNotificationState().unreadCount.value,
   },
 
   actions: {
@@ -185,38 +244,23 @@ export const useRiderStore = defineStore('rider', {
     },
     async _api(path: string, opts: Record<string, unknown> = {}) {
       const config = useRuntimeConfig()
-      const auth = this._auth()
+      // hydrate avant de lire le token : sur le chemin header il vient de localStorage
+      this._auth()
+      const { withAuthRetry, authHeaders, csrfHeaders } = useAuthedFetch()
       const url = `${config.public.apiUrl}${path}`
-      const csrf = useCookie('ez_csrf').value
       // send the httpOnly session cookie (credentials) + CSRF token; only attach a Bearer header
       // when a token actually exists so an empty one never shadows the cookie (Phase 7).
-      const call = () => $fetch(url, {
+      // Le 401 -> refresh -> retry une fois -> clearSession vit dans useAuthedFetch (y compris le
+      // cas user_revoked) : ne pas le reimplementer ici.
+      return withAuthRetry(() => $fetch(url, {
         ...opts,
         credentials: 'include',
         headers: {
-          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-          ...(csrf ? { 'x-csrf-token': csrf } : {}),
+          ...authHeaders(),
+          ...csrfHeaders(),
           ...(opts.headers as object ?? {}),
         },
-      })
-      try {
-        return await call()
-      }
-      catch (e) {
-        const status = (e as { statusCode?: number, response?: { status?: number } })?.statusCode
-          ?? (e as { response?: { status?: number } })?.response?.status
-        const code = (e as { data?: { error?: string }, response?: { _data?: { error?: string } } })?.data?.error
-          ?? (e as { response?: { _data?: { error?: string } } })?.response?._data?.error
-        if (status === 401) {
-          // when the backend signals the account was deleted/role-changed, refreshing won't help —
-          // skip straight to logout to avoid an infinite refresh-retry loop
-          if (code === 'user_revoked') { auth.logout(); throw e }
-          // access token missing/expired — try a refresh, otherwise drop the (stale) session
-          if (await auth.refresh()) return await call()
-          auth.logout()
-        }
-        throw e
-      }
+      }))
     },
 
     async fetchProfile() {
@@ -357,7 +401,9 @@ export const useRiderStore = defineStore('rider', {
       this.available = this.available.filter(o => o.id !== orderId)
     },
 
-    async advanceDelivery(next: DeliveryStatus, note?: string) {
+    // `pickupCode` n'est requis que pour at_warehouse -> picked_up sur une commande rattachee a un
+    // entrepot (cf. requiresPickupCode). Il est envoye tel que saisi, normalise comme cote serveur.
+    async advanceDelivery(next: DeliveryStatus, note?: string, pickupCode?: string) {
       if (!this.activeDelivery) return
       const orderId = this.activeDelivery.id
       const { isMock } = useMock()
@@ -371,9 +417,17 @@ export const useRiderStore = defineStore('rider', {
       // pouvait faire avancer une course (rider_assigned -> ... -> delivered). Le prefixe /api/admin
       // n'est pas intercepte et atteint Express. Ce n'est pas une elevation de privilege : la route
       // porte requireRole('rider') et lit l'identite du livreur dans le token (orders.ts:332).
-      const res = await this._api(`/admin/orders/${orderId}/status`, { method: 'PATCH', body: { status: next, ...(note ? { note } : {}) } }) as { order: DeliveryOrder }
-      if (res.order.status === 'delivered' || res.order.status === 'cancelled') this.activeDelivery = null
-      else this.activeDelivery = normalizeOrder(res.order)
+      const code = pickupCode ? normalizePickupCode(pickupCode) : ''
+      const res = await this._api(`/admin/orders/${orderId}/status`, {
+        method: 'PATCH',
+        body: { status: next, ...(note ? { note } : {}), ...(code ? { pickupCode: code } : {}) },
+      }) as { order: DeliveryOrder }
+      if (res.order.status === 'delivered' || res.order.status === 'cancelled') { this.activeDelivery = null; return }
+      // La reponse de PATCH /status est la ligne Order brute : elle porte warehouseId et preparedAt
+      // mais ni items[] ni events[], contrairement a /rider/orders/active. On fusionne donc au lieu
+      // de remplacer, sinon le contenu du colis et le fil d'evenements disparaissent de l'ecran des
+      // la premiere transition.
+      this.activeDelivery = normalizeOrder({ ...this.activeDelivery, ...res.order })
     },
 
     async fetchEarnings() {
@@ -428,47 +482,19 @@ export const useRiderStore = defineStore('rider', {
     },
 
     // --- Notifications -------------------------------------------------------
+    // Simples delegations vers l'etat partage : une seule implementation, une seule mise a jour
+    // optimiste avec rollback (voir useNotifications.ts). Les signatures ne bougent pas.
 
     async fetchNotifications(onlyUnread = false) {
-      const res = await this._api(`/notifications${onlyUnread ? '?unread=true' : ''}`) as { notifications: RiderNotification[], unreadCount: number }
-      this.notifications = res.notifications
-      this.unreadCount = res.unreadCount
+      await loadNotifications({ unread: onlyUnread })
     },
 
     async markNotificationRead(id: string) {
-      const n = this.notifications.find(x => x.id === id)
-      // if it's already read, nothing to do — avoids redundant network calls
-      if (!n || n.read) return
-      const prevRead = n.read
-      const prevCount = this.unreadCount
-      n.read = true
-      this.unreadCount = Math.max(0, this.unreadCount - 1)
-      try {
-        await this._api(`/notifications/${id}/read`, { method: 'PATCH' })
-      }
-      catch (e) {
-        // rollback so the UI stays in sync with the server
-        n.read = prevRead
-        this.unreadCount = prevCount
-        throw e
-      }
+      await markNotificationReadShared(id)
     },
 
     async markAllNotificationsRead() {
-      const prev = this.notifications.map(n => ({ id: n.id, read: n.read }))
-      const prevCount = this.unreadCount
-      this.notifications.forEach((n) => { n.read = true })
-      this.unreadCount = 0
-      try {
-        await this._api('/notifications/read-all', { method: 'PATCH' })
-      }
-      catch (e) {
-        // rollback every entry's prior state on failure
-        const snap = new Map(prev.map(p => [p.id, p.read]))
-        this.notifications.forEach((n) => { const r = snap.get(n.id); if (r !== undefined) n.read = r })
-        this.unreadCount = prevCount
-        throw e
-      }
+      await markAllNotificationsReadShared()
     },
   },
 })
