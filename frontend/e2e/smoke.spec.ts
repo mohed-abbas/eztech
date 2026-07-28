@@ -1,17 +1,5 @@
-import { test, expect, type Page } from '@playwright/test'
-
-// The stack under test serves the Nuxt DEV server (SSR + client hydration). Playwright's auto-wait
-// only checks an element is visible/enabled — NOT that Vue has finished hydrating and wired up its
-// listeners. Clicking "Se connecter" before hydration completes runs a NATIVE form submit (full-page
-// GET to /login) instead of the @submit.prevent handler: the /auth/login request never fires and the
-// test hangs on waitForURL('**/products'). Wait for the Vue app to be mounted on #__nuxt (Vue sets
-// __vue_app__ on the mount root once hydration runs) before the first interaction.
-async function waitForHydration(page: Page) {
-  await page.waitForFunction(() => {
-    const el = document.getElementById('__nuxt') as (HTMLElement & { __vue_app__?: unknown }) | null
-    return !!(el && el.__vue_app__)
-  })
-}
+import { test, expect } from '@playwright/test'
+import { waitForHydration } from './helpers'
 
 // DEPLOY-10 committed E2E smoke gate: login -> catalogue -> cart -> checkout, with one
 // authenticated assertion at the end. Credentials default to the seeded demo customer

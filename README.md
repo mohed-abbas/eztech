@@ -68,7 +68,15 @@ UI and — authoritatively — on the server. Admins draw and edit zones on a ma
 | --- | --- |
 | ![Customer orders](docs/screenshots/03-customer-orders.png) | ![Rider dashboard](docs/screenshots/04-rider-dashboard.png) |
 
-> Captured from the live production deployment.
+| Warehouse — dashboard | Admin — dashboard |
+| --- | --- |
+| ![Warehouse dashboard](docs/screenshots/05-warehouse-dashboard.png) | ![Admin dashboard](docs/screenshots/06-admin-dashboard.png) |
+
+**Admin — analytics**
+
+![Admin analytics](docs/screenshots/07-admin-analytics.png)
+
+> Captured from the live production deployment, covering all four roles.
 
 ---
 
