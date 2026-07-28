@@ -31,7 +31,7 @@ function fmt(iso: string | null) {
 
 <template>
   <div class="mx-auto max-w-5xl px-4 py-8 space-y-6">
-    <div>
+    <div class="space-y-1">
       <h1 class="text-h2 font-bold text-text-primary">Retours à inspecter</h1>
       <p class="text-body-sm text-text-muted">Vérifiez les articles retournés : remise en stock ou mise au rebut.</p>
     </div>
@@ -56,18 +56,19 @@ function fmt(iso: string | null) {
         </template>
       </EmptyState>
 
+      <!-- Card n'a ni padding ni gap vertical par defaut : chaque tranche pose le sien (cf. profile.vue). -->
       <Card v-for="r in wh.returnsToInspect" :key="r.id" data-testid="return-card">
-        <CardHeader>
-          <CardTitle class="flex items-center justify-between text-base">
+        <CardHeader class="px-6 pb-4 pt-5">
+          <CardTitle class="flex flex-wrap items-center justify-between gap-2 text-body">
             <span>{{ r.reference }}</span>
             <span class="text-body-sm font-normal text-text-muted">collecte le {{ fmt(r.completedAt) }}</span>
           </CardTitle>
           <CardDescription>{{ r.pickupAddress }}</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent class="px-6 pb-4">
           <Input v-model="notes[r.id]" placeholder="Commentaire d'inspection (optionnel)" />
         </CardContent>
-        <CardFooter class="flex-wrap gap-2">
+        <CardFooter class="flex-wrap gap-2 px-6 pb-5">
           <Button :disabled="busyId === r.id" @click="inspect(r, 'available')">
             <Icon name="ph:check-circle" class="mr-2 size-4" /> Disponible (remettre en stock)
           </Button>
@@ -82,23 +83,23 @@ function fmt(iso: string | null) {
     <section v-if="wh.returnsProcessed.length" class="space-y-3">
       <h2 class="text-h4 font-semibold text-text-primary">Traites recemment</h2>
       <Card>
-        <CardContent class="p-0 overflow-x-auto">
+        <CardContent class="overflow-x-auto p-0">
           <table class="w-full text-body-sm">
-            <thead class="border-b border-border text-left text-text-muted">
-              <tr><th class="px-4 py-2">Référence</th><th class="px-4 py-2">Résultat</th><th class="px-4 py-2">Inspecté le</th></tr>
+            <thead class="border-b border-border text-left text-caption font-semibold uppercase tracking-wide text-text-muted">
+              <tr><th class="px-5 py-3">Référence</th><th class="px-5 py-3">Résultat</th><th class="px-5 py-3">Inspecté le</th></tr>
             </thead>
             <tbody>
-              <tr v-for="r in wh.returnsProcessed" :key="r.id" class="border-b border-border/50 last:border-0">
-                <td class="px-4 py-2 font-medium">{{ r.reference }}</td>
-                <td class="px-4 py-2">
+              <tr v-for="r in wh.returnsProcessed" :key="r.id" class="border-b border-border/50 align-middle last:border-0">
+                <td class="px-5 py-3 font-medium text-text-primary">{{ r.reference }}</td>
+                <td class="px-5 py-3">
                   <span
-                    class="rounded-full px-2 py-0.5 text-caption font-semibold"
+                    class="whitespace-nowrap rounded-full px-2 py-0.5 text-caption font-semibold"
                     :class="r.inspectionResult === 'available' ? 'bg-emerald-100 text-emerald-700' : 'bg-error/10 text-error'"
                   >
                     {{ r.inspectionResult === 'available' ? 'Remis en stock' : 'Endommage' }}
                   </span>
                 </td>
-                <td class="px-4 py-2 text-text-muted">{{ fmt(r.inspectedAt) }}</td>
+                <td class="px-5 py-3 text-text-muted">{{ fmt(r.inspectedAt) }}</td>
               </tr>
             </tbody>
           </table>
