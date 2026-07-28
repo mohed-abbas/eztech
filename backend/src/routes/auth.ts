@@ -167,26 +167,30 @@ authRouter.get('/me', requireAuth, async (req, res, next) => {
   res.json({ user: buildUserResponse(user) });
 });
 
-// POST /api/auth/change-password — l'utilisateur CONNECTE change son mot de passe (il fournit l'actuel).
-// Distinct du flux forgot/reset par email. Par securite, tous les refresh tokens sont revoques :
-// les autres sessions ne pourront plus se rafraichir.
+// POST /api/auth/change-password — authenticated rotation. Verifies the current password before
+// setting the new one (H5). requireAuth ensures we rotate only the caller's own credential.
 authRouter.post('/change-password', requireAuth, async (req, res, next) => {
   const result = ChangePasswordSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
+  const { currentPassword, newPassword } = result.data;
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.user!.sub }, select: { id: true, passwordHash: true } });
-    if (!user) return next(new HttpError(401, 'user_revoked'));
+    const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+    if (!user) return next(new HttpError(404, 'user_not_found'));
 
-    const ok = await verifyPassword(result.data.currentPassword, user.passwordHash);
+    const ok = await verifyPassword(currentPassword, user.passwordHash);
     if (!ok) return next(new HttpError(400, 'invalid_current_password'));
 
-    const passwordHash = await hashPassword(result.data.newPassword);
-    await prisma.$transaction([
-      prisma.user.update({ where: { id: user.id }, data: { passwordHash } }),
-      prisma.refreshToken.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } }),
-    ]);
-    res.status(204).end();
+    const passwordHash = await hashPassword(newPassword);
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+
+    // evict every existing session, then re-issue one for the current device so the caller stays
+    // logged in while any other (possibly stolen) session is invalidated (06-REVIEW blocker).
+    await revokeAllRefreshTokens(user.id);
+    const token = signAccessToken({ sub: user.id, role: user.role });
+    const refreshToken = await generateRefreshToken(user.id);
+    const csrfToken = setAuthCookies(res, { token, refreshToken });
+    res.status(200).json({ message: 'password changed successfully', token, refreshToken, csrfToken });
   } catch (err) {
     next(err);
   }
