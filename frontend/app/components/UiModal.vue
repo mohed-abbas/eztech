@@ -1,31 +1,31 @@
 <script setup lang="ts">
 const props = withDefaults(
   defineProps<{
-    open: boolean
-    title?: string
+    open: boolean;
+    title?: string;
     /** Tailwind max-w class applied to the dialog panel */
-    size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
+    size?: "sm" | "md" | "lg" | "xl" | "2xl";
   }>(),
-  { size: 'lg' },
-)
+  { size: "lg" },
+);
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: [] }>();
 
 const sizeClass: Record<NonNullable<typeof props.size>, string> = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
-  xl: 'max-w-xl',
-  '2xl': 'max-w-2xl',
-}
+  sm: "max-w-sm",
+  md: "max-w-md",
+  lg: "max-w-lg",
+  xl: "max-w-xl",
+  "2xl": "max-w-2xl",
+};
 
 // Close on Escape
 function onKey(e: KeyboardEvent) {
-  if (e.key === 'Escape') emit('close')
+  if (e.key === "Escape") emit("close");
 }
 
-onMounted(() => window.addEventListener('keydown', onKey))
-onUnmounted(() => window.removeEventListener('keydown', onKey))
+onMounted(() => window.addEventListener("keydown", onKey));
+onUnmounted(() => window.removeEventListener("keydown", onKey));
 </script>
 
 <template>
@@ -40,7 +40,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
         @click.self="emit('close')"
       >
         <!-- Backdrop -->
-        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="emit('close')" />
+        <div
+          class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          @click="emit('close')"
+        />
 
         <!-- Panel -->
         <div
@@ -49,7 +52,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
           style="max-height: min(90vh, 800px)"
         >
           <!-- Header -->
-          <div class="flex shrink-0 items-center justify-between border-b border-neutral-100 px-6 py-5">
+          <div
+            class="flex shrink-0 items-center justify-between border-b border-neutral-100 px-6 py-5"
+          >
             <h2 v-if="title" class="text-h4 font-semibold text-text-primary">
               {{ title }}
             </h2>
@@ -93,7 +98,9 @@ onUnmounted(() => window.removeEventListener('keydown', onKey))
 /* Panel pops in with a slight scale */
 .modal-enter-active .relative,
 .modal-leave-active .relative {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
 }
 .modal-enter-from .relative,
 .modal-leave-to .relative {
