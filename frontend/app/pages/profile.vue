@@ -56,12 +56,34 @@ const roleBadge = computed(() => {
   return { label: 'Client', class: 'bg-primary-100 text-primary-700' }
 })
 
-// ── Success feedback ──
-const successMessage = ref('')
-function flashSuccess(msg: string) {
-  successMessage.value = msg
-  setTimeout(() => { successMessage.value = '' }, 3000)
+// ── Feedback ──
+// Une sauvegarde qui echoue doit se voir comme une erreur. Le bandeau etait vert et coche quel que
+// soit le message, si bien qu'un 401 sur l'ajout d'adresse affichait « Echec de la sauvegarde »
+// avec une coche verte, formulaire referme et adresse absente.
+type FeedbackKind = 'success' | 'error'
+const feedbackMessage = ref('')
+const feedbackKind = ref<FeedbackKind>('success')
+let feedbackTimer: ReturnType<typeof setTimeout> | undefined
+
+function flash(kind: FeedbackKind, msg: string) {
+  feedbackKind.value = kind
+  feedbackMessage.value = msg
+  if (feedbackTimer) clearTimeout(feedbackTimer)
+  // Une erreur reste affichee plus longtemps : c'est elle qui demande une action de l'utilisateur.
+  feedbackTimer = setTimeout(() => { feedbackMessage.value = '' }, kind === 'error' ? 6000 : 3000)
 }
+
+function flashSuccess(msg: string) {
+  flash('success', msg)
+}
+
+function flashError(msg: string) {
+  flash('error', msg)
+}
+
+onBeforeUnmount(() => {
+  if (feedbackTimer) clearTimeout(feedbackTimer)
+})
 
 // ── Personal Info ──
 const editingPersonal = ref(false)
@@ -99,7 +121,7 @@ async function savePersonal() {
     flashSuccess('Informations personnelles mises à jour.')
   }
   catch {
-    flashSuccess('Échec de la sauvegarde.')
+    flashError('Échec de la sauvegarde. Vos informations n\'ont pas été enregistrées.')
   }
   finally {
     savingPersonal.value = false
@@ -164,7 +186,7 @@ async function saveAddress() {
     flashSuccess(wasNew ? 'Adresse ajoutée.' : 'Adresse mise à jour.')
   }
   catch {
-    flashSuccess('Échec de la sauvegarde de l\'adresse.')
+    flashError('Échec de la sauvegarde de l\'adresse. Elle n\'a pas été enregistrée.')
   }
   finally {
     savingAddress.value = false
@@ -178,7 +200,7 @@ async function removeAddress(id: string) {
     flashSuccess('Adresse supprimée.')
   }
   catch {
-    flashSuccess('Échec de la suppression de l\'adresse.')
+    flashError('Échec de la suppression de l\'adresse. Elle est toujours enregistrée.')
   }
 }
 
@@ -189,7 +211,7 @@ async function setDefault(id: string) {
     flashSuccess('Adresse par défaut mise à jour.')
   }
   catch {
-    flashSuccess('Échec de la mise à jour de l\'adresse par défaut.')
+    flashError('Échec de la mise à jour de l\'adresse par défaut.')
   }
 }
 
@@ -239,7 +261,7 @@ async function saveVehicle() {
     flashSuccess('Informations véhicule mises à jour.')
   }
   catch {
-    flashSuccess('Échec de la sauvegarde du véhicule.')
+    flashError('Échec de la sauvegarde du véhicule. Vos informations n\'ont pas été enregistrées.')
   }
   finally {
     savingVehicle.value = false
@@ -343,15 +365,24 @@ function vehicleIcon(type?: string) {
 
     <!-- ═══ Tab Content ═══ -->
     <div class="relative z-10 mx-auto -mt-10 max-w-3xl px-4 pb-16 sm:px-8 lg:px-0">
-      <!-- Success toast -->
+      <!-- Bandeau de retour. Le style suit le resultat reel de l'appel : meme motif d'erreur que
+           checkout.vue (fond error/5, bord error/20, icone ph:x-circle-fill). -->
       <Transition name="slide-down">
         <div
-          v-if="successMessage"
-          class="mb-4 rounded-xl border border-success/20 bg-success/10 px-4 py-3 text-body-sm font-medium text-success"
+          v-if="feedbackMessage"
+          :role="feedbackKind === 'error' ? 'alert' : 'status'"
+          :aria-live="feedbackKind === 'error' ? 'assertive' : 'polite'"
+          class="mb-4 rounded-xl border px-4 py-3 text-body-sm font-medium"
+          :class="feedbackKind === 'error'
+            ? 'border-error/20 bg-error/5 text-error'
+            : 'border-success/20 bg-success/10 text-success'"
         >
           <div class="flex items-center gap-2">
-            <Icon name="ph:check-circle-fill" class="size-5" />
-            {{ successMessage }}
+            <Icon
+              :name="feedbackKind === 'error' ? 'ph:x-circle-fill' : 'ph:check-circle-fill'"
+              class="size-5 shrink-0"
+            />
+            {{ feedbackMessage }}
           </div>
         </div>
       </Transition>

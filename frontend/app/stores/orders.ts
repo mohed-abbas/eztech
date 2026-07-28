@@ -373,16 +373,14 @@ export const useOrdersStore = defineStore('orders', {
       }>
       dropoff: { address: string, lat: number, lng: number }
     }): Promise<{ orderId: string }> {
-      const config = useRuntimeConfig()
-      const auth = useAuthStore()
-      const csrf = useCookie('ez_csrf').value
-      const res = await $fetch<{ order: { id: string } }>(`${config.public.apiUrl}/orders`, {
+      // Passe par authedFetch : le jeton d'acces ne vit que 15 minutes, or un client qui saisit une
+      // adresse puis paie peut largement depasser ce delai. Sans le 401 -> refresh -> rejeu, il
+      // recevait un echec generique que reessayer ne reparait pas. Bonus : authedFetch n'envoie un
+      // Bearer que s'il en a un, donc un jeton perime ne masque plus le cookie de session valide
+      // (backend/src/middleware/auth.ts prefere le header au cookie).
+      const { authedFetch } = useAuthedFetch()
+      const res = await authedFetch<{ order: { id: string } }>('/orders', {
         method: 'POST',
-        credentials: 'include',
-        headers: {
-          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-          ...(csrf ? { 'x-csrf-token': csrf } : {}),
-        },
         body: { items: payload.items, dropoff: payload.dropoff },
       })
       return { orderId: res.order.id }

@@ -13,7 +13,8 @@ const { clearCart, linePrice } = cart
 const { track, trafficSource } = useTracking()
 const auth = useAuthStore()
 const { user } = storeToRefs(auth)
-const { check: checkZone } = useServiceZone()
+const { check: checkZone, error: zoneError } = useServiceZone()
+const { authedFetch } = useAuthedFetch()
 const { isMock } = useMock()
 const runtimeConfig = useRuntimeConfig()
 // Redirect to cart if empty
@@ -219,10 +220,15 @@ const zoneResult = computed(() => {
   return checkZone(addr.coordinates.lng, addr.coordinates.lat)
 })
 
+// Zones injoignables : on ne sait PAS si l'adresse est desservie. On bloque plutot que de laisser
+// passer une commande que le backend refusera avec outside_delivery_zone, et on le dit clairement.
+const zonesUnavailable = computed(() => !!zoneError.value && !!resolvedAddress.value?.coordinates)
+
 const canProceed = computed(() => {
   if (!resolvedAddress.value) return false
   // For manual without coordinates, allow (no zone check possible — mock fallback)
   if (!resolvedAddress.value.coordinates) return true
+  if (zonesUnavailable.value) return false
   return zoneResult.value?.inZone === true
 })
 
@@ -379,6 +385,28 @@ function describeOrderError(err: unknown): string {
   }
 }
 
+// Commande deja creee cote serveur lors d'une tentative precedente. Sans ce memo, chaque carte
+// refusee suivie d'un « Reessayer » creait une commande awaiting_payment de plus, visible pour
+// toujours dans /orders en « En attente ».
+const pendingOrderId = ref<string | null>(null)
+const pendingOrderSignature = ref<string | null>(null)
+
+// Empreinte de ce que le client s'apprete a payer. Si elle change entre deux tentatives (panier
+// modifie dans un autre onglet, autre adresse choisie), la commande memorisee ne correspond plus au
+// montant affiche et ne doit surtout pas etre rejouee.
+function orderSignature(street: string, coords: { lat: number, lng: number }): string {
+  const lines = items.value
+    .map(i => `${i.productId}:${i.quantity}:${i.durationUnit}:${i.durationValue}`)
+    .sort()
+    .join('|')
+  return `${lines}#${street}@${coords.lat.toFixed(6)},${coords.lng.toFixed(6)}`
+}
+
+function forgetPendingOrder() {
+  pendingOrderId.value = null
+  pendingOrderSignature.value = null
+}
+
 async function submitLivePayment() {
   const addr = resolvedAddress.value
   if (!addr?.coordinates) {
@@ -395,41 +423,71 @@ async function submitLivePayment() {
   paymentState.value = 'loading'
   paymentError.value = null
 
-  // 1) Order-first (D-08): create the server-validated order — server recomputes money (D-06)
+  const signature = orderSignature(addr.street, addr.coordinates)
+
+  // 1) Order-first (D-08): create the server-validated order — server recomputes money (D-06).
+  // Sur un nouvel essai a panier et adresse identiques on REUTILISE la commande deja creee ;
+  // create-intent est idempotent par commande (idempotencyKey `intent_<id>` cote backend), donc le
+  // meme PaymentIntent est repris et il n'y a ni double commande ni double paiement.
   let orderId: string
-  try {
-    const created = await ordersStore.createLiveOrder({
-      items: items.value.map(i => ({
-        productId: i.productId,
-        quantity: i.quantity,
-        durationUnit: i.durationUnit,
-        durationValue: i.durationValue,
-      })),
-      dropoff: { address: addr.street, lat: addr.coordinates.lat, lng: addr.coordinates.lng },
-    })
-    orderId = created.orderId
+  if (pendingOrderId.value && pendingOrderSignature.value === signature) {
+    orderId = pendingOrderId.value
   }
-  catch (err) {
-    paymentError.value = describeOrderError(err)
-    paymentState.value = 'error'
-    return
+  else {
+    // Le contenu a change depuis la tentative precedente : la commande memorisee ne correspond plus
+    // au total affiche. On l'annule avant d'en creer une neuve — elle n'a jamais ete payee, donc le
+    // backend ne declenche aucun remboursement Stripe et ne touche pas au stock
+    // (backend/src/routes/orders.ts POST /:id/cancel, branche wasPaid === false).
+    const stale = pendingOrderId.value
+    forgetPendingOrder()
+    if (stale) {
+      await ordersStore.cancelOrder(stale).catch((err) => {
+        console.error('[checkout] annulation de la commande abandonnée impossible:', err)
+      })
+    }
+
+    try {
+      const created = await ordersStore.createLiveOrder({
+        items: items.value.map(i => ({
+          productId: i.productId,
+          quantity: i.quantity,
+          durationUnit: i.durationUnit,
+          durationValue: i.durationValue,
+        })),
+        dropoff: { address: addr.street, lat: addr.coordinates.lat, lng: addr.coordinates.lng },
+      })
+      orderId = created.orderId
+    }
+    catch (err) {
+      paymentError.value = describeOrderError(err)
+      paymentState.value = 'error'
+      return
+    }
+    pendingOrderId.value = orderId
+    pendingOrderSignature.value = signature
   }
 
-  // 2) Mint the PaymentIntent for that order
+  // 2) Mint the PaymentIntent for that order. authedFetch applique le 401 -> refresh -> rejeu et
+  // envoie les cookies : le jeton d'acces dure 15 minutes, moins que le temps de remplir la page.
   let clientSecret: string
   try {
-    const intent = await $fetch<{ clientSecret: string }>(
-      `${runtimeConfig.public.apiUrl}/payments/create-intent`,
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${auth.token}` },
-        body: { orderId },
-      },
-    )
+    const intent = await authedFetch<{ clientSecret: string }>('/payments/create-intent', {
+      method: 'POST',
+      body: { orderId },
+    })
     clientSecret = intent.clientSecret
   }
-  catch {
-    paymentError.value = 'Impossible d’initialiser le paiement. Veuillez réessayer.'
+  catch (err) {
+    const code = (err as { data?: { error?: string } })?.data?.error
+    if (code === 'not_payable' || code === 'order_not_found') {
+      // La commande memorisee a ete reglee ou annulee entre-temps : on l'oublie pour qu'un nouvel
+      // essai reparte d'une commande neuve au lieu de buter indefiniment sur celle-ci.
+      forgetPendingOrder()
+      paymentError.value = 'Cette commande n’est plus payable. Réessayez pour en créer une nouvelle.'
+    }
+    else {
+      paymentError.value = 'Impossible d’initialiser le paiement. Veuillez réessayer.'
+    }
     paymentState.value = 'error'
     return
   }
@@ -449,6 +507,7 @@ async function submitLivePayment() {
   // refetch so the new order is present on the list/detail rather than hidden behind a stale
   // hydrated=true, then redirect to the order.
   paymentState.value = 'success'
+  forgetPendingOrder()
   trackCheckoutSuccess()
   clearCart()
   void ordersStore.hydrate(true)
@@ -467,6 +526,8 @@ function submitPayment() {
   }
 }
 
+// On NE vide PAS pendingOrderId ici : c'est precisement ce memo qui evite de creer une deuxieme
+// commande orpheline au prochain essai.
 function retryPayment() {
   paymentState.value = 'idle'
   paymentError.value = null
@@ -717,8 +778,21 @@ const steps = [
                 {{ geoError }}
               </p>
 
-              <!-- Zone Feedback -->
-              <div v-if="zoneResult" class="mt-4">
+              <!-- Zone Feedback. Zones injoignables : on affiche l'incident, pas un faux « hors
+                   zone » assorti de la liste des quartiers couverts. -->
+              <div
+                v-if="zonesUnavailable"
+                class="mt-4 flex items-start gap-3 rounded-xl bg-warning/5 border border-warning/20 p-4"
+              >
+                <Icon name="ph:warning-circle-fill" class="size-5 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <p class="text-sm font-semibold text-text-primary">Zones de livraison indisponibles</p>
+                  <p class="text-sm text-text-muted mt-0.5">
+                    {{ zoneError }} Nous ne pouvons pas vérifier votre adresse pour le moment.
+                  </p>
+                </div>
+              </div>
+              <div v-else-if="zoneResult" class="mt-4">
                 <ZoneBadge :in-zone="zoneResult.inZone" :zone-name="zoneResult.zoneName" />
                 <p v-if="!zoneResult.inZone" class="text-xs text-text-muted mt-2 ml-5">
                   Nous couvrons actuellement Paris Centre et Paris Est.

@@ -8,6 +8,8 @@ useSeoMeta({
   ogDescription: 'Louez du matériel tech haut de gamme, livré chez vous.',
 })
 
+type TierPrices = { flat?: number, hourly?: number, daily?: number, weekly?: number }
+
 type Product = {
   id: string
   name: string
@@ -17,7 +19,10 @@ type Product = {
   categoryName?: string
   categoryIcon?: string
   image?: string
+  /** Prix d'appel. Le prix reellement facture par palier est dans `prices`. */
   price: number
+  prices?: TierPrices
+  pricingType?: 'flat' | 'tiered'
   rating?: number
   stock: number
 }
@@ -143,11 +148,20 @@ function getCategoryIcon(p: Product): string {
   return p.categoryIcon ?? categoryMap.value.get(p.categorySlug ?? '')?.icon ?? 'ph:package'
 }
 
+// ProductCard affiche le montant suivi d'un « /Jour » ecrit en dur, donc pour un produit a paliers
+// on lui donne le tarif JOURNALIER et pas le prix d'appel — sinon la carte annonce un tarif horaire
+// libelle « par jour ». Le vrai correctif (unite pilotee par le produit) est dans ProductCard.vue,
+// qui ne fait pas partie des fichiers modifiables ici.
+function cardPrice(p: Product): number {
+  if (p.pricingType === 'tiered') return p.prices?.daily ?? p.price
+  return p.prices?.flat ?? p.price
+}
+
 function toFeaturedProduct(p: Product): FeaturedProduct {
   return {
     name: p.name,
     type: getCategoryName(p),
-    price: `€${Number(p.price).toFixed(2)}`,
+    price: `€${Number(cardPrice(p)).toFixed(2)}`,
     heroIcon: getCategoryIcon(p),
     imageUrl: p.image ?? null,
     icon1: 'ph:star',
