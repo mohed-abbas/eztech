@@ -1,10 +1,15 @@
 // Demo data for the showcase flow — run with: npm run seed:demo
 // Creates a small roster of customers and riders (mix of approved / pending so the
 // admin approval flow is demoable), a handful of pending delivery jobs, a scheduled
-// return pickup, and a couple of notifications.
+// return pickup, a couple of notifications, and a 60-day paid/delivered order history
+// so /admin/analytics renders real curves instead of empty cards (see prisma/demo-orders.ts).
+//
+// Entierement idempotent : chaque section upsert, cible ses propres lignes (EZDEMO-*, RET-DEMO01,
+// notifications event 'demo:*') ou est gardee. Un second run ne duplique rien.
 import { PrismaClient, Prisma, VehicleType, RiderApplicationStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
+import { seedDemoOrders } from './demo-orders.js';
 
 const prisma = new PrismaClient();
 
@@ -42,6 +47,9 @@ const RIDERS = [
 const WAREHOUSE_MANAGER = { email: 'warehouse@eztech.fr', name: 'Claire Dubois', phone: '+33 6 33 44 55 66' };
 const WAREHOUSE_MANAGER_PASSWORD = 'warehousepass123';
 
+// Reference stable du retour de demo — permet un upsert plutot qu'un create a chaque run.
+const DEMO_RETURN_REFERENCE = 'RET-DEMO01';
+
 const SAMPLE_JOBS = [
   {
     pickup: 'Entrepôt EzTech, 12 Rue du Faubourg Saint-Antoine, 75011 Paris',
@@ -65,22 +73,28 @@ const SAMPLE_JOBS = [
 
 async function main() {
   const customerHash = await bcrypt.hash(CUSTOMER_PASSWORD, 12);
+  const customerIds: string[] = [];
   for (const c of CUSTOMERS) {
-    await prisma.user.upsert({
+    const customer = await prisma.user.upsert({
       where: { email: c.email },
       update: { emailVerifiedAt: new Date() },
       // demo customers are pre-verified so the checkout flow works out of the box (Module 1 gate)
       create: { email: c.email, passwordHash: customerHash, name: c.name, phone: c.phone, role: 'customer', emailVerifiedAt: new Date() },
     });
+    customerIds.push(customer.id);
   }
   console.log(`demo customers: ${CUSTOMERS.map((c) => c.email).join(', ')} / ${CUSTOMER_PASSWORD}`);
 
   const riderHash = await bcrypt.hash(RIDER_PASSWORD, 12);
   let primaryRider: { id: string } | null = null;
+  const approvedRiderIds: string[] = [];
   for (const r of RIDERS) {
+    const approved = r.status === RiderApplicationStatus.approved;
     const rider = await prisma.user.upsert({
       where: { email: r.email },
-      update: { riderApplicationStatus: r.status },
+      // analytics/active-riders.onlineNow lit User.riderOnline : au moins un livreur approuve doit
+      // etre en ligne, sinon la carte « livreurs en ligne » affiche 0 sur une base fraiche.
+      update: { riderApplicationStatus: r.status, ...(approved ? { riderOnline: true } : {}) },
       create: {
         email: r.email,
         passwordHash: riderHash,
@@ -91,9 +105,12 @@ async function main() {
         licenseNumber: r.licenseNumber,
         insuranceNumber: r.insuranceNumber,
         riderApplicationStatus: r.status,
+        riderOnline: approved,
       },
     });
     if (!primaryRider) primaryRider = rider;
+    // le livreur « pending » ne porte aucune livraison : il sert a demontrer le flux d'approbation
+    if (approved) approvedRiderIds.push(rider.id);
   }
   const rider = primaryRider!;
   console.log(`demo riders: ${RIDERS.map((r) => `${r.email} (${r.status})`).join(', ')} / ${RIDER_PASSWORD}`);
@@ -117,32 +134,39 @@ async function main() {
   }
   console.log(`demo warehouse manager: ${WAREHOUSE_MANAGER.email} / ${WAREHOUSE_MANAGER_PASSWORD}${warehouse ? ` (entrepôt: ${warehouse.name})` : ''}`);
 
+  // Le garde ne couvre QUE la boucle SAMPLE_JOBS : avant, un `return` global sautait aussi le
+  // retour planifie, les notifications et (desormais) tout l'historique analytique des qu'il
+  // restait 3 commandes en attente — c'est-a-dire des le second run.
   const existingPending = await prisma.order.count({ where: { status: 'pending_assignment' } });
   if (existingPending >= SAMPLE_JOBS.length) {
-    console.log(`already ${existingPending} pending orders — skipping demo data seed`);
-    return;
+    console.log(`already ${existingPending} pending orders — skipping the ${SAMPLE_JOBS.length} sample delivery jobs`);
+  } else {
+    for (const job of SAMPLE_JOBS) {
+      await prisma.order.create({
+        data: {
+          reference: `EZ-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+          status: 'pending_assignment',
+          pickupAddress: job.pickup,
+          pickupLat: job.pickupLat,
+          pickupLng: job.pickupLng,
+          dropoffAddress: job.dropoff,
+          dropoffLat: job.dropoffLat,
+          dropoffLng: job.dropoffLng,
+          riderFee: new Prisma.Decimal(job.fee),
+          events: { create: { status: 'pending_assignment', note: 'order created (demo)' } },
+        },
+      });
+    }
+    console.log(`seeded ${SAMPLE_JOBS.length} pending delivery jobs`);
   }
 
-  for (const job of SAMPLE_JOBS) {
-    await prisma.order.create({
-      data: {
-        reference: `EZ-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
-        status: 'pending_assignment',
-        pickupAddress: job.pickup,
-        pickupLat: job.pickupLat,
-        pickupLng: job.pickupLng,
-        dropoffAddress: job.dropoff,
-        dropoffLat: job.dropoffLat,
-        dropoffLng: job.dropoffLng,
-        riderFee: new Prisma.Decimal(job.fee),
-        events: { create: { status: 'pending_assignment', note: 'order created (demo)' } },
-      },
-    });
-  }
-
-  await prisma.return.create({
-    data: {
-      reference: `RET-${crypto.randomBytes(3).toString('hex').toUpperCase()}`,
+  // Reference fixe + upsert : le retour de demo est cree une fois puis simplement replanifie, au
+  // lieu d'empiler une ligne RET-xxxxxx a chaque execution.
+  await prisma.return.upsert({
+    where: { reference: DEMO_RETURN_REFERENCE },
+    update: { scheduledFor: new Date(Date.now() + 3 * 60 * 60 * 1000) },
+    create: {
+      reference: DEMO_RETURN_REFERENCE,
       status: 'scheduled',
       pickupAddress: '14 Rue Oberkampf, 75011 Paris',
       pickupLat: 48.8645,
@@ -152,14 +176,31 @@ async function main() {
     },
   });
 
+  // Notification.@@unique([orderId, event, channel]) ne protege pas ces lignes : orderId est NULL et
+  // Postgres n'egalise pas deux NULL dans un index unique. On tague donc l'event 'demo:*' et on
+  // supprime nos propres lignes avant de les recreer — aucune notification reelle n'est touchee.
+  await prisma.notification.deleteMany({ where: { userId: rider.id, event: { startsWith: 'demo:' } } });
   await prisma.notification.createMany({
     data: [
-      { userId: rider.id, type: 'return_scheduled', title: 'Nouveau retour à récupérer', body: 'Un retour est planifié près de vous.' },
-      { userId: rider.id, type: 'new_order', title: 'Nouvelle commande disponible', body: 'Une livraison vient d\'être créée à proximité.' },
+      { userId: rider.id, type: 'return_scheduled', event: 'demo:return_scheduled', title: 'Nouveau retour à récupérer', body: 'Un retour est planifié près de vous.' },
+      { userId: rider.id, type: 'new_order', event: 'demo:new_order', title: 'Nouvelle commande disponible', body: 'Une livraison vient d\'être créée à proximité.' },
     ],
   });
+  console.log('seeded 1 scheduled return, 2 notifications');
 
-  console.log(`seeded ${SAMPLE_JOBS.length} pending orders, 1 scheduled return, 2 notifications`);
+  // Historique analytique (60 jours). Cree/remplace uniquement les commandes EZDEMO-*.
+  const analytics = await seedDemoOrders(prisma, { customerIds, riderIds: approvedRiderIds });
+  if (analytics) {
+    console.log(
+      `analytics demo: ${analytics.created} orders (${analytics.paid} paid, ${analytics.delivered} delivered, ` +
+        `${analytics.cancelled} cancelled, ${analytics.awaitingPayment} awaiting payment, ${analytics.live} in progress), ` +
+        `${analytics.items} items, ${analytics.events} events, revenue ${analytics.revenue} € ` +
+        `from ${analytics.from} to ${analytics.to} (replaced ${analytics.deleted} previous EZDEMO- orders)`,
+    );
+    // Invariant du flux livreur : au moins un compte approuve doit rester sans course active, sinon
+    // « Accepter » renvoie 409 already_on_delivery sur les jobs pending_assignment seedes plus haut.
+    console.log(`approved riders free to accept a job: ${analytics.ridersAvailable}`);
+  }
 }
 
 main()
