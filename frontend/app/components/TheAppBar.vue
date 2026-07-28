@@ -9,10 +9,23 @@ const mobileOpen = ref(false);
 const dropdownOpen = ref(false);
 const dropdownRef = ref<HTMLDivElement | null>(null);
 
+// Home target per role: the logo used to be hardcoded to /products, so a rider or a
+// warehouse manager clicking it landed in the customer shop instead of their own workspace.
+const homeLink = computed(() => {
+  if (role.value === "rider") return "/rider/dashboard";
+  if (role.value === "warehouse_manager") return "/warehouse/dashboard";
+  if (role.value === "admin") return "/admin";
+  return "/products";
+});
+
 const navItems = computed(() => {
-  const items: { label: string; to: string; icon: string }[] = [
-    { label: "Produits", to: "/products", icon: "ph:package" },
-  ];
+  const items: { label: string; to: string; icon: string }[] = [];
+
+  // The catalogue belongs to the shop: customers, admins (who manage it) and anonymous
+  // visitors. Riders and warehouse staff have no business browsing it from their nav.
+  if (!role.value || role.value === "customer" || role.value === "admin") {
+    items.push({ label: "Produits", to: "/products", icon: "ph:package" });
+  }
 
   if (role.value === "customer") {
     items.push({ label: "Mes commandes", to: "/orders", icon: "ph:receipt" });
@@ -33,6 +46,16 @@ const navItems = computed(() => {
     );
   }
 
+  if (role.value === "warehouse_manager") {
+    // Inventory and returns already have their own tabs in the warehouse layout; the top bar
+    // only needs a way back into that workspace from a shared page such as /profile.
+    items.push({
+      label: "Entrepôt",
+      to: "/warehouse/dashboard",
+      icon: "ph:warehouse",
+    });
+  }
+
   if (role.value === "admin") {
     items.push({ label: "Commandes", to: "/orders", icon: "ph:receipt" });
   }
@@ -50,7 +73,11 @@ const initials = computed(() => {
     .slice(0, 2);
 });
 
-const showCart = computed(() => role.value === "customer");
+// The cart is a shop affordance: signed-in customers, plus anonymous visitors, who CAN fill a
+// guest cart from a product page (addToCart is not auth-gated) and otherwise had no way to see
+// or reach it — /cart bounces them to /login?redirect=/cart. Never for riders, warehouse
+// managers or admins, who never check out.
+const showCart = computed(() => !role.value || role.value === "customer");
 
 function isActive(path: string): boolean {
   if (path === "/products")
@@ -107,7 +134,7 @@ watch(
            out of the fixed header, which has no scrollbar to recover it. -->
       <div class="flex min-w-0 items-center gap-8">
         <NuxtLink
-          to="/products"
+          :to="homeLink"
           class="flex items-center gap-2.5 group shrink-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         >
           <div
