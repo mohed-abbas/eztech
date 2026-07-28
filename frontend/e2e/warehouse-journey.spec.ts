@@ -86,7 +86,9 @@ test('parcours entrepot : inspecter un retour collecte', async ({ page }) => {
   await loginManagerUI(page)
   await page.goto('/warehouse/returns')
   await waitForHydration(page)
-  await expect(page.getByRole('heading', { name: 'Retours a inspecter' })).toBeVisible()
+  // Titre accentue depuis la correction du module entrepot (« Retours a inspecter » -> « Retours a
+  // inspecter » avec accent) : ce test verrouillait l'ancienne orthographe fautive.
+  await expect(page.getByRole('heading', { name: 'Retours à inspecter' })).toBeVisible()
 
   // le retour apparait dans la file a inspecter
   const card = page.getByTestId('return-card').filter({ hasText: reference })
