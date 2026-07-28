@@ -44,6 +44,32 @@ export function fakePaymentIntentSucceeded(orderId: string, paymentIntentId = 'p
   };
 }
 
+// Build a fake `charge.refunded` event. `amount` is the captured amount and `amountRefunded` the
+// running total refunded on that charge, both in cents — c'est ce couple qui distingue un
+// remboursement integral d'un remboursement partiel cote handler.
+// `orderId` omis simule un remboursement lance depuis le dashboard Stripe : la Charge ne porte
+// alors AUCUNE metadata, la commande doit etre retrouvee via `payment_intent`.
+export function fakeChargeRefunded(opts: {
+  amount: number;
+  amountRefunded: number;
+  orderId?: string;
+  paymentIntentId?: string;
+}): FakeStripeEvent {
+  return {
+    id: `evt_refund_${opts.orderId ?? opts.paymentIntentId ?? 'unknown'}`,
+    type: 'charge.refunded',
+    data: {
+      object: {
+        id: 'ch_test',
+        amount: opts.amount,
+        amount_refunded: opts.amountRefunded,
+        ...(opts.paymentIntentId ? { payment_intent: opts.paymentIntentId } : {}),
+        ...(opts.orderId ? { metadata: { orderId: opts.orderId } } : {}),
+      },
+    },
+  };
+}
+
 // vi.mock factory for the `stripe` module. A test registers it with:
 //   vi.mock('stripe', () => stripeMockFactory());
 export function stripeMockFactory() {
