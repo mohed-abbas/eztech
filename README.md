@@ -22,6 +22,7 @@ a return, a rider picks it up, and a warehouse manager inspects it back into sto
 - [Tests and quality gates](#tests-and-quality-gates)
 - [Deployment](#deployment)
 - [Limits and possible improvements](#limits-and-possible-improvements)
+- [Image credits](docs/IMAGE-CREDITS.md)
 
 ---
 
@@ -343,8 +344,10 @@ Deliberate scoping decisions, stated plainly rather than hidden.
 
 ### Known limits
 
-- **Product photography is missing.** `Product.imageUrl` points into `public/assets/products/`, which
-  is not populated, so the catalogue renders placeholder tiles.
+- **Product photos are illustrative, not the real models.** The 34 catalogue images come from
+  Wikimedia Commons under free licences (see [Image credits](docs/IMAGE-CREDITS.md)). They match the
+  product's category and usually its brand, but they are not photographs of the exact model sold.
+  A real shop would need licensed product photography.
 - **Content Security Policy is not nonce-based.** Production nginx still allows `'unsafe-inline'` and
   `'unsafe-eval'` for Nuxt hydration. Moving to nonces via `nuxt-security` was deferred.
 - **The Stripe refund path is not covered end-to-end.** The endpoint is idempotent and unit-tested,
@@ -361,8 +364,10 @@ Deliberate scoping decisions, stated plainly rather than hidden.
   so an order paid the day after checkout is bucketed on its checkout day. The response declares this.
 - **`Product.stock` and `WarehouseStock` are separate.** The storefront reads the former and
   fulfilment the latter; nothing reconciles them.
-- **One flaky E2E test.** `cross-rider-customer.spec.ts` waits up to 15s for a socket event and
-  occasionally times out under CI load before passing on retry.
+- **E2E timings are tuned to a cold dev server, not guaranteed.** `cross-rider-customer.spec.ts` runs
+  first in the suite and pays the full Nuxt route-compilation cost (~26s observed in CI against ~5s
+  for later specs). The hydration wait was raised from the 15s default to 30s to cover it, which
+  removed the observed flakiness — but it is a timeout margin, not a hard guarantee under heavier load.
 
 ### Possible improvements
 
