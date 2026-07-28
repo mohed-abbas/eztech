@@ -42,6 +42,16 @@ const filtered = computed<StockLine[]>(() => {
   })
 })
 
+// Distingue « l'entrepôt est vide » de « les filtres ne renvoient rien » : les deux cas
+// affichaient auparavant le même message « pour ces critères ».
+const hasFilters = computed(() => search.value.trim() !== '' || categoryFilter.value !== '')
+const isWarehouseEmpty = computed(() => wh.stock.length === 0)
+
+function resetFilters() {
+  search.value = ''
+  categoryFilter.value = ''
+}
+
 function isDirty(s: StockLine) {
   return edits[s.productId] !== undefined && edits[s.productId] !== s.quantity
 }
@@ -66,12 +76,16 @@ async function save(s: StockLine) {
   <div class="mx-auto max-w-5xl px-4 py-8 space-y-6">
     <div class="flex items-center justify-between gap-4 flex-wrap">
       <div>
-        <h1 class="text-2xl font-bold text-text-primary">Inventaire</h1>
-        <p class="text-sm text-text-muted">{{ wh.selected?.name ?? 'Aucun entrepot' }}</p>
+        <h1 class="text-h2 font-bold text-text-primary">Inventaire</h1>
+        <p class="text-body-sm text-text-muted">{{ wh.selected?.name ?? 'Aucun entrepôt' }}</p>
       </div>
     </div>
 
-    <p v-if="wh.error" class="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{{ wh.error }}</p>
+    <ErrorState v-if="wh.error" variant="inline" :title="wh.error">
+      <template #actions>
+        <Button v-if="wh.selectedId" variant="ghost" size="sm" @click="wh.fetchInventory(wh.selectedId)">Réessayer</Button>
+      </template>
+    </ErrorState>
 
     <div v-if="wh.myWarehouses.length > 1" class="flex flex-wrap gap-2">
       <Button
@@ -85,23 +99,27 @@ async function save(s: StockLine) {
       </Button>
     </div>
 
-    <!-- Recherche + filtre categorie -->
+    <!-- Recherche + filtre catégorie -->
     <div class="flex flex-wrap gap-3">
       <Input v-model="search" placeholder="Rechercher un produit..." class="max-w-xs" />
-      <select v-model="categoryFilter" class="rounded-md border border-border bg-white px-3 py-2 text-sm text-text-primary">
-        <option value="">Toutes les categories</option>
+      <select
+        v-model="categoryFilter"
+        aria-label="Filtrer par catégorie"
+        class="rounded-md border border-border bg-white px-3 py-2 text-body-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2"
+      >
+        <option value="">Toutes les catégories</option>
         <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
       </select>
     </div>
 
-    <Card>
-      <CardContent class="p-0">
-        <table v-if="filtered.length" class="w-full text-sm">
+    <Card v-if="filtered.length">
+      <CardContent class="p-0 overflow-x-auto">
+        <table class="w-full text-body-sm">
           <thead class="border-b border-border text-left text-text-muted">
             <tr>
               <th class="px-4 py-2">Produit</th>
-              <th class="px-4 py-2">Categorie</th>
-              <th class="px-4 py-2">Quantite</th>
+              <th class="px-4 py-2">Catégorie</th>
+              <th class="px-4 py-2">Quantité</th>
               <th class="px-4 py-2 text-right">Action</th>
             </tr>
           </thead>
@@ -109,7 +127,7 @@ async function save(s: StockLine) {
             <tr v-for="s in filtered" :key="s.id" class="border-b border-border/50 last:border-0">
               <td class="px-4 py-2 font-medium text-text-primary">
                 {{ s.product.name }}
-                <span v-if="s.quantity <= LOW_STOCK_THRESHOLD" class="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">stock bas</span>
+                <span v-if="s.quantity <= LOW_STOCK_THRESHOLD" class="ml-2 rounded-full bg-error/10 px-2 py-0.5 text-caption font-semibold text-error">stock bas</span>
               </td>
               <td class="px-4 py-2 text-text-muted">{{ s.product.category?.name ?? '—' }}</td>
               <td class="px-4 py-2">
@@ -117,7 +135,8 @@ async function save(s: StockLine) {
                   v-model.number="edits[s.productId]"
                   type="number"
                   min="0"
-                  class="w-24 rounded-md border border-border bg-white px-2 py-1 text-sm"
+                  :aria-label="`Quantité en stock pour ${s.product.name}`"
+                  class="w-24 rounded-md border border-border bg-white px-2 py-1 text-body-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2"
                 >
               </td>
               <td class="px-4 py-2 text-right">
@@ -128,8 +147,34 @@ async function save(s: StockLine) {
             </tr>
           </tbody>
         </table>
-        <p v-else class="px-4 py-10 text-center text-text-muted">Aucun produit en stock pour ces criteres.</p>
       </CardContent>
     </Card>
+
+    <!-- Entrepôt réellement vide -->
+    <EmptyState
+      v-else-if="isWarehouseEmpty"
+      title="Aucun produit en stock"
+      description="Cet entrepôt ne référence encore aucun produit."
+    >
+      <template #icon>
+        <Icon name="ph:package" class="size-10 text-primary-500" />
+      </template>
+    </EmptyState>
+
+    <!-- Filtres trop restrictifs -->
+    <EmptyState
+      v-else
+      title="Aucun produit pour ces critères"
+      :description="hasFilters
+        ? 'Aucun produit ne correspond à votre recherche ou à la catégorie sélectionnée.'
+        : 'Aucun produit à afficher.'"
+    >
+      <template #icon>
+        <Icon name="ph:magnifying-glass" class="size-10 text-primary-500" />
+      </template>
+      <template #actions>
+        <Button v-if="hasFilters" variant="outline" @click="resetFilters">Réinitialiser les filtres</Button>
+      </template>
+    </EmptyState>
   </div>
 </template>

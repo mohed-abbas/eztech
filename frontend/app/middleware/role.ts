@@ -11,6 +11,11 @@ export default defineNuxtRouteMiddleware((to) => {
   const required = to.meta['role'] as string | string[] | undefined
   if (!required) return
 
+  // Etat d'auth indetermine (429 / 5xx / reseau sur /auth/me) : le role est inconnu, pas absent.
+  // Rediriger ici renverrait un admin valide vers /products. Le backend porte requireRole, donc
+  // laisser passer le rendu ne cree aucune faille — cette garde reste purement UX.
+  if (auth.sessionUnresolved && !auth.user) return
+
   const allowed = Array.isArray(required) ? required : [required]
   // admin est implicitement autorise partout ; sinon le role doit figurer dans la liste
   if (auth.role !== 'admin' && !allowed.includes(auth.role as string)) {

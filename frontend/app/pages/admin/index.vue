@@ -226,7 +226,7 @@ const navSections = [
           </p>
           <button
             :disabled="loadingStats"
-            class="inline-flex shrink-0 items-center gap-2 self-start rounded-xl bg-white/15 px-4 py-2 text-body-sm font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+            class="inline-flex shrink-0 items-center gap-2 self-start rounded-xl bg-white/15 px-4 py-2 text-body-sm font-semibold text-white transition hover:bg-white/25 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-primary-700"
             @click="loadStats()"
           >
             <Icon name="ph:arrows-clockwise" class="size-4" />

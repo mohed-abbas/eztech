@@ -532,7 +532,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
           type="button"
           :disabled="loading || refreshing"
           title="Recharger les zones depuis l’API"
-          class="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+          class="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="load()"
         >
           <Icon name="ph:arrows-clockwise" class="size-4" :class="refreshing && 'animate-spin'" />
@@ -541,7 +541,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
         <button
           type="button"
           :disabled="loading || !!draft"
-          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="startCreate"
         >
           <Icon name="ph:plus" class="size-4" />
@@ -569,7 +569,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
       </div>
       <button
         type="button"
-        class="shrink-0 rounded-xl border border-border bg-white px-4 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+        class="shrink-0 rounded-xl border border-border bg-white px-4 py-2 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         @click="load()"
       >
         Réessayer
@@ -606,7 +606,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
               <button
                 type="button"
                 :disabled="draft.points.length < 3"
-                class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-caption font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-caption font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="closeRing"
               >
                 <Icon name="ph:check" class="size-3.5" />
@@ -615,7 +615,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
               <button
                 type="button"
                 :disabled="!draft.points.length"
-                class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-caption font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-caption font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="undoPoint"
               >
                 <Icon name="ph:arrow-u-up-left" class="size-3.5" />
@@ -647,7 +647,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
                 v-model="draft.name"
                 type="text"
                 placeholder="Paris Centre"
-                class="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-body-sm text-text-primary outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
+                class="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-body-sm text-text-primary outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500"
                 :aria-invalid="!!err('name')"
                 :aria-describedby="err('name') ? 'zone-name-error' : undefined"
               >
@@ -681,7 +681,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
                 type="button"
                 :disabled="saving || !canSave"
                 :title="canSave ? undefined : Object.values(draftErrors).join(' ')"
-                class="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+                class="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="save"
               >
                 <Icon v-if="saving" name="ph:spinner" class="size-4 animate-spin" />
@@ -690,7 +690,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
               <button
                 type="button"
                 :disabled="saving"
-                class="rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:opacity-50"
+                class="rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                 @click="cancelDraft"
               >
                 Annuler
@@ -728,7 +728,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
               <template #actions>
                 <button
                   type="button"
-                  class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700"
+                  class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   @click="startCreate"
                 >
                   <Icon name="ph:plus" class="size-4" />
@@ -749,7 +749,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
               <div class="flex items-start justify-between gap-3">
                 <button
                   type="button"
-                  class="min-w-0 flex-1 text-left"
+                  class="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   @click="focusZone(z)"
                 >
                   <span class="block truncate text-body-sm font-semibold text-text-primary">
@@ -770,7 +770,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
                 <button
                   type="button"
                   :disabled="!!draft || !mapReady"
-                  class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-caption font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-1.5 text-caption font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   @click="startEdit(z)"
                 >
                   <Icon name="ph:pencil-simple" class="size-3.5" />
@@ -779,7 +779,7 @@ const selectedZone = computed(() => zones.value.find(z => z.id === selectedId.va
                 <button
                   type="button"
                   :disabled="deactivating === z.id || !!draft"
-                  class="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-white px-3 py-1.5 text-caption font-medium text-error transition hover:bg-error/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-error/30 bg-white px-3 py-1.5 text-caption font-medium text-error transition hover:bg-error/5 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   @click="deactivate(z)"
                 >
                   <Icon

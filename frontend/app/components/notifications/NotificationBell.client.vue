@@ -21,7 +21,7 @@ async function handleSelect(n: AppNotification) {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger
-      class="relative flex items-center justify-center size-10 rounded-lg text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-900"
+      class="relative flex items-center justify-center size-10 rounded-lg text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-900 active:bg-neutral-100 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       aria-label="Notifications"
     >
       <Icon name="ph:bell" class="size-5" />
@@ -39,7 +39,7 @@ async function handleSelect(n: AppNotification) {
         <button
           v-if="unreadCount > 0"
           type="button"
-          class="text-xs font-medium text-primary-600 hover:underline"
+          class="text-caption font-medium text-primary-600 rounded-sm hover:underline hover:text-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click.stop="markAllRead()"
         >
           Tout marquer comme lu
@@ -73,7 +73,7 @@ async function handleSelect(n: AppNotification) {
       <!-- entry point to the full page — the bell only ever holds the first page -->
       <DropdownMenuSeparator />
       <DropdownMenuItem as-child class="cursor-pointer justify-center px-3 py-2.5 focus:bg-neutral-50">
-        <NuxtLink to="/notifications" class="block w-full text-center text-xs font-medium text-primary-600">
+        <NuxtLink to="/notifications" class="block w-full text-center text-caption font-medium text-primary-600 rounded-sm outline-none hover:underline focus-visible:ring-2 focus-visible:ring-primary-500">
           Voir toutes les notifications
         </NuxtLink>
       </DropdownMenuItem>

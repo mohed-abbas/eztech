@@ -237,7 +237,7 @@ async function save() {
         </p>
       </div>
       <button
-        class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+        class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         @click="fetchUsers"
       >
         <Icon name="ph:arrows-clockwise" class="size-4" />
@@ -256,13 +256,13 @@ async function save() {
           v-model="searchQuery"
           type="search"
           placeholder="Rechercher par nom ou e-mail..."
-          class="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+          class="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
       </div>
       <select
         v-model="roleFilter"
         aria-label="Filtrer par rôle"
-        class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+        class="rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
       >
         <option value="all">
           Tous les rôles
@@ -304,7 +304,7 @@ async function save() {
         {{ error }}
       </p>
       <button
-        class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700"
+        class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         @click="fetchUsers"
       >
         Réessayer
@@ -322,7 +322,7 @@ async function save() {
       </template>
       <template #actions>
         <button
-          class="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+          class="inline-flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="searchQuery = ''; roleFilter = 'all'"
         >
           <Icon name="ph:funnel-simple" class="size-4" />
@@ -507,8 +507,8 @@ async function save() {
             type="text"
             class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
             :class="nameError
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-neutral-200 focus:border-primary-500 focus:ring-primary-500'"
           >
           <p v-if="nameError" class="mt-1 flex items-center gap-1 text-caption text-error">
             <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
@@ -524,7 +524,7 @@ async function save() {
             v-model="form.phone"
             type="tel"
             placeholder="06 12 34 56 78"
-            class="w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
         </div>
 
@@ -535,7 +535,7 @@ async function save() {
           <select
             v-model="form.role"
             :disabled="isSelf"
-            class="w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-text-muted"
+            class="w-full rounded-xl border border-neutral-200 px-4 py-2.5 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-text-muted"
           >
             <option v-for="r in ROLES" :key="r.value" :value="r.value">
               {{ r.label }}
@@ -574,7 +574,7 @@ async function save() {
         <div class="flex items-center gap-3">
           <button
             :disabled="saving || !canSave"
-            class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+            class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             @click="save"
           >
             <Icon v-if="saving" name="ph:circle-notch" class="size-4 animate-spin" />
@@ -582,7 +582,7 @@ async function save() {
             {{ saving ? 'Enregistrement...' : 'Enregistrer' }}
           </button>
           <button
-            class="rounded-xl border border-neutral-200 px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+            class="rounded-xl border border-neutral-200 px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             @click="closeModal"
           >
             Annuler

@@ -29,6 +29,8 @@ export interface OrderAddress {
 
 export interface Order {
   id: string
+  /** Human-readable order number (EZ-42B155). Null on mock/legacy rows — render `reference ?? id`. */
+  reference?: string | null
   userId: string
   items: OrderItem[]
   status: OrderStatus

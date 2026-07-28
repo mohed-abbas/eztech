@@ -444,7 +444,7 @@ const lowStockCount = computed(
       <div class="flex items-center gap-2">
         <button
           type="button"
-          class="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+          class="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="fetchWarehouses()"
         >
           <Icon name="ph:arrows-clockwise" class="size-4" />
@@ -452,7 +452,7 @@ const lowStockCount = computed(
         </button>
         <button
           type="button"
-          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700"
+          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="openCreate"
         >
           <Icon name="ph:plus" class="size-4" />
@@ -472,7 +472,7 @@ const lowStockCount = computed(
         type="search"
         placeholder="Rechercher un entrepôt..."
         aria-label="Rechercher un entrepôt"
-        class="w-full rounded-xl border border-border bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+        class="w-full rounded-xl border border-border bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
       >
     </div>
 
@@ -500,7 +500,7 @@ const lowStockCount = computed(
       </p>
       <button
         type="button"
-        class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700"
+        class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         @click="fetchWarehouses()"
       >
         Réessayer
@@ -521,7 +521,7 @@ const lowStockCount = computed(
       <template #actions>
         <button
           type="button"
-          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700"
+          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="openCreate"
         >
           <Icon name="ph:plus" class="size-4" />
@@ -608,7 +608,7 @@ const lowStockCount = computed(
           <div class="flex shrink-0 flex-wrap items-center gap-2">
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-body-sm font-medium text-text-secondary transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+              class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-body-sm font-medium text-text-secondary transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               :aria-expanded="selectedId === w.id"
               @click="selectWarehouse(w)"
             >
@@ -617,7 +617,7 @@ const lowStockCount = computed(
             </button>
             <button
               type="button"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-body-sm font-medium text-text-secondary transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+              class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-body-sm font-medium text-text-secondary transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               @click="openEdit(w)"
             >
               <Icon name="ph:pencil-simple" class="size-4" />
@@ -626,7 +626,7 @@ const lowStockCount = computed(
             <button
               type="button"
               :disabled="toggling === w.id"
-              class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-body-sm font-medium transition disabled:opacity-40"
+              class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-body-sm font-medium transition disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               :class="w.isActive
                 ? 'text-text-secondary hover:border-error/30 hover:bg-error/5 hover:text-error'
                 : 'text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50'"
@@ -669,7 +669,7 @@ const lowStockCount = computed(
             <span>{{ stockError }}</span>
             <button
               type="button"
-              class="rounded-lg border border-error/30 px-3 py-1 text-caption font-medium transition hover:bg-error/10"
+              class="rounded-lg border border-error/30 px-3 py-1 text-caption font-medium transition hover:bg-error/10 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               @click="loadStock(w.id)"
             >
               Réessayer
@@ -783,8 +783,8 @@ const lowStockCount = computed(
             placeholder="EzTech Châtelet"
             class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
             :class="err('name')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-border focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('name')"
           >
           <p v-if="err('name')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -809,8 +809,8 @@ const lowStockCount = computed(
             placeholder="4 Place du Châtelet, 75001 Paris"
             class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
             :class="err('address')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-border focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('address')"
           >
           <p v-if="err('address')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -838,8 +838,8 @@ const lowStockCount = computed(
               placeholder="48.8566"
               class="w-full rounded-xl border px-4 py-2.5 font-mono text-body-sm focus:outline-none focus:ring-2"
               :class="err('lat')
-                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-                : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+                : 'border-border focus:border-primary-500 focus:ring-primary-500'"
               @blur="touch('lat')"
             >
             <p v-if="err('lat')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -865,8 +865,8 @@ const lowStockCount = computed(
               placeholder="2.3522"
               class="w-full rounded-xl border px-4 py-2.5 font-mono text-body-sm focus:outline-none focus:ring-2"
               :class="err('lng')
-                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-                : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+                : 'border-border focus:border-primary-500 focus:ring-primary-500'"
               @blur="touch('lng')"
             >
             <p v-if="err('lng')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -889,8 +889,8 @@ const lowStockCount = computed(
               placeholder="5"
               class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
               :class="err('serviceRadius')
-                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-                : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+                : 'border-border focus:border-primary-500 focus:ring-primary-500'"
               @blur="touch('serviceRadius')"
             >
             <p
@@ -915,8 +915,8 @@ const lowStockCount = computed(
               type="time"
               class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
               :class="err('openTime')
-                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-                : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+                : 'border-border focus:border-primary-500 focus:ring-primary-500'"
               @blur="touch('openTime')"
             >
             <p v-if="err('openTime')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -935,8 +935,8 @@ const lowStockCount = computed(
               type="time"
               class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
               :class="err('closeTime')
-                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-                : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+                : 'border-border focus:border-primary-500 focus:ring-primary-500'"
               @blur="touch('closeTime')"
             >
             <p v-if="err('closeTime')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -954,7 +954,7 @@ const lowStockCount = computed(
           <select
             id="wh-manager"
             v-model="form.managerId"
-            class="w-full rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             <option value="">
               Aucun responsable
@@ -985,7 +985,7 @@ const lowStockCount = computed(
             id="wh-active"
             v-model="form.isActive"
             type="checkbox"
-            class="mt-0.5 size-4 rounded border-border text-primary-600 focus:ring-primary-400"
+            class="mt-0.5 size-4 rounded border-border text-primary-600 focus:ring-primary-500"
           >
           <span>
             <span class="block text-body-sm font-medium text-text-primary">Entrepôt actif</span>
@@ -1015,7 +1015,7 @@ const lowStockCount = computed(
               type="button"
               :disabled="saving || !formValid"
               :title="!formValid ? 'Renseignez les champs obligatoires' : ''"
-              class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+              class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               @click="save"
             >
               <Icon v-if="saving" name="ph:circle-notch" class="size-4 animate-spin" />
@@ -1024,7 +1024,7 @@ const lowStockCount = computed(
             </button>
             <button
               type="button"
-              class="rounded-xl border border-border px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+              class="rounded-xl border border-border px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
               @click="closeModal"
             >
               Annuler

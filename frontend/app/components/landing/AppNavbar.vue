@@ -46,7 +46,11 @@ function handleLogout() {
     ]"
   >
     <div class="mx-auto max-w-7xl flex items-center justify-between px-6 lg:px-8 py-5">
-      <NuxtLink to="/" class="relative flex items-center gap-2.5 group" @click="closeMenu">
+      <NuxtLink
+        to="/"
+        :class="['relative flex items-center gap-2.5 group rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-offset-2', menuOpen ? 'focus-visible:ring-white/70 focus-visible:ring-offset-primary-600' : 'focus-visible:ring-primary-500 focus-visible:ring-offset-white']"
+        @click="closeMenu"
+      >
         <div class="size-9 rounded-full bg-primary-500 flex items-center justify-center transition-transform duration-300 group-hover:scale-110">
           <Icon name="ph:package" class="size-4 text-white" />
         </div>
@@ -56,7 +60,9 @@ function handleLogout() {
       </NuxtLink>
 
       <button
-        :class="['relative flex flex-col items-center justify-center size-12 gap-[7px] rounded-full transition-colors', menuOpen ? '' : 'hover:bg-neutral-100']"
+        :class="['relative flex flex-col items-center justify-center size-12 gap-[7px] rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-offset-2', menuOpen ? 'focus-visible:ring-white/70 focus-visible:ring-offset-primary-600' : 'hover:bg-neutral-100 active:bg-neutral-200 focus-visible:ring-primary-500 focus-visible:ring-offset-white']"
+        type="button"
+        :aria-expanded="menuOpen"
         aria-label="Toggle menu"
         @click="menuOpen = !menuOpen"
       >
@@ -85,7 +91,7 @@ function handleLogout() {
               :key="link.label"
               v-motion="menuLinkMotion(idx)"
               :to="link.href"
-              class="group flex items-center gap-4 py-4 sm:py-5 border-b border-white/15"
+              class="group flex items-center gap-4 py-4 sm:py-5 border-b border-white/15 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-primary-600"
               @click="closeMenu"
             >
               <span class="font-poppins font-medium text-3xl sm:text-4xl lg:text-5xl text-primary-200 group-hover:text-white transition-all duration-300 group-hover:translate-x-2">
@@ -100,7 +106,8 @@ function handleLogout() {
             <button
               v-if="isAuthenticated"
               v-motion="menuLinkMotion(menuLinks.length)"
-              class="group flex items-center gap-4 py-4 sm:py-5 border-b border-white/15 w-full text-left"
+              class="group flex items-center gap-4 py-4 sm:py-5 border-b border-white/15 w-full text-left rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-primary-600"
+              type="button"
               @click="handleLogout"
             >
               <span class="font-poppins font-medium text-3xl sm:text-4xl lg:text-5xl text-red-200 group-hover:text-red-100 transition-all duration-300 group-hover:translate-x-2">

@@ -2,7 +2,7 @@
 import type { ReturnItem } from '~/stores/warehouse'
 
 definePageMeta({ layout: 'warehouse', middleware: ['auth', 'role'], role: 'warehouse_manager' })
-useHead({ title: 'Retours a inspecter - EzTech' })
+useHead({ title: 'Retours à inspecter - EzTech' })
 
 const wh = useWarehouseStore()
 
@@ -32,35 +32,42 @@ function fmt(iso: string | null) {
 <template>
   <div class="mx-auto max-w-5xl px-4 py-8 space-y-6">
     <div>
-      <h1 class="text-2xl font-bold text-text-primary">Retours a inspecter</h1>
-      <p class="text-sm text-text-muted">Verifiez les articles retournes : remise en stock ou mise au rebut.</p>
+      <h1 class="text-h2 font-bold text-text-primary">Retours à inspecter</h1>
+      <p class="text-body-sm text-text-muted">Vérifiez les articles retournés : remise en stock ou mise au rebut.</p>
     </div>
 
-    <p v-if="wh.error" class="rounded-md bg-red-50 px-4 py-2 text-sm text-red-700">{{ wh.error }}</p>
+    <ErrorState v-if="wh.error" variant="inline" :title="wh.error">
+      <template #actions>
+        <Button variant="ghost" size="sm" @click="wh.fetchReturns()">Réessayer</Button>
+      </template>
+    </ErrorState>
 
     <!-- File d'inspection -->
     <section class="space-y-3">
-      <h2 class="text-lg font-semibold text-text-primary">A inspecter ({{ wh.returnsToInspect.length }})</h2>
+      <h2 class="text-h4 font-semibold text-text-primary">À inspecter ({{ wh.returnsToInspect.length }})</h2>
 
-      <Card v-if="!wh.returnsToInspect.length">
-        <CardContent class="py-10 text-center text-text-muted">
-          <Icon name="ph:package" class="mx-auto mb-3 size-10" />
-          <p>Aucun retour en attente d'inspection.</p>
-        </CardContent>
-      </Card>
+      <EmptyState
+        v-if="!wh.returnsToInspect.length"
+        title="Aucun retour en attente d'inspection."
+        description="Les colis collectés par les livreurs apparaîtront ici."
+      >
+        <template #icon>
+          <Icon name="ph:package" class="size-10 text-primary-500" />
+        </template>
+      </EmptyState>
 
       <Card v-for="r in wh.returnsToInspect" :key="r.id" data-testid="return-card">
         <CardHeader>
           <CardTitle class="flex items-center justify-between text-base">
             <span>{{ r.reference }}</span>
-            <span class="text-sm font-normal text-text-muted">collecte le {{ fmt(r.completedAt) }}</span>
+            <span class="text-body-sm font-normal text-text-muted">collecte le {{ fmt(r.completedAt) }}</span>
           </CardTitle>
           <CardDescription>{{ r.pickupAddress }}</CardDescription>
         </CardHeader>
         <CardContent>
           <Input v-model="notes[r.id]" placeholder="Commentaire d'inspection (optionnel)" />
         </CardContent>
-        <CardFooter class="gap-2">
+        <CardFooter class="flex-wrap gap-2">
           <Button :disabled="busyId === r.id" @click="inspect(r, 'available')">
             <Icon name="ph:check-circle" class="mr-2 size-4" /> Disponible (remettre en stock)
           </Button>
@@ -73,20 +80,20 @@ function fmt(iso: string | null) {
 
     <!-- Traites recemment -->
     <section v-if="wh.returnsProcessed.length" class="space-y-3">
-      <h2 class="text-lg font-semibold text-text-primary">Traites recemment</h2>
+      <h2 class="text-h4 font-semibold text-text-primary">Traites recemment</h2>
       <Card>
-        <CardContent class="p-0">
-          <table class="w-full text-sm">
+        <CardContent class="p-0 overflow-x-auto">
+          <table class="w-full text-body-sm">
             <thead class="border-b border-border text-left text-text-muted">
-              <tr><th class="px-4 py-2">Reference</th><th class="px-4 py-2">Resultat</th><th class="px-4 py-2">Inspecte le</th></tr>
+              <tr><th class="px-4 py-2">Référence</th><th class="px-4 py-2">Résultat</th><th class="px-4 py-2">Inspecté le</th></tr>
             </thead>
             <tbody>
               <tr v-for="r in wh.returnsProcessed" :key="r.id" class="border-b border-border/50 last:border-0">
                 <td class="px-4 py-2 font-medium">{{ r.reference }}</td>
                 <td class="px-4 py-2">
                   <span
-                    class="rounded-full px-2 py-0.5 text-xs font-semibold"
-                    :class="r.inspectionResult === 'available' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'"
+                    class="rounded-full px-2 py-0.5 text-caption font-semibold"
+                    :class="r.inspectionResult === 'available' ? 'bg-emerald-100 text-emerald-700' : 'bg-error/10 text-error'"
                   >
                     {{ r.inspectionResult === 'available' ? 'Remis en stock' : 'Endommage' }}
                   </span>

@@ -72,7 +72,7 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
 
 <template>
   <div class="mx-auto max-w-3xl px-4 py-8 space-y-6">
-    <h1 class="text-2xl font-bold text-text-primary">Livraisons</h1>
+    <h1 class="text-h2 font-bold text-text-primary">Livraisons</h1>
 
     <!-- Active delivery -->
     <Card v-if="rider.activeDelivery">
@@ -81,13 +81,13 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
         <CardDescription>{{ DELIVERY_STATUS_LABEL[rider.activeDelivery.status] }} · {{ eur(rider.activeDelivery.riderFee) }}</CardDescription>
       </CardHeader>
       <CardContent class="space-y-4">
-        <div class="space-y-1.5 text-sm">
+        <div class="space-y-1.5 text-body-sm">
           <div class="flex gap-2"><Icon name="ph:package" class="size-4 mt-0.5 text-text-muted" /><span>{{ rider.activeDelivery.pickupAddress }}</span></div>
           <div class="flex gap-2"><Icon name="ph:map-pin" class="size-4 mt-0.5 text-text-muted" /><span>{{ rider.activeDelivery.dropoffAddress }}</span></div>
         </div>
 
         <!-- Indicateur de partage de position -->
-        <div v-if="gpsActive" class="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-sm text-success">
+        <div v-if="gpsActive" class="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-body-sm text-success">
           <span class="relative flex size-2">
             <span class="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
             <span class="relative inline-flex size-2 rounded-full bg-success" />
@@ -97,18 +97,18 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
 
         <!-- timeline -->
         <ol v-if="rider.activeDelivery.events?.length" class="border-l-2 border-border pl-4 space-y-2">
-          <li v-for="ev in rider.activeDelivery.events" :key="ev.id" class="text-sm">
+          <li v-for="ev in rider.activeDelivery.events" :key="ev.id" class="text-body-sm">
             <span class="font-medium text-text-primary">{{ DELIVERY_STATUS_LABEL[ev.status] }}</span>
             <span class="text-text-muted"> · {{ fmt(ev.createdAt) }}</span>
             <span v-if="ev.note" class="text-text-muted"> — {{ ev.note }}</span>
           </li>
         </ol>
       </CardContent>
-      <CardFooter class="gap-2">
+      <CardFooter class="flex-wrap gap-2">
         <Button v-if="nextStep" :disabled="advancing" @click="advance">
           <Icon name="ph:check-circle" class="mr-2 size-4" /> {{ nextStep.label }}
         </Button>
-        <span v-else class="text-sm text-text-muted">Livraison terminée.</span>
+        <span v-else class="text-body-sm text-text-muted">Livraison terminée.</span>
         <Button variant="outline" as-child>
           <a :href="deliveryMapsUrl(rider.activeDelivery)" target="_blank" rel="noopener">
             <Icon name="ph:navigation-arrow" class="mr-2 size-4" /> Itinéraire
@@ -116,20 +116,25 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
         </Button>
       </CardFooter>
     </Card>
-    <Card v-else>
-      <CardContent class="py-10 text-center text-text-muted">
-        <Icon name="ph:truck" class="mx-auto mb-3 size-10" />
-        <p>Aucune livraison en cours.</p>
-        <Button class="mt-4" variant="outline" as-child><NuxtLink to="/rider/dashboard">Voir les commandes disponibles</NuxtLink></Button>
-      </CardContent>
-    </Card>
+    <EmptyState
+      v-else
+      title="Aucune livraison en cours."
+      description="Rendez-vous sur le tableau de bord pour accepter une nouvelle course."
+    >
+      <template #icon>
+        <Icon name="ph:truck" class="size-10 text-primary-500" />
+      </template>
+      <template #actions>
+        <Button variant="outline" as-child><NuxtLink to="/rider/dashboard">Voir les commandes disponibles</NuxtLink></Button>
+      </template>
+    </EmptyState>
 
     <!-- Recent deliveries & returns -->
     <section class="space-y-3">
-      <h2 class="text-lg font-semibold text-text-primary">Historique</h2>
-      <Card>
-        <CardContent class="p-0">
-          <table v-if="rider.history.length" class="w-full text-sm">
+      <h2 class="text-h4 font-semibold text-text-primary">Historique</h2>
+      <Card v-if="rider.history.length">
+        <CardContent class="p-0 overflow-x-auto">
+          <table class="w-full text-body-sm">
             <thead class="border-b border-border text-left text-text-muted">
               <tr><th class="px-4 py-2">Type</th><th class="px-4 py-2">Référence</th><th class="px-4 py-2">Adresse</th><th class="px-4 py-2">Date</th><th class="px-4 py-2 text-right">Gain</th></tr>
             </thead>
@@ -143,9 +148,17 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
               </tr>
             </tbody>
           </table>
-          <p v-else class="px-4 py-8 text-center text-text-muted">Aucune course effectuée pour l'instant.</p>
         </CardContent>
       </Card>
+      <EmptyState
+        v-else
+        title="Aucune course effectuée pour l'instant."
+        description="Vos livraisons et retours terminés apparaîtront ici."
+      >
+        <template #icon>
+          <Icon name="ph:clock-counter-clockwise" class="size-10 text-primary-500" />
+        </template>
+      </EmptyState>
     </section>
   </div>
 </template>

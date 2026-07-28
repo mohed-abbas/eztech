@@ -400,7 +400,7 @@ async function remove(c: Category) {
           type="button"
           :disabled="loading || refreshing"
           title="Recharger la liste et les compteurs de produits"
-          class="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
+          class="inline-flex items-center gap-2 rounded-xl border border-border bg-white px-4 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="fetchAll"
         >
           <Icon
@@ -412,7 +412,7 @@ async function remove(c: Category) {
         </button>
         <button
           type="button"
-          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700"
+          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="openCreate"
         >
           <Icon name="ph:plus" class="size-4" />
@@ -432,7 +432,7 @@ async function remove(c: Category) {
         type="search"
         placeholder="Rechercher une catégorie..."
         aria-label="Rechercher une catégorie"
-        class="w-full rounded-xl border border-border bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+        class="w-full rounded-xl border border-border bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
       >
     </div>
 
@@ -445,7 +445,7 @@ async function remove(c: Category) {
       <button
         type="button"
         :disabled="loading || refreshing"
-        class="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-error/30 bg-white px-3 py-1.5 text-body-sm font-medium text-error transition hover:bg-error/5 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto"
+        class="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-error/30 bg-white px-3 py-1.5 text-body-sm font-medium text-error transition hover:bg-error/5 disabled:cursor-not-allowed disabled:opacity-50 sm:self-auto outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         @click="fetchAll"
       >
         <Icon
@@ -473,7 +473,7 @@ async function remove(c: Category) {
       </p>
       <button
         type="button"
-        class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700"
+        class="mt-4 rounded-xl bg-primary-600 px-5 py-2 text-body-sm font-medium text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
         @click="fetchAll"
       >
         Réessayer
@@ -494,7 +494,7 @@ async function remove(c: Category) {
       <template #actions>
         <button
           type="button"
-          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700"
+          class="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-5 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           @click="openCreate"
         >
           <Icon name="ph:plus" class="size-4" />
@@ -559,7 +559,7 @@ async function remove(c: Category) {
                 <div class="flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-body-sm font-medium text-text-secondary transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700"
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-body-sm font-medium text-text-secondary transition hover:border-primary-300 hover:bg-primary-50 hover:text-primary-700 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     @click="openEdit(c)"
                   >
                     <Icon name="ph:pencil-simple" class="size-4" />
@@ -572,7 +572,7 @@ async function remove(c: Category) {
                     :disabled="deleting === c.id || deleteBlocked(c)"
                     :aria-label="deleteHint(c)"
                     :title="deleteHint(c)"
-                    class="flex size-9 items-center justify-center rounded-xl border border-border text-neutral-400 transition hover:border-error/30 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-neutral-400"
+                    class="flex size-9 items-center justify-center rounded-xl border border-border text-neutral-400 transition hover:border-error/30 hover:bg-error/5 hover:text-error disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-transparent disabled:hover:text-neutral-400 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                     @click="remove(c)"
                   >
                     <Icon v-if="deleting !== c.id" name="ph:trash" class="size-4" />
@@ -610,8 +610,8 @@ async function remove(c: Category) {
             placeholder="Vélos électriques"
             class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
             :class="err('name')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-border focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('name')"
           >
           <p v-if="err('name')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -636,8 +636,8 @@ async function remove(c: Category) {
             placeholder="velos-electriques"
             class="w-full rounded-xl border px-4 py-2.5 font-mono text-body-sm focus:outline-none focus:ring-2"
             :class="err('slug')
-              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-              : 'border-border bg-neutral-50 focus:border-primary-400 focus:ring-primary-100'"
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+              : 'border-border bg-neutral-50 focus:border-primary-500 focus:ring-primary-500'"
             @blur="touch('slug')"
           >
           <p v-if="err('slug')" class="mt-1 flex items-center gap-1 text-caption text-error">
@@ -659,7 +659,7 @@ async function remove(c: Category) {
             v-model="form.description"
             rows="3"
             placeholder="Courte description affichée dans le catalogue (optionnel)"
-            class="w-full resize-none rounded-xl border border-border px-4 py-2.5 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
+            class="w-full resize-none rounded-xl border border-border px-4 py-2.5 text-body-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
 
@@ -697,8 +697,8 @@ async function remove(c: Category) {
               aria-describedby="cat-icon-help"
               class="w-full rounded-xl border px-4 py-2.5 font-mono text-body-sm focus:outline-none focus:ring-2"
               :class="err('icon')
-                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
-                : 'border-border focus:border-primary-400 focus:ring-primary-100'"
+                ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error'
+                : 'border-border focus:border-primary-500 focus:ring-primary-500'"
               @blur="touch('icon')"
             >
           </div>
@@ -735,7 +735,7 @@ async function remove(c: Category) {
             type="button"
             :disabled="saving || !formValid"
             :title="!formValid ? invalidSummary : ''"
-            class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+            class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             @click="save"
           >
             <Icon v-if="saving" name="ph:circle-notch" class="size-4 animate-spin" />
@@ -744,7 +744,7 @@ async function remove(c: Category) {
           </button>
           <button
             type="button"
-            class="rounded-xl border border-border px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50"
+            class="rounded-xl border border-border px-5 py-2.5 text-body-sm font-medium text-text-secondary transition hover:bg-neutral-50 outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
             @click="closeModal"
           >
             Annuler
