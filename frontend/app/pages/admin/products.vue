@@ -28,10 +28,14 @@ interface Product {
   description: string | null;
   imageUrl: string | null;
   pricingType: string;
-  flatPrice: number | null;
-  hourlyPrice: number | null;
-  dailyPrice: number | null;
-  weeklyPrice: number | null;
+  // Prisma sérialise les colonnes Decimal(10,2) en CHAÎNES ("120.5") — vérifié sur
+  // GET /api/products/:slug. Les typer `number` mentait sur ce que l'API renvoie ;
+  // fmtMoney() fait déjà Number(n), donc l'affichage était juste par accident.
+  flatPrice: number | string | null;
+  hourlyPrice: number | string | null;
+  dailyPrice: number | string | null;
+  weeklyPrice: number | string | null;
+  stock: number;
   isActive: boolean;
   featured: boolean;
   categoryId: string | null;
@@ -72,6 +76,7 @@ const emptyForm = () => ({
   hourlyPrice: "" as string | number,
   dailyPrice: "" as string | number,
   weeklyPrice: "" as string | number,
+  stock: "" as string | number,
   categoryId: "",
   brandId: "",
   featured: false,
@@ -83,13 +88,62 @@ const form = reactive(emptyForm());
 // Track which fields the user has interacted with (blur), so errors only
 // appear after the user has had a chance to fill a field.
 const touched = ref<Record<string, boolean>>({});
+// Flipped by save(): the missing-fields summary must appear on a submit attempt,
+// even when the user never focused a single input.
+const submitAttempted = ref(false);
 
 function touch(field: string) {
   touched.value = { ...touched.value, [field]: true };
 }
 
+// Every field fieldErrors can produce a message for. save() force-touches the lot
+// so a straight click on « Créer » surfaces inline errors instead of doing nothing.
+const VALIDATED_FIELDS = [
+  "name",
+  "slug",
+  "imageUrl",
+  "categoryId",
+  "flatPrice",
+  "hourlyPrice",
+  "dailyPrice",
+  "weeklyPrice",
+  "tiered",
+  "stock",
+] as const;
+
+function touchAll() {
+  const next: Record<string, boolean> = { ...touched.value };
+  for (const f of VALIDATED_FIELDS) next[f] = true;
+  touched.value = next;
+}
+
 function resetTouched() {
   touched.value = {};
+  submitAttempted.value = false;
+}
+
+// The three tiered price columns, in display order. Reused by the form, the
+// validation rules and the list rendering so they can never drift apart.
+const TIERS = [
+  { key: "hourlyPrice", label: "Par heure", suffix: "/h" },
+  { key: "dailyPrice", label: "Par jour", suffix: "/j" },
+  { key: "weeklyPrice", label: "Par semaine", suffix: "/sem" },
+] as const;
+
+// A blank price is "not set" (valid, and cleared server-side with null); anything
+// else must parse to a finite number >= 0. The backend enforces the same rule with
+// z.number().nonnegative() (backend/src/schemas/catalog.ts) but only answers a
+// generic 422 validation_failed, so the useful message has to come from here.
+function priceError(v: string | number, label: string): string | undefined {
+  if (v === "" || v === null) return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return `${label} : saisissez un montant numérique.`;
+  if (n < 0) return `${label} : le prix ne peut pas être négatif.`;
+  return undefined;
+}
+
+function isFilled(v: string | number) {
+  return v !== "" && v !== null;
 }
 
 // Derived field errors — only shown when the field has been touched
@@ -103,15 +157,34 @@ const fieldErrors = computed(() => {
   // categoryId is required by the API (CreateProductSchema) and the storefront
   // filters key off category.slug — a product without one is unreachable.
   if (!form.categoryId) e.categoryId = "La catégorie est obligatoire.";
-  if (form.pricingType === "flat" && (form.flatPrice === "" || form.flatPrice === null))
-    e.flatPrice = "Le prix forfaitaire est obligatoire.";
-  if (
-    form.pricingType === "tiered" &&
-    form.hourlyPrice === "" &&
-    form.dailyPrice === "" &&
-    form.weeklyPrice === ""
-  )
-    e.tiered = "Renseignez au moins un tarif (heure, jour ou semaine).";
+
+  if (form.pricingType === "flat") {
+    if (!isFilled(form.flatPrice))
+      e.flatPrice = "Le prix forfaitaire est obligatoire.";
+    else {
+      const msg = priceError(form.flatPrice, "Prix forfaitaire");
+      if (msg) e.flatPrice = msg;
+    }
+  } else {
+    // Per-input errors, so a negative « par jour » is flagged on that very field
+    // and not lumped into a single combined message.
+    for (const t of TIERS) {
+      const msg = priceError(form[t.key], t.label);
+      if (msg) e[t.key] = msg;
+    }
+    // Mirrors CreateProductSchema's superRefine: tiered needs at least one price.
+    if (!TIERS.some((t) => isFilled(form[t.key])))
+      e.tiered = "Renseignez au moins un tarif (heure, jour ou semaine).";
+  }
+
+  // stock is optional but must be a whole, non-negative number (catalog.ts uses
+  // z.number().int().nonnegative()).
+  if (isFilled(form.stock)) {
+    const n = Number(form.stock);
+    if (!Number.isFinite(n) || !Number.isInteger(n))
+      e.stock = "Le stock doit être un nombre entier.";
+    else if (n < 0) e.stock = "Le stock ne peut pas être négatif.";
+  }
   return e;
 });
 
@@ -123,24 +196,42 @@ function err(field: string) {
   return touched.value[field] ? fieldErrors.value[field] : undefined;
 }
 
+// A tiered input drives both its own error and the combined "at least one" rule,
+// so clearing the last filled tier has to reveal the combined message immediately.
+function touchTier(field: string) {
+  touched.value = { ...touched.value, [field]: true, tiered: true };
+}
+
 // ── Helpers (locaux) ──────────────────────────────────────────────────────────
+// NFD + strip combining marks BEFORE dropping non-[a-z0-9-]: without it « Écran 4K »
+// lost the accented letter entirely and produced `cran-4k`. Same implementation as
+// admin/categories.vue (kept local — a page does not import from another page).
 function slugify(s: string) {
   return s
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/\s+/g, "-")
     .replace(/[^a-z0-9-]/g, "")
-    .replace(/-+/g, "-");
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
-function fmtPrice(p: number | null) {
+function fmtPrice(p: number | string | null) {
   return p != null ? `${fmtMoney(p)} €` : "—";
 }
-function displayPrice(product: Product) {
-  if (product.flatPrice != null) return fmtPrice(product.flatPrice);
-  if (product.hourlyPrice != null) return `${fmtPrice(product.hourlyPrice)}/h`;
-  if (product.dailyPrice != null) return `${fmtPrice(product.dailyPrice)}/j`;
-  if (product.weeklyPrice != null)
-    return `${fmtPrice(product.weeklyPrice)}/sem`;
-  return "—";
+// A tiered product can carry several prices at once. Showing only the first
+// non-null one made a 5 €/h + 30 €/j product read as « 5,00 €/h ».
+function priceParts(product: Product): string[] {
+  if (product.pricingType === "tiered") {
+    const parts = TIERS.filter((t) => product[t.key] != null).map(
+      (t) => `${fmtPrice(product[t.key])}${t.suffix}`,
+    );
+    return parts.length ? parts : ["—"];
+  }
+  return [fmtPrice(product.flatPrice)];
+}
+function pricingLabel(product: Product) {
+  return product.pricingType === "tiered" ? "Paliers" : "Forfait";
 }
 
 // ── Response-shape guards ─────────────────────────────────────────────────────
@@ -228,6 +319,7 @@ function openEdit(p: Product) {
     hourlyPrice: p.hourlyPrice ?? "",
     dailyPrice: p.dailyPrice ?? "",
     weeklyPrice: p.weeklyPrice ?? "",
+    stock: p.stock ?? "",
     categoryId: p.categoryId ?? "",
     brandId: p.brandId ?? "",
     featured: p.featured,
@@ -253,18 +345,69 @@ watch(
 );
 
 // ── API error → French message ────────────────────────────────────────────────
+const FIELD_LABELS: Record<string, string> = {
+  name: "Nom",
+  slug: "Slug",
+  description: "Description",
+  imageUrl: "URL de l'image",
+  categoryId: "Catégorie",
+  brandId: "Marque",
+  pricingType: "Type de tarification",
+  flatPrice: "Prix forfaitaire",
+  hourlyPrice: "Prix par heure",
+  dailyPrice: "Prix par jour",
+  weeklyPrice: "Prix par semaine",
+  stock: "Stock",
+};
+
+// Zod issue messages are English ("Too small: expected number to be >=0"), which is
+// not shippable copy. Map the codes the catalog schema can actually raise; anything
+// unmapped falls back to a generic French sentence rather than leaking English.
+function issueFr(code: string | undefined): string {
+  const map: Record<string, string> = {
+    too_small: "valeur trop petite (minimum attendu non respecté).",
+    too_big: "valeur trop grande.",
+    invalid_type: "type de valeur incorrect.",
+    invalid_format: "format incorrect.",
+    invalid_string: "format incorrect.",
+    not_multiple_of: "la valeur doit être un nombre entier.",
+    custom: "valeur refusée par le serveur.",
+  };
+  return (code && map[code]) ?? "valeur invalide.";
+}
+
 function apiMessage(e: unknown, fallback: string) {
+  type Issue = { message?: string; code?: string; path?: (string | number)[] };
   const apiErr = e as {
-    data?: { error?: string; issues?: { message: string }[] };
+    data?: {
+      error?: string;
+      issues?: Issue[];
+      details?: { issues?: Issue[] };
+    };
     message?: string;
   };
   const code = apiErr?.data?.error;
+  // A route-level 422 answers { error, details: { issues } } while a bare ZodError
+  // answers { error, issues } (backend/src/middleware/error.ts) — verified live:
+  // PATCH weeklyPrice:-5 → 422 {"error":"validation_failed","details":{"issues":[…]}}.
+  // Reading only data.issues fell through to the generic "Données invalides.".
+  const issues = apiErr?.data?.details?.issues ?? apiErr?.data?.issues;
+  // Translate each issue rather than echoing Zod's English text, and name the
+  // offending field in French so the admin knows which input to fix.
+  const issueText = issues
+    ?.map((i) => {
+      const field = i.path?.filter((p) => typeof p === "string").join(".");
+      const what = issueFr(i.code);
+      return field ? `${FIELD_LABELS[field] ?? field} : ${what}` : what;
+    })
+    .filter(Boolean)
+    .join(" · ");
   const errorMap: Record<string, string> = {
     slug_taken: "Ce slug est déjà utilisé par un autre produit.",
     invalid_relation: "La catégorie ou la marque sélectionnée est invalide.",
-    validation_failed:
-      apiErr?.data?.issues?.map((i) => i.message).join(" · ") ??
-      "Données invalides.",
+    validation_failed: issueText
+      ? `Données invalides — ${issueText}`
+      : "Données invalides.",
     missing_token: "Session expirée, veuillez vous reconnecter.",
     forbidden: "Action non autorisée.",
     product_not_found: "Ce produit n'existe plus.",
@@ -274,6 +417,13 @@ function apiMessage(e: unknown, fallback: string) {
 
 // ── Save (create / update) ────────────────────────────────────────────────────
 async function save() {
+  // Reveal every remaining error even if the user focused nothing: the button is
+  // no longer disabled on !formValid, so a click on an empty form must produce
+  // visible inline feedback rather than doing nothing at all.
+  submitAttempted.value = true;
+  touchAll();
+  if (!formValid.value) return;
+
   saving.value = true;
   saveError.value = null;
   try {
@@ -297,15 +447,34 @@ async function save() {
     else if (editingProduct.value?.description) body.description = "";
     if (imageUrl) body.imageUrl = imageUrl;
     else if (editingProduct.value?.imageUrl) body.imageUrl = "";
-    // only send prices relevant to pricingType
+    // Number('abc') is NaN and JSON.stringify turns NaN into null, so a mistyped
+    // price used to be sent as "clear this price" without a word to the user.
+    // Send a finite number, send null to clear, and otherwise omit the key.
+    const setPrice = (key: string, v: string | number) => {
+      if (!isFilled(v)) {
+        body[key] = null;
+        return;
+      }
+      const n = Number(v);
+      if (Number.isFinite(n)) body[key] = n;
+    };
+    // only send prices relevant to pricingType — and on edit, explicitly clear the
+    // other family, otherwise a flat→tiered switch leaves the old flatPrice in the
+    // row and sortPrice (recomputed server-side from the merged prices,
+    // backend/src/routes/products.ts) keeps ordering the product by a dead value.
     if (form.pricingType === "flat") {
-      body.flatPrice = form.flatPrice !== "" ? Number(form.flatPrice) : null;
+      setPrice("flatPrice", form.flatPrice);
+      if (editingProduct.value)
+        for (const t of TIERS) body[t.key] = null;
     } else {
-      body.hourlyPrice =
-        form.hourlyPrice !== "" ? Number(form.hourlyPrice) : null;
-      body.dailyPrice = form.dailyPrice !== "" ? Number(form.dailyPrice) : null;
-      body.weeklyPrice =
-        form.weeklyPrice !== "" ? Number(form.weeklyPrice) : null;
+      for (const t of TIERS) setPrice(t.key, form[t.key]);
+      if (editingProduct.value) body.flatPrice = null;
+    }
+    // stock is optional (z.number().int().nonnegative()); an empty field must not
+    // overwrite the stored quantity, so the key is omitted entirely.
+    if (isFilled(form.stock)) {
+      const s = Number(form.stock);
+      if (Number.isInteger(s) && s >= 0) body.stock = s;
     }
 
     if (editingProduct.value) {
@@ -427,7 +596,7 @@ async function setActive(p: Product, isActive: boolean) {
             type="search"
             placeholder="Rechercher un produit..."
             class="w-full rounded-xl border border-neutral-200 bg-white py-2.5 pl-9 pr-4 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-          />
+          >
         </div>
         <select
           v-model="categoryFilter"
@@ -445,7 +614,7 @@ async function setActive(p: Product, isActive: boolean) {
             v-model="showInactive"
             type="checkbox"
             class="size-4 rounded border-neutral-300 accent-primary-600"
-          />
+          >
           Afficher les produits inactifs
           <span
             v-if="inactiveCount"
@@ -543,7 +712,7 @@ async function setActive(p: Product, isActive: boolean) {
               :alt="p.name"
               class="size-full object-cover transition duration-300 group-hover:scale-105"
               :class="{ 'grayscale': !p.isActive }"
-            />
+            >
             <div v-else class="flex size-full items-center justify-center">
               <Icon name="ph:image" class="size-10 text-neutral-300" />
             </div>
@@ -572,14 +741,32 @@ async function setActive(p: Product, isActive: boolean) {
               >
                 {{ p.name }}
               </p>
-              <p class="shrink-0 text-body-sm font-bold text-primary-600">
-                {{ displayPrice(p) }}
-              </p>
+              <!-- Un produit « paliers » peut porter plusieurs tarifs : on les
+                   affiche tous, sinon 5 €/h + 30 €/j se lisait « 5,00 €/h ». -->
+              <div class="shrink-0 text-right">
+                <p
+                  v-for="part in priceParts(p)"
+                  :key="part"
+                  class="text-body-sm font-bold leading-tight text-primary-600"
+                >
+                  {{ part }}
+                </p>
+              </div>
             </div>
 
-            <p class="text-caption text-text-muted">
-              {{ p.category?.name ?? "—" }}
-              <span v-if="p.brand"> · {{ p.brand.name }}</span>
+            <p class="flex flex-wrap items-center gap-1.5 text-caption text-text-muted">
+              <span
+                class="rounded-full px-2 py-0.5 text-caption font-semibold"
+                :class="
+                  p.pricingType === 'tiered'
+                    ? 'bg-primary-50 text-primary-700'
+                    : 'bg-neutral-100 text-text-secondary'
+                "
+              >
+                {{ pricingLabel(p) }}
+              </span>
+              <span>{{ p.category?.name ?? "—" }}</span>
+              <span v-if="p.brand">· {{ p.brand.name }}</span>
             </p>
 
             <p
@@ -664,7 +851,7 @@ async function setActive(p: Product, isActive: boolean) {
               ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
               : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
             @blur="touch('name')"
-          />
+          >
           <p v-if="err('name')" class="mt-1 flex items-center gap-1 text-caption text-error">
             <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
             {{ err('name') }}
@@ -686,7 +873,7 @@ async function setActive(p: Product, isActive: boolean) {
               ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
               : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
             @blur="touch('slug')"
-          />
+          >
           <p v-if="err('slug')" class="mt-1 flex items-center gap-1 text-caption text-error">
             <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
             {{ err('slug') }}
@@ -724,7 +911,7 @@ async function setActive(p: Product, isActive: boolean) {
               ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
               : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
             @blur="touch('imageUrl')"
-          />
+          >
           <p v-if="err('imageUrl')" class="mt-1 flex items-center gap-1 text-caption text-error">
             <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
             {{ err('imageUrl') }}
@@ -738,7 +925,7 @@ async function setActive(p: Product, isActive: boolean) {
               :src="form.imageUrl"
               alt="preview"
               class="size-full object-cover"
-            />
+            >
           </div>
         </div>
 
@@ -766,7 +953,7 @@ async function setActive(p: Product, isActive: boolean) {
                 type="radio"
                 :value="pt.v"
                 class="sr-only"
-              />
+              >
               {{ pt.label }}
             </label>
           </div>
@@ -789,7 +976,8 @@ async function setActive(p: Product, isActive: boolean) {
               ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
               : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
             @blur="touch('flatPrice')"
-          />
+            @input="touch('flatPrice')"
+          >
           <p v-if="err('flatPrice')" class="mt-1 flex items-center gap-1 text-caption text-error">
             <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
             {{ err('flatPrice') }}
@@ -797,47 +985,33 @@ async function setActive(p: Product, isActive: boolean) {
         </div>
         <div v-else class="space-y-2">
           <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="mb-1.5 block text-caption font-medium text-text-muted"
-                >Par heure (€)</label
-              >
+            <!-- Les trois paliers partagent la même définition (TIERS), donc la
+                 validation par champ et l'affichage en liste ne peuvent pas diverger. -->
+            <div v-for="t in TIERS" :key="t.key">
+              <label class="mb-1.5 block text-caption font-medium text-text-muted">
+                {{ t.label }} (€)
+              </label>
               <input
-                v-model="form.hourlyPrice"
+                v-model="form[t.key]"
                 type="number"
                 min="0"
                 step="0.01"
                 placeholder="0.00"
-                class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-                @blur="touch('tiered')"
-              />
-            </div>
-            <div>
-              <label class="mb-1.5 block text-caption font-medium text-text-muted"
-                >Par jour (€)</label
+                class="w-full rounded-xl border px-3 py-2 text-body-sm focus:outline-none focus:ring-2"
+                :class="err(t.key)
+                  ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
+                  : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+                @blur="touchTier(t.key)"
+                @input="touchTier(t.key)"
+                @change="touchTier(t.key)"
               >
-              <input
-                v-model="form.dailyPrice"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-                @blur="touch('tiered')"
-              />
-            </div>
-            <div>
-              <label class="mb-1.5 block text-caption font-medium text-text-muted"
-                >Par semaine (€)</label
+              <p
+                v-if="err(t.key)"
+                class="mt-1 flex items-center gap-1 text-caption text-error"
               >
-              <input
-                v-model="form.weeklyPrice"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="0.00"
-                class="w-full rounded-xl border border-neutral-200 px-3 py-2 text-body-sm focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100"
-                @blur="touch('tiered')"
-              />
+                <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+                {{ err(t.key) }}
+              </p>
             </div>
           </div>
           <!-- At least one tiered price required -->
@@ -847,6 +1021,33 @@ async function setActive(p: Product, isActive: boolean) {
           </p>
           <p v-else class="text-caption text-text-muted">
             <span class="text-error">*</span> Au moins un tarif est obligatoire.
+          </p>
+        </div>
+
+        <!-- Stock -->
+        <div>
+          <label class="mb-1.5 block text-body-sm font-medium text-text-primary">
+            Stock disponible
+          </label>
+          <input
+            v-model="form.stock"
+            type="number"
+            min="0"
+            step="1"
+            placeholder="0"
+            class="w-full rounded-xl border px-4 py-2.5 text-body-sm focus:outline-none focus:ring-2"
+            :class="err('stock')
+              ? 'border-error/60 bg-error/5 focus:border-error focus:ring-error/20'
+              : 'border-neutral-200 focus:border-primary-400 focus:ring-primary-100'"
+            @blur="touch('stock')"
+            @input="touch('stock')"
+          >
+          <p v-if="err('stock')" class="mt-1 flex items-center gap-1 text-caption text-error">
+            <Icon name="ph:warning-circle" class="size-3.5 shrink-0" />
+            {{ err('stock') }}
+          </p>
+          <p v-else class="mt-1 text-caption text-text-muted">
+            Quantité totale ; laisser vide pour ne pas modifier le stock actuel.
           </p>
         </div>
 
@@ -957,7 +1158,7 @@ async function setActive(p: Product, isActive: boolean) {
       <template #footer>
         <!-- Résumé des champs manquants si l'utilisateur a tenté de soumettre -->
         <div
-          v-if="!formValid && Object.keys(touched).length > 0"
+          v-if="!formValid && submitAttempted"
           class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
         >
           <p class="mb-1 text-body-sm font-semibold text-amber-700">Champs requis manquants :</p>
@@ -973,9 +1174,13 @@ async function setActive(p: Product, isActive: boolean) {
         </div>
 
         <div class="flex items-center gap-3">
+          <!-- Volontairement PAS désactivé sur !formValid : un bouton inerte
+               n'expliquait rien. Le clic déclenche save(), qui marque tous les
+               champs comme visités et affiche les erreurs avant tout appel API. -->
           <button
-            :disabled="saving || !formValid"
+            :disabled="saving"
             class="flex flex-1 items-center justify-center gap-2 rounded-xl bg-primary-600 py-2.5 text-body-sm font-semibold text-white transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-40"
+            :class="{ 'opacity-70': !formValid && submitAttempted }"
             :title="!formValid ? 'Remplissez les champs obligatoires' : ''"
             @click="save"
           >

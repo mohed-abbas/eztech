@@ -10,12 +10,26 @@ export const warehousesRouter = Router();
 
 const managerSelect = { id: true, name: true, email: true };
 
-// GET /api/warehouses — liste (authentifie)
-warehousesRouter.get('/', requireAuth, async (_req, res, next) => {
+// Un managerId doit designer un utilisateur EXISTANT dont le role est `warehouse_manager`.
+// Sans ce controle, PATCH { managerId: <id d'un client> } etait accepte alors que
+// assertWarehouseAccess (lib/warehouseAccess.ts) exige role === 'warehouse_manager' :
+// l'entrepot se retrouvait avec un responsable qui ne peut pas y acceder.
+// `null` est valide (desassignation), `undefined` signifie « champ non fourni ».
+async function assertAssignableManager(managerId: string | null | undefined): Promise<void> {
+  if (managerId === undefined || managerId === null) return;
+  const user = await prisma.user.findUnique({ where: { id: managerId }, select: { role: true } });
+  if (!user || user.role !== 'warehouse_manager') throw new HttpError(422, 'invalid_manager');
+}
+
+// GET /api/warehouses — liste (authentifie). La liste elle-meme reste ouverte a tout compte
+// connecte (contrat d'origine), mais le responsable n'est joint que pour le staff : le bloc
+// manager porte le nom ET l'email d'un employe, qui n'ont pas a circuler vers un client.
+warehousesRouter.get('/', requireAuth, async (req, res, next) => {
   try {
+    const isStaff = req.user?.role === 'admin' || req.user?.role === 'warehouse_manager';
     const warehouses = await prisma.warehouse.findMany({
       orderBy: { name: 'asc' },
-      include: { manager: { select: managerSelect } },
+      ...(isStaff ? { include: { manager: { select: managerSelect } } } : {}),
     });
     res.json({ warehouses });
   } catch (err) {
@@ -104,6 +118,7 @@ warehousesRouter.post('/', requireAuth, requireRole('admin'), async (req, res, n
   const parsed = CreateWarehouseSchema.safeParse(req.body);
   if (!parsed.success) return next(new HttpError(422, 'validation_failed', { issues: parsed.error.issues }));
   try {
+    await assertAssignableManager(parsed.data.managerId);
     // exactOptionalPropertyTypes : retirer les clés `undefined` avant Prisma
     const data = Object.fromEntries(
       Object.entries(parsed.data).filter(([, v]) => v !== undefined),
@@ -111,6 +126,10 @@ warehousesRouter.post('/', requireAuth, requireRole('admin'), async (req, res, n
     const warehouse = await prisma.warehouse.create({ data });
     res.status(201).json({ warehouse });
   } catch (err) {
+    // P2003 : la FK managerId ne pointe sur aucun User — 422 plutot qu'un 500 opaque
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+      return next(new HttpError(422, 'invalid_manager'));
+    }
     next(err);
   }
 });
@@ -121,6 +140,7 @@ warehousesRouter.patch('/:id', requireAuth, requireRole('admin'), async (req, re
   if (!parsed.success) return next(new HttpError(422, 'validation_failed', { issues: parsed.error.issues }));
   const id = String(req.params['id']);
   try {
+    await assertAssignableManager(parsed.data.managerId);
     // exactOptionalPropertyTypes : retirer les clés `undefined` avant Prisma
     const data = Object.fromEntries(
       Object.entries(parsed.data).filter(([, v]) => v !== undefined),
@@ -128,8 +148,10 @@ warehousesRouter.patch('/:id', requireAuth, requireRole('admin'), async (req, re
     const warehouse = await prisma.warehouse.update({ where: { id }, data });
     res.json({ warehouse });
   } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
-      return next(new HttpError(404, 'warehouse_not_found'));
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      if (err.code === 'P2025') return next(new HttpError(404, 'warehouse_not_found'));
+      // P2003 : la FK managerId ne pointe sur aucun User — 422 plutot qu'un 500 opaque
+      if (err.code === 'P2003') return next(new HttpError(422, 'invalid_manager'));
     }
     next(err);
   }

@@ -79,6 +79,25 @@ describe('warehouses API — gating admin', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.warehouses)).toBe(true);
     expect(res.body.warehouses.length).toBeGreaterThanOrEqual(1);
+    // un client voit les entrepots mais jamais le nom/email du responsable
+    expect(res.body.warehouses[0].manager).toBeUndefined();
+  });
+
+  it('joint le responsable pour un admin, jamais pour un client', async () => {
+    const wh = await createWarehouse();
+    const mgr = await createManager('list-mgr@example.com');
+    const token = await adminToken();
+    await request(app).patch(`/api/warehouses/${wh.id}`).set('Authorization', `Bearer ${token}`)
+      .send({ managerId: mgr.id });
+
+    const asAdmin = await request(app).get('/api/warehouses').set('Authorization', `Bearer ${token}`);
+    const assigned = asAdmin.body.warehouses.find((w: { id: string }) => w.id === wh.id);
+    expect(assigned.manager.email).toBe('list-mgr@example.com');
+
+    const customer = await customerToken('wh-list-pii@example.com');
+    const asCustomer = await request(app).get('/api/warehouses').set('Authorization', `Bearer ${customer}`);
+    const same = asCustomer.body.warehouses.find((w: { id: string }) => w.id === wh.id);
+    expect(same.manager).toBeUndefined();
   });
 
   it('permet a un admin d\'assigner un managerId (PATCH)', async () => {
@@ -89,6 +108,63 @@ describe('warehouses API — gating admin', () => {
       .send({ managerId: mgr.id });
     expect(res.status).toBe(200);
     expect(res.body.warehouse.managerId).toBe(mgr.id);
+  });
+
+  // Un managerId qui ne designe aucun User faisait remonter la violation de FK (P2003) jusqu'au
+  // errorHandler : 500 internal_server_error au lieu d'une erreur de validation exploitable.
+  it('refuse un managerId inexistant (422 invalid_manager, plus 500)', async () => {
+    const token = await adminToken();
+    const wh = await createWarehouse();
+    const res = await request(app).patch(`/api/warehouses/${wh.id}`).set('Authorization', `Bearer ${token}`)
+      .send({ managerId: '33333333-3333-4333-8333-333333333333' });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('invalid_manager');
+
+    const row = await testPrisma.warehouse.findUnique({ where: { id: wh.id } });
+    expect(row?.managerId).toBeNull(); // aucune assignation partielle
+  });
+
+  // Assigner un client passait la validation Zod (z.string().min(1)) et la FK, mais
+  // assertWarehouseAccess exige role === 'warehouse_manager' : l'entrepot se retrouvait
+  // avec un responsable incapable d'y acceder.
+  it('refuse un managerId dont le role n\'est pas warehouse_manager (422 invalid_manager)', async () => {
+    const token = await adminToken();
+    const wh = await createWarehouse();
+    const customer = await testPrisma.user.create({
+      data: { email: 'not-a-mgr@example.com', name: 'Client', passwordHash: 'x', role: 'customer' },
+    });
+
+    const res = await request(app).patch(`/api/warehouses/${wh.id}`).set('Authorization', `Bearer ${token}`)
+      .send({ managerId: customer.id });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('invalid_manager');
+
+    const row = await testPrisma.warehouse.findUnique({ where: { id: wh.id } });
+    expect(row?.managerId).toBeNull();
+  });
+
+  it('refuse un managerId invalide des la creation (POST, 422 invalid_manager)', async () => {
+    const token = await adminToken();
+    const customer = await testPrisma.user.create({
+      data: { email: 'not-a-mgr-create@example.com', name: 'Client', passwordHash: 'x', role: 'customer' },
+    });
+
+    const res = await request(app).post('/api/warehouses').set('Authorization', `Bearer ${token}`)
+      .send({ name: 'New', address: '2 Rue', lat: 48.8, lng: 2.3, managerId: customer.id });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toBe('invalid_manager');
+    expect(await testPrisma.warehouse.count()).toBe(0);
+  });
+
+  it('permet de desassigner un responsable avec managerId: null', async () => {
+    const token = await adminToken();
+    const mgr = await createManager('unassign-mgr@example.com');
+    const wh = await createWarehouse(mgr.id);
+
+    const res = await request(app).patch(`/api/warehouses/${wh.id}`).set('Authorization', `Bearer ${token}`)
+      .send({ managerId: null });
+    expect(res.status).toBe(200);
+    expect(res.body.warehouse.managerId).toBeNull();
   });
 });
 
