@@ -47,15 +47,19 @@ const { data: order, pending, error, refresh } = await useFetch<TrackingOrder>(
 const tracking = useOrderTracking(orderId.value, order.value ? { id: order.value.id, status: order.value.status } : null)
 const { riderPos, status: liveStatus, showMap, reconnecting, lastUpdate } = tracking
 
-// `liveStatus` n'est amorce QU'UNE FOIS au setup puis mis a jour par les seuls evenements
-// socket `order-status`. Une action locale qui refetch la commande (annulation -> refresh())
-// laissait donc `liveStatus` fige sur l'ancien statut, et comme `currentStatus` fait
-// `liveStatus || order.status`, le `||` court-circuitait la valeur fraiche : badge, timeline
-// et carte « Annuler » restaient bloques sur l'etat d'avant. On resynchronise donc sur la
-// commande refetchee — le serveur reste la source de verite, aucun statut n'est ecrit a la main.
-watch(() => order.value?.status, (s) => {
-  if (s) liveStatus.value = s
-})
+// `liveStatus` n'est amorce QU'UNE FOIS au setup puis mis a jour par les seuls evenements socket
+// `order-status`. Une action locale qui refetch la commande (annulation -> refresh()) le laissait
+// fige sur l'ancien statut, et comme `currentStatus` fait `liveStatus || order.status`, le `||`
+// court-circuitait la valeur fraiche : badge et timeline restaient bloques sur l'etat d'avant.
+//
+// On resynchronise donc APRES un refresh() explicite uniquement (voir syncLiveStatus dans
+// confirmCancel) et surtout PAS via un watch sur order.status : useFetch resout parfois apres
+// l'arrivee du premier evenement socket, et le watch reecrivait alors le statut frais avec la
+// valeur perimee de la requete en vol — le suivi temps reel restait fige sur « Livreur assigne ».
+function syncLiveStatus() {
+  const s = order.value?.status
+  if (s) liveStatus.value = s as BackendOrderStatus
+}
 
 // the effective live status: the composable's status once it has seeded, else the fetched one
 const currentStatus = computed<BackendOrderStatus>(() =>
@@ -203,6 +207,7 @@ async function confirmCancel() {
     // Relecture serveur : le badge, la timeline et les evenements doivent venir de la base,
     // jamais d'un statut ecrit cote client.
     await refresh()
+    syncLiveStatus()
   }
   catch (err) {
     cancelError.value = err instanceof Error ? err.message : "L'annulation a échoué."
