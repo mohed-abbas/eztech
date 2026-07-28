@@ -148,24 +148,44 @@ describe('rider store — real API', () => {
 
   it('advanceDelivery updates the active delivery, and clears it when delivered', async () => {
     routeFetch({
-      '/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'in_transit', riderId: 'rider-1' }) },
+      '/admin/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'in_transit', riderId: 'rider-1' }) },
     })
     const store = useRiderStore()
     store.activeDelivery = makeOrder({ id: 'o1', status: 'picked_up', riderId: 'rider-1' }) as unknown as DeliveryOrder
     await store.advanceDelivery('in_transit')
     expect(store.activeDelivery?.status).toBe('in_transit')
 
-    routeFetch({ '/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'delivered', riderId: 'rider-1', deliveredAt: '2026-05-12T11:00:00Z' }) } })
+    routeFetch({ '/admin/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'delivered', riderId: 'rider-1', deliveredAt: '2026-05-12T11:00:00Z' }) } })
     await store.advanceDelivery('delivered')
     expect(store.activeDelivery).toBeNull()
   })
 
+  // Garde de non-regression. En production nginx route /api/orders vers le BFF Nuxt, qui n'a aucun
+  // handler /status : la transition repondait 404 et aucun livreur ne pouvait avancer une course.
+  // Ce test a longtemps ete vert parce qu'il routait lui-meme le mauvais chemin — on verifie donc
+  // desormais l'URL appelee, pas seulement le resultat.
+  it('advanceDelivery targets the un-shadowed /admin/orders path, never /api/orders', async () => {
+    routeFetch({
+      '/admin/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'in_transit', riderId: 'rider-1' }) },
+    })
+    const store = useRiderStore()
+    store.activeDelivery = makeOrder({ id: 'o1', status: 'picked_up', riderId: 'rider-1' }) as unknown as DeliveryOrder
+    await store.advanceDelivery('in_transit')
+
+    expect(nuxtStubState.fetch).toHaveBeenCalledWith(
+      'http://api.test/api/admin/orders/o1/status',
+      expect.objectContaining({ method: 'PATCH' }),
+    )
+    const called = nuxtStubState.fetch.mock.calls.map((c: unknown[]) => String(c[0]))
+    expect(called.some(u => u === 'http://api.test/api/orders/o1/status')).toBe(false)
+  })
+
   it('advanceDelivery sends an optional note', async () => {
-    routeFetch({ '/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'at_warehouse', riderId: 'rider-1' }) } })
+    routeFetch({ '/admin/orders/o1/status': { order: makeOrder({ id: 'o1', status: 'at_warehouse', riderId: 'rider-1' }) } })
     const store = useRiderStore()
     store.activeDelivery = makeOrder({ id: 'o1', status: 'rider_assigned', riderId: 'rider-1' }) as unknown as DeliveryOrder
     await store.advanceDelivery('at_warehouse', 'porte B')
-    expect(nuxtStubState.fetch).toHaveBeenCalledWith('http://api.test/api/orders/o1/status', expect.objectContaining({ method: 'PATCH', body: { status: 'at_warehouse', note: 'porte B' } }))
+    expect(nuxtStubState.fetch).toHaveBeenCalledWith('http://api.test/api/admin/orders/o1/status', expect.objectContaining({ method: 'PATCH', body: { status: 'at_warehouse', note: 'porte B' } }))
   })
 
   it('fetchActive normalises or nulls the active delivery', async () => {
