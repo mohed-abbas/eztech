@@ -5,11 +5,12 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { HttpError } from '../middleware/error.js';
 import { CreateCommerceOrderSchema, CreateDeliveryJobSchema, UpdateOrderStatusSchema } from '../schemas/order.js';
-import { generateOrderReference, canRiderTransition } from '../lib/orders.js';
+import { generateOrderReference, canRiderTransition, normalizePickupCode, stripPickupCode } from '../lib/orders.js';
 import { nextAssignmentExpiry } from '../lib/assignment.js';
 import { notify, notifyOnlineRiders, dispatch } from '../lib/notifications.js';
 import { orderPickedUpEmail, orderDeliveredEmail } from '../lib/email/templates.js';
-import { computeLineTotal, computeOrderTotals } from '../lib/pricing.js';
+import { computeLineTotal, computeOrderTotals, computeRiderFee } from '../lib/pricing.js';
+import { RIDER_ORDER_WITH_EVENTS_SELECT } from '../lib/orderProjection.js';
 import { pointInAnyZone } from '../lib/zones.js';
 import { getStripe } from '../lib/stripe.js';
 import { getIO } from '../lib/socket.js';
@@ -20,6 +21,14 @@ export const ordersRouter = Router();
 // base frontend origin for CTA links in transactional email — mirrors app.ts's CORS_ORIGIN
 // parsing (first entry is the primary frontend origin); no dedicated FRONTEND_URL env exists.
 const FRONTEND_ORIGIN = (process.env['CORS_ORIGIN'] ?? 'http://localhost:3000').split(',')[0]!.trim();
+
+// Seuls l'admin et le responsable d'entrepot peuvent voir Order.pickupCode : c'est le secret que
+// l'entrepot remet au livreur au comptoir, il perd tout son sens s'il transite par une reponse
+// destinee a ce meme livreur (ou au client). Ce routeur sert client / livreur / admin, donc CHAQUE
+// commande serialisee ici traverse stripPickupCode() sauf pour ces deux roles.
+function serializeOrder<T extends object>(order: T, role: string | undefined) {
+  return role === 'admin' || role === 'warehouse_manager' ? order : stripPickupCode(order);
+}
 
 // N-05: rental duration -> ms, per line-item durationUnit. `flat` contributes no duration
 // (excluded from the max); an all-flat order therefore computes no rentalEndsAt (Pitfall 1).
@@ -129,9 +138,38 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
       // no warehouse can fulfil the whole cart at create-time (insufficient stock or a split cart)
       return next(new HttpError(409, 'no_single_warehouse'));
     }
-    const warehouseId = [...eligible][0]!;
-    const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
-    if (!warehouse) return next(new HttpError(409, 'no_single_warehouse'));
+
+    // L'ensemble `eligible` ne prouve QUE le stock. Encore faut-il que l'entrepot retenu puisse
+    // reellement sortir la commande : depuis le passage de relais entrepot, un livreur ne peut plus
+    // passer at_warehouse -> picked_up sans un preparedAt et un pickupCode emis par un comptoir.
+    // Router vers un entrepot que personne ne prepare produit donc une commande payee, jamais
+    // preparable, bloquee pour toujours. D'ou un ordre de preference explicite :
+    //
+    //   1. entrepot ACTIF AVEC responsable — sa file de preparation est servie par le tableau de
+    //      bord entrepot (GET /api/warehouses/:id/orders, cadre par assertWarehouseAccess), la
+    //      commande sera preparee sans intervention exceptionnelle. C'est le seul cas nominal.
+    //   2. entrepot ACTIF SANS responsable — degrade mais RECUPERABLE, donc accepte plutot que
+    //      refuse : assertWarehouseAccess laisse passer tout admin sur n'importe quel entrepot, un
+    //      admin peut donc preparer la commande (voir GET /api/warehouses/orders/to-prepare, la
+    //      file transverse qui rend ces commandes visibles). Refuser ici reviendrait a annuler une
+    //      vente parfaitement realisable au seul motif qu'aucun responsable n'est encore nomme.
+    //
+    // Un entrepot INACTIF n'est JAMAIS retenu, meme faute de mieux : en le desactivant l'admin
+    // s'est vu promettre « il ne sera plus propose pour les nouvelles commandes ». Si plus aucun
+    // entrepot actif ne couvre le panier, on refuse a la creation : un echec net et immediat vaut
+    // mieux qu'une commande encaissee que personne ne peut honorer.
+    //
+    // Le tri (nom, id) rend le choix DETERMINISTE. Sans ORDER BY, Postgres ne garantit aucun ordre
+    // de retour : deux paniers identiques pouvaient partir vers deux entrepots differents.
+    const candidates = await prisma.warehouse.findMany({
+      where: { id: { in: [...eligible] }, isActive: true },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+    const warehouse = candidates.find((w) => w.managerId !== null) ?? candidates[0];
+    if (!warehouse) {
+      // du stock existe, mais uniquement dans des entrepots desactives
+      return next(new HttpError(409, 'no_single_warehouse', { reason: 'no_active_warehouse' }));
+    }
 
     const order = await prisma.order.create({
       data: {
@@ -145,6 +183,11 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
         subtotal,
         deliveryFee,
         total,
+        // Remuneration du livreur : une part des frais de livraison deja payes par le client
+        // (lib/pricing.ts). Sans cette ligne la colonne retombait sur son DEFAULT 0, et TOUTE
+        // course boutique payait 0,00 EUR — les ecrans « pool » et « gains » du livreur affichaient
+        // des zeros alors que l'agregation des gains, elle, etait correcte.
+        riderFee: computeRiderFee(deliveryFee),
         // pickup is the selected fulfillment warehouse; dropoff is the validated request address
         pickupAddress: warehouse.address,
         pickupLat: warehouse.lat,
@@ -158,7 +201,7 @@ ordersRouter.post('/', requireAuth, requireRole('customer', 'admin'), async (req
     });
     // NOTE: the order is NOT rider-visible yet — no pending_assignment OrderEvent and no rider
     // notification here. Those fire from the Stripe webhook once paymentStatus flips to paid (D-04).
-    res.status(201).json({ order });
+    res.status(201).json({ order: serializeOrder(order, req.user!.role) });
   } catch (err) {
     next(err);
   }
@@ -208,7 +251,7 @@ async function createDeliveryJob(req: Request, res: Response, next: NextFunction
       include: { events: true },
     });
     await notifyOnlineRiders('new_order', 'Nouvelle commande disponible', `Commande ${order.reference} à proximité`).catch(() => {});
-    res.status(201).json({ order });
+    res.status(201).json({ order: serializeOrder(order, req.user!.role) });
   } catch (err) {
     next(err);
   }
@@ -227,7 +270,7 @@ ordersRouter.get('/', requireAuth, async (req, res, next) => {
       include: { items: true },
       orderBy: { createdAt: 'desc' },
     });
-    res.json({ orders });
+    res.json({ orders: orders.map((o) => serializeOrder(o, role)) });
   } catch (err) {
     next(err);
   }
@@ -246,7 +289,7 @@ ordersRouter.get('/:id', requireAuth, async (req, res, next) => {
     const allowed = role === 'admin' || order.customerId === sub || order.riderId === sub;
     if (!allowed) return next(new HttpError(403, 'forbidden'));
 
-    res.json({ order });
+    res.json({ order: serializeOrder(order, role) });
   } catch (err) {
     next(err);
   }
@@ -321,7 +364,7 @@ ordersRouter.post('/:id/cancel', requireAuth, async (req, res, next) => {
       );
     }
 
-    res.json({ order: claimed.order });
+    res.json({ order: serializeOrder(claimed.order, req.user!.role) });
   } catch (err) {
     next(err);
   }
@@ -333,7 +376,7 @@ ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req,
   const result = UpdateOrderStatusSchema.safeParse(req.body);
   if (!result.success) return next(new HttpError(422, 'validation_failed', { issues: result.error.issues }));
 
-  const { status: nextStatus, note } = result.data;
+  const { status: nextStatus, note, pickupCode } = result.data;
   const orderId = String(req.params['id']);
   const riderId = req.user!.sub;
 
@@ -353,12 +396,41 @@ ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req,
         throw new HttpError(409, 'invalid_transition', { from: current.status, to: nextStatus });
       }
 
+      // Passage de relais entrepot -> livreur. Un livreur ne peut plus emporter un colis seul :
+      // l'entrepot doit d'abord l'avoir marque pret (preparedAt), puis lui avoir remis de la main a
+      // la main le code de ramassage. Les deux controles lisent `current`, la ligne relue DANS la
+      // transaction, jamais un etat charge avant elle : sinon une preparation ou une annulation
+      // concurrente pourrait etre validee contre un instantane perime.
+      // L'ordre compte : preparedAt d'abord, pour que le livreur arrive devant un comptoir qui n'a
+      // rien prepare recoive `order_not_prepared` (actionnable) et pas `invalid_pickup_code`.
+      //
+      // Le relais est defini par l'entrepot, donc il ne s'applique qu'aux commandes qui en ont un.
+      // Une course sans `warehouseId` — creation « delivery-job » directe, jeux de demo — n'a aucun
+      // comptoir susceptible de la preparer ni d'emettre un code : l'y soumettre la bloquerait pour
+      // toujours a at_warehouse. Toute commande issue de la boutique se voit attribuer un entrepot
+      // a la creation (choix du warehouseId plus haut dans ce fichier), donc le parcours client
+      // reel passe integralement par le comptoir.
+      if (current.warehouseId !== null && current.status === 'at_warehouse' && nextStatus === 'picked_up') {
+        if (current.preparedAt === null) {
+          throw new HttpError(409, 'order_not_prepared', {
+            status: current.status,
+            warehouseId: current.warehouseId,
+          });
+        }
+        const supplied = pickupCode === undefined ? null : normalizePickupCode(pickupCode);
+        const expected = current.pickupCode === null ? null : normalizePickupCode(current.pickupCode);
+        if (supplied === null || expected === null || supplied !== expected) {
+          // aucun detail renvoye : la reponse ne doit rien laisser deviner du code attendu
+          throw new HttpError(422, 'invalid_pickup_code');
+        }
+      }
+
       // deliveredAt is set HERE, inside the txn — rentalEndsAt is only ever computed from this
       // freshly-set value, never read before it exists (Pitfall 1).
       const deliveredAt = nextStatus === 'delivered' ? new Date() : null;
       const rentalEndsAt = deliveredAt ? computeRentalEndsAt(deliveredAt, current.items) : null;
 
-      const updated = await tx.order.update({
+      await tx.order.update({
         where: { id: orderId },
         data: {
           status: nextStatus,
@@ -387,7 +459,13 @@ ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req,
         });
       }
 
-      return updated;
+      // Relecture APRES l'ecriture de l'evenement, avec la projection livreur partagee : la reponse
+      // porte donc le meme `events` (trie) et les memes `items` que GET /api/rider/orders/active.
+      // Un `update` nu ne renvoyait ni l'un ni l'autre, si bien que le client qui remplace sa
+      // commande par cette reponse voyait le fil d'evenements et le contenu du colis disparaitre a
+      // la premiere etape franchie. Les deux endpoints lisent la meme constante, ils ne peuvent
+      // plus diverger — et `pickupCode` reste hors projection, donc jamais expose au livreur.
+      return tx.order.findUniqueOrThrow({ where: { id: orderId }, select: RIDER_ORDER_WITH_EVENTS_SELECT });
     });
     // broadcast the transition to the per-order room (D-15). getIO() throws before the socket layer
     // is initialised (e.g. in HTTP-only tests) — swallow so the HTTP path is never coupled to it,
@@ -433,7 +511,10 @@ ordersRouter.patch('/:id/status', requireAuth, requireRole('rider'), async (req,
         }).catch(() => {});
       }
     }
-    res.json({ order });
+    // requireRole('rider') plus haut : le destinataire est TOUJOURS un livreur, donc pickupCode est
+    // systematiquement retire. Passer par le meme helper que les autres routes evite qu'un futur
+    // elargissement des roles ici reouvre la fuite en silence.
+    res.json({ order: serializeOrder(order, req.user!.role) });
   } catch (err) {
     next(err);
   }

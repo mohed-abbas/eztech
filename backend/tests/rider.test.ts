@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
+import { signAccessToken } from '../src/middleware/auth.js';
 import { truncateRiderTables, testPrisma } from './helpers/db.js';
 
 const app = buildApp();
@@ -40,6 +41,24 @@ async function registerCustomer(email = 'cust1@example.com'): Promise<AuthRespon
 
 function bearer(token: string) {
   return { Authorization: `Bearer ${token}` };
+}
+
+// at_warehouse -> picked_up passe desormais par un relais entrepot : la commande doit etre marquee
+// prete et le livreur doit presenter le code remis au comptoir. Les commandes « delivery-job » de
+// ce fichier naissent sans entrepot, on leur en rattache un puis on joue la vraie preparation.
+async function handoverCode(orderId: string): Promise<string> {
+  const admin = await testPrisma.user.findUnique({ where: { email: 'admin@eztech.fr' } });
+  if (!admin) throw new Error('admin non seede');
+  const token = signAccessToken({ sub: admin.id, role: 'admin' });
+  const warehouse = await testPrisma.warehouse.create({
+    data: { name: 'WH Rider', address: '1 Quai', lat: 48.85, lng: 2.35 },
+  });
+  await testPrisma.order.update({ where: { id: orderId }, data: { warehouseId: warehouse.id } });
+  const res = await request(app)
+    .patch(`/api/warehouses/${warehouse.id}/orders/${orderId}/prepare`)
+    .set(bearer(token));
+  expect(res.status).toBe(200);
+  return (res.body as { order: { pickupCode: string } }).order.pickupCode;
 }
 
 describe('rider auth & profile', () => {
@@ -192,8 +211,10 @@ describe('rider order flow', () => {
     expect(acceptAgain.status).toBe(409);
 
     // advance through the lifecycle
+    const pickupCode = await handoverCode(orderId);
     for (const status of ['at_warehouse', 'picked_up', 'in_transit', 'delivered'] as const) {
-      const r = await request(app).patch(`/api/orders/${orderId}/status`).set(bearer(rider.token)).send({ status });
+      const r = await request(app).patch(`/api/orders/${orderId}/status`).set(bearer(rider.token))
+        .send({ status, ...(status === 'picked_up' ? { pickupCode } : {}) });
       expect(r.status).toBe(200);
       expect(r.body.order.status).toBe(status);
     }
@@ -403,8 +424,10 @@ describe('rider notifications', () => {
     await request(app).patch('/api/rider/status').set(bearer(rider.token)).send({ online: true });
     const created = await request(app).post('/api/orders').set(bearer(customer.token)).send({ pickupAddress: 'W2', dropoffAddress: 'D2', riderFee: 6 });
     await request(app).post(`/api/rider/orders/${created.body.order.id}/accept`).set(bearer(rider.token));
+    const pickupCode = await handoverCode(created.body.order.id as string);
     for (const status of ['at_warehouse', 'picked_up', 'in_transit', 'delivered'] as const) {
-      await request(app).patch(`/api/orders/${created.body.order.id}/status`).set(bearer(rider.token)).send({ status });
+      await request(app).patch(`/api/orders/${created.body.order.id}/status`).set(bearer(rider.token))
+        .send({ status, ...(status === 'picked_up' ? { pickupCode } : {}) });
     }
     notifs = await request(app).get('/api/rider/notifications').set(bearer(rider.token));
     expect(notifs.body.notifications.some((n: { type: string }) => n.type === 'earning_credited')).toBe(true);

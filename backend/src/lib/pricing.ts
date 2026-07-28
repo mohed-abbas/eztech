@@ -36,6 +36,21 @@ export function computeLineTotal(product: PricedProduct, item: LineInput): {
   return { unitPrice, lineTotal: unitPrice.mul(item.durationValue).mul(item.quantity) };
 }
 
+// Part des frais de livraison reversee au livreur. Le client paie DELIVERY_FEE (4,99 EUR par
+// defaut) ; le livreur en touche cette fraction, la plateforme garde le reste (frais de service,
+// commission de paiement, support). C'est la SEULE regle de remuneration des courses boutique :
+// pour changer ce que gagne un livreur, on ne modifie que cette constante.
+// Volontairement forfaitaire : aucune tarification a la distance n'est calculee ici, aucune donnee
+// de trajet n'est disponible au moment de la creation de la commande.
+export const RIDER_DELIVERY_FEE_SHARE = new Prisma.Decimal('0.70');
+
+// riderFee = deliveryFee x RIDER_DELIVERY_FEE_SHARE, arrondi au centime (la colonne Order.riderFee
+// est un Decimal(10,2)). Tout le calcul reste en Decimal : passer par un `number` reintroduirait
+// l'erreur de representation binaire que le reste du module money evite deja.
+export function computeRiderFee(deliveryFee: Prisma.Decimal): Prisma.Decimal {
+  return deliveryFee.mul(RIDER_DELIVERY_FEE_SHARE).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+}
+
 // subtotal = sum(lineTotals); deliveryFee from env (D-07, single source of truth);
 // total = subtotal + deliveryFee. Cents conversion happens only at the Stripe boundary, not here.
 export function computeOrderTotals(lineTotals: Prisma.Decimal[]): {

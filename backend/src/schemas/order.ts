@@ -5,6 +5,10 @@ import { z } from 'zod';
 export const UpdateOrderStatusSchema = z.object({
   status: z.enum(['at_warehouse', 'picked_up', 'in_transit', 'delivered']),
   note: z.string().max(500).optional(),
+  // Code remis par l'entrepot au livreur au comptoir — obligatoire pour la seule transition
+  // at_warehouse -> picked_up, ignore ailleurs. Optionnel ici pour que la route reponde
+  // 422 invalid_pickup_code (erreur metier lisible) plutot qu'un validation_failed generique.
+  pickupCode: z.string().max(32).optional(),
 });
 
 // POST /api/orders — commerce create. The client supplies ONLY what it is allowed to:
