@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { FeaturedProduct } from '~/composables/useLandingContent'
-import categoriesData from '~/data/mock/categories.json'
 
 useHead({ title: 'Catalogue - EzTech' })
 useSeoMeta({
@@ -14,6 +13,9 @@ type Product = {
   name: string
   description: string
   categoryId: string
+  categorySlug?: string
+  categoryName?: string
+  categoryIcon?: string
   image?: string
   price: number
   rating?: number
@@ -24,12 +26,13 @@ type Category = {
   id: string
   name: string
   slug: string
-  description: string
-  icon: string
+  description?: string
+  icon?: string
 }
 
-const categories = categoriesData as Category[]
-const categoryMap = new Map(categories.map(c => [c.id, c]))
+const config = useRuntimeConfig()
+const route = useRoute()
+const router = useRouter()
 
 const {
   data: products,
@@ -40,18 +43,63 @@ const {
   default: () => [],
 })
 
-const search = ref('')
-const activeCategory = ref<string | null>(null)
-
-const availableCategories = computed(() => {
-  const usedIds = new Set((products.value ?? []).map(p => p.categoryId))
-  return categories.filter(c => usedIds.has(c.id))
+// Real categories, straight from Express (/api/categories is NOT intercepted by the Nuxt BFF
+// in production — it answers the Express envelope {categories:[...]}). SSR goes through the
+// internal network (config.apiUrl), the browser through the public origin — same idiom as
+// stores/auth.ts:167-172 and pages/categories.vue. No mock fallback: if the call fails the
+// chips degrade to the categories carried by the live products, never to static JSON.
+const categoriesEndpoint = computed(() => {
+  const base = import.meta.server
+    ? ((config.apiUrl as string) || (config.public.apiUrl as string))
+    : (config.public.apiUrl as string)
+  return `${base}/categories`
 })
+
+const {
+  data: categoriesPayload,
+  status: categoriesStatus,
+  error: categoriesError,
+} = await useFetch<{ categories: Category[] }>(categoriesEndpoint, {
+  key: 'catalog-categories',
+  default: () => ({ categories: [] }),
+})
+
+const apiCategories = computed<Category[]>(() => categoriesPayload.value?.categories ?? [])
+
+const search = ref('')
+// Slug-keyed, so /products?category=<slug> deep links work (contract with /categories).
+const activeCategory = ref<string | null>(
+  typeof route.query.category === 'string' && route.query.category ? route.query.category : null,
+)
+
+// Categories derived from the products currently in the catalog — the SSR-safe baseline.
+const categoriesFromProducts = computed<Category[]>(() => {
+  const seen = new Map<string, Category>()
+  for (const p of products.value ?? []) {
+    const slug = p.categorySlug
+    if (!slug || seen.has(slug)) continue
+    seen.set(slug, { id: slug, slug, name: p.categoryName ?? slug, icon: p.categoryIcon ?? 'ph:package' })
+  }
+  return [...seen.values()]
+})
+
+// The API list wins once loaded (it also contains categories with no product yet, which is
+// how a freshly created category shows up here), merged with the product-derived baseline.
+const availableCategories = computed<Category[]>(() => {
+  const merged = new Map<string, Category>()
+  for (const c of categoriesFromProducts.value) merged.set(c.slug, c)
+  for (const c of apiCategories.value ?? []) merged.set(c.slug, { ...c, icon: c.icon ?? 'ph:package' })
+  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+})
+
+const categoryMap = computed(() => new Map(availableCategories.value.map(c => [c.slug, c])))
+
+const categoriesPending = computed(() => categoriesStatus.value === 'pending')
 
 const filteredProducts = computed(() => {
   let list = products.value ?? []
   if (activeCategory.value) {
-    list = list.filter(p => p.categoryId === activeCategory.value)
+    list = list.filter(p => p.categorySlug === activeCategory.value)
   }
   if (search.value.trim()) {
     const q = search.value.trim().toLowerCase()
@@ -68,20 +116,39 @@ function clearFilters() {
   activeCategory.value = null
 }
 
-function getCategoryName(categoryId: string): string {
-  return categoryMap.get(categoryId)?.name ?? 'Tech'
+function selectCategory(slug: string | null) {
+  activeCategory.value = activeCategory.value === slug ? null : slug
 }
 
-function getCategoryIcon(categoryId: string): string {
-  return categoryMap.get(categoryId)?.icon ?? 'ph:package'
+// Keep the URL in sync so a filtered catalog is shareable and /products?category=<slug> round-trips.
+watch(activeCategory, (slug) => {
+  const query = { ...route.query }
+  if (slug) query.category = slug
+  else delete query.category
+  router.replace({ query })
+})
+
+// …and follow the URL the other way, so browser back/forward and an in-app link to
+// /products?category=<slug> both re-apply the filter.
+watch(() => route.query.category, (q) => {
+  const slug = typeof q === 'string' && q ? q : null
+  if (slug !== activeCategory.value) activeCategory.value = slug
+})
+
+function getCategoryName(p: Product): string {
+  return p.categoryName ?? categoryMap.value.get(p.categorySlug ?? '')?.name ?? 'Tech'
+}
+
+function getCategoryIcon(p: Product): string {
+  return p.categoryIcon ?? categoryMap.value.get(p.categorySlug ?? '')?.icon ?? 'ph:package'
 }
 
 function toFeaturedProduct(p: Product): FeaturedProduct {
   return {
     name: p.name,
-    type: getCategoryName(p.categoryId),
+    type: getCategoryName(p),
     price: `€${Number(p.price).toFixed(2)}`,
-    heroIcon: getCategoryIcon(p.categoryId),
+    heroIcon: getCategoryIcon(p),
     icon1: 'ph:star',
     spec1: p.rating ? `${p.rating}` : '—',
     icon2: 'ph:cube',
@@ -269,21 +336,31 @@ function toFeaturedProduct(p: Product): FeaturedProduct {
             </button>
             <button
               v-for="cat in availableCategories"
-              :key="cat.id"
+              :key="cat.slug"
               type="button"
-              :aria-pressed="activeCategory === cat.id"
+              :aria-pressed="activeCategory === cat.slug"
               :class="[
                 'inline-flex items-center gap-2 rounded-full px-4 py-2 text-body-sm font-medium transition-all',
-                activeCategory === cat.id
+                activeCategory === cat.slug
                   ? 'bg-primary-500 text-white shadow-sm'
                   : 'bg-surface-purple border border-primary-100 text-text-secondary hover:border-primary-300 hover:text-primary-600',
               ]"
-              @click="activeCategory = activeCategory === cat.id ? null : cat.id"
+              @click="selectCategory(cat.slug)"
             >
-              <Icon :name="cat.icon" class="size-4" />
+              <Icon :name="cat.icon ?? 'ph:package'" class="size-4" />
               {{ cat.name }}
             </button>
+
+            <span v-if="categoriesPending" class="inline-flex items-center gap-2 text-body-sm text-text-muted">
+              <span class="size-4 animate-spin rounded-full border-2 border-primary-200 border-t-primary-500" />
+              Chargement des catégories…
+            </span>
           </div>
+
+          <p v-if="categoriesError" class="mt-2 text-caption text-text-muted">
+            <Icon name="ph:warning-circle" class="mr-1 inline size-4 text-warning" />
+            Liste complète des catégories indisponible — seules celles présentes dans le catalogue sont affichées.
+          </p>
         </div>
 
         <Separator class="mb-8" />

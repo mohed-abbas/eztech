@@ -1,6 +1,7 @@
-// Static content shown on the landing page. Keeping it here means the
-// page components stay focused on markup and the copy is easy to tweak
-// without digging through JSX-style template soup.
+// Landing page content. The marketing copy (features, nav, stats) is static and
+// lives here so the page components stay focused on markup. The featured
+// products are NOT static: they come from the catalog BFF (/api/products), which
+// reads the real Product table through Express.
 
 export interface FeaturedProduct {
   name: string
@@ -13,6 +14,44 @@ export interface FeaturedProduct {
   icon3: string
   spec3: string
   heroIcon: string
+  /** Per-product destination. Optional so the catalog can keep passing `to` explicitly. */
+  to?: string
+}
+
+/** Shape returned by frontend/server/api/products.ts (the catalog BFF). */
+export interface CatalogProduct {
+  id: string
+  slug?: string
+  name: string
+  description: string
+  categoryId: string
+  categorySlug?: string
+  categoryName?: string
+  categoryIcon?: string
+  image?: string
+  featured?: boolean
+  rating?: number
+  price: number
+  stock: number
+}
+
+const eur = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' })
+
+/** Same mapping idiom as app/pages/products/index.vue — rating / stock / delivery as the three specs. */
+export function catalogToFeatured(p: CatalogProduct): FeaturedProduct {
+  return {
+    name: p.name,
+    type: p.categoryName ?? 'Tech',
+    price: eur.format(Number(p.price) || 0),
+    heroIcon: p.categoryIcon ?? 'ph:package',
+    icon1: 'ph:star',
+    spec1: p.rating ? `${p.rating}` : '—',
+    icon2: 'ph:cube',
+    spec2: `${p.stock} dispo`,
+    icon3: 'ph:truck',
+    spec3: 'Express',
+    to: `/products/${p.slug ?? p.id}`,
+  }
 }
 
 export interface LandingFeature {
@@ -38,12 +77,23 @@ export interface StatCard {
 }
 
 export function useLandingContent() {
-  const featuredProducts: FeaturedProduct[] = [
-    { name: 'MacBook Pro M3', type: 'Ordinateur', price: '25,00 €', icon1: 'ph:cpu', spec1: 'M3 Pro', icon2: 'ph:memory', spec2: '18Go', icon3: 'ph:hard-drive', spec3: '512Go', heroIcon: 'ph:laptop' },
-    { name: 'Sony A7 IV', type: 'Appareil photo', price: '18,00 €', icon1: 'ph:aperture', spec1: '33MP', icon2: 'ph:film-strip', spec2: '4K 60', icon3: 'ph:crosshair', spec3: '693 AF', heroIcon: 'ph:camera' },
-    { name: 'DJI Mavic 3', type: 'Drone', price: '32,00 €', icon1: 'ph:timer', spec1: '46min', icon2: 'ph:video-camera', spec2: '5.1K', icon3: 'ph:wifi-high', spec3: '15km', heroIcon: 'ph:drone' },
-    { name: 'iPad Pro M2', type: 'Tablette', price: '15,00 €', icon1: 'ph:cpu', spec1: 'M2', icon2: 'ph:monitor', spec2: '12.9"', icon3: 'ph:pencil-simple', spec3: 'Pencil', heroIcon: 'ph:device-tablet' },
-  ]
+  // Real catalog data. The relative URL hits the Nuxt BFF, so this resolves during
+  // SSR through the internal backend URL (config.apiUrl) — the hero cards are in the
+  // first paint, not injected after hydration. The explicit key dedupes the request
+  // across the components that call this composable (hero + featured grid).
+  const { data: catalog, status: catalogStatus } = useFetch<CatalogProduct[]>('/api/products', {
+    key: 'landing-catalog',
+    default: () => [],
+  })
+
+  const featuredProducts = computed<FeaturedProduct[]>(() =>
+    (catalog.value ?? [])
+      .filter(p => p.featured)
+      .slice(0, 4)
+      .map(catalogToFeatured),
+  )
+
+  const featuredPending = computed(() => catalogStatus.value === 'pending')
 
   const features: LandingFeature[] = [
     { icon: 'ph:lightning', title: 'Livraison express', desc: 'Recevez votre équipement en quelques heures. Livraison le jour même dans plus de 40 villes.', bg: 'bg-surface-purple', hoverBg: 'group-hover:bg-primary-100', iconColor: 'text-primary-500' },
@@ -65,5 +115,5 @@ export function useLandingContent() {
     { value: '4.9', title: 'Note', desc: 'Score moyen de satisfaction client.', bg: 'bg-surface-violet', corner: 'rounded-br-feature' },
   ]
 
-  return { featuredProducts, features, navLinks, statCards }
+  return { featuredProducts, featuredPending, features, navLinks, statCards }
 }
