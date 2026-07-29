@@ -199,6 +199,9 @@ model Order {
   total                 Decimal?       @db.Decimal(10, 2) // subtotal + deliveryFee
   warehouseId           String? // single fulfillment warehouse picked at create (D-11)
   preparedAt            DateTime? // quand l'entrepot a marque la commande prete pour le ramassage
+  // code remis de la main a la main par l'entrepot au livreur au moment du ramassage : le livreur
+  // doit le presenter pour passer at_warehouse -> picked_up. Jamais expose a un livreur/client.
+  pickupCode            String?
   stripePaymentIntentId String? // anchors the order to its Stripe PaymentIntent
   // computed at the `delivered` transition = deliveredAt + max(perItem rental duration); null when
   // every line is flat-priced (no rental clock) — drives return-reminder scheduling (N-05)

@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { NOTIFICATION_ICON } from '~/stores/rider'
-
 definePageMeta({ layout: 'default', middleware: 'auth' })
 useHead({ title: 'Notifications - EzTech' })
 
@@ -13,17 +11,46 @@ onMounted(async () => {
   await rider.fetchNotifications()
 })
 
+// markNotificationRead/markAllNotificationsRead annulent leur mise a jour optimiste puis
+// relancent l'erreur : sans handler la ligne redevenait « non lue » sans rien dire, et la
+// promesse partait en rejet non gere.
+const actionError = ref<string | null>(null)
+
+async function markOne(id: string) {
+  actionError.value = null
+  try { await rider.markNotificationRead(id) }
+  catch { actionError.value = 'Impossible de marquer cette notification comme lue.' }
+}
+
+async function markAll() {
+  actionError.value = null
+  try { await rider.markAllNotificationsRead() }
+  catch { actionError.value = 'Impossible de tout marquer comme lu.' }
+}
+
 function fmt(iso: string) {
   return new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 }
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl px-4 py-8 space-y-4">
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h1 class="text-h2 font-bold text-text-primary">Notifications</h1>
-      <Button v-if="rider.unreadCount > 0" variant="outline" size="sm" @click="rider.markAllNotificationsRead()">Tout marquer comme lu</Button>
+  <div class="mx-auto max-w-3xl px-4 py-8 space-y-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-h2 font-bold text-text-primary">Notifications</h1>
+        <p v-if="rider.notifications.length" class="text-body-sm text-text-muted">
+          {{ rider.unreadCount > 0
+            ? `${rider.unreadCount} non lue${rider.unreadCount > 1 ? 's' : ''}`
+            : 'Vous êtes à jour' }}
+        </p>
+      </div>
+      <Button v-if="rider.unreadCount > 0" variant="outline" size="sm" @click="markAll">
+        <Icon name="ph:checks" class="mr-2 size-4" />
+        Tout marquer comme lu
+      </Button>
     </div>
+
+    <ErrorState v-if="actionError" variant="inline" :title="actionError" />
 
     <EmptyState
       v-if="rider.notifications.length === 0"
@@ -35,26 +62,34 @@ function fmt(iso: string) {
       </template>
     </EmptyState>
 
-    <ul v-else class="space-y-2">
+    <ul v-else class="space-y-3">
       <li
         v-for="n in rider.notifications"
         :key="n.id"
-        class="flex items-start gap-3 rounded-lg border border-border p-3"
-        :class="n.read ? 'bg-transparent' : 'bg-primary-50'"
+        class="flex items-start gap-3 rounded-2xl border p-4 shadow-sm"
+        :class="n.read ? 'border-neutral-200 bg-white' : 'border-primary-200 bg-primary-50'"
       >
-        <Icon :name="NOTIFICATION_ICON[n.type]" class="mt-0.5 size-5 text-primary-600" />
-        <div class="min-w-0 flex-1">
+        <span
+          class="flex size-9 shrink-0 items-center justify-center rounded-lg"
+          :class="n.read ? 'bg-neutral-100 text-text-muted' : 'bg-primary-100 text-primary-600'"
+        >
+          <Icon :name="notificationIcon(n.type)" class="size-5" />
+        </span>
+        <div class="min-w-0 flex-1 space-y-1">
           <p class="font-medium text-text-primary">{{ n.title }}</p>
           <p v-if="n.body" class="text-body-sm text-text-muted">{{ n.body }}</p>
-          <p class="mt-0.5 text-caption text-text-muted">{{ fmt(n.createdAt) }}</p>
+          <p class="text-caption text-text-muted">{{ fmt(n.createdAt) }}</p>
         </div>
-        <button
+        <Button
           v-if="!n.read"
-          class="shrink-0 rounded-sm text-caption text-primary-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2"
-          @click="rider.markNotificationRead(n.id)"
+          variant="ghost"
+          size="sm"
+          class="shrink-0 text-primary-600"
+          :aria-label="`Marquer « ${n.title} » comme lu`"
+          @click="markOne(n.id)"
         >
           Marquer lu
-        </button>
+        </Button>
       </li>
     </ul>
   </div>

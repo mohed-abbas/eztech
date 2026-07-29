@@ -45,7 +45,21 @@ const { data: order, pending, error, refresh } = await useFetch<TrackingOrder>(
 // Seed from the live order; the composable keeps status current via order-status events
 // and exposes the reactive rider position + the showMap gate (live picked_up/in_transit).
 const tracking = useOrderTracking(orderId.value, order.value ? { id: order.value.id, status: order.value.status } : null)
-const { riderPos, status: liveStatus, showMap, reconnecting, lastUpdate } = tracking
+const { riderPos, status: liveStatus, showMap, reconnecting, authExpired, lastUpdate } = tracking
+
+// Etat de la liaison temps reel affiche a cote de la carte. « session expirée » n'est pas
+// cosmetique : quand le renouvellement du jeton echoue, la socket ne reviendra plus, et
+// continuer a promettre « reconnexion… » ferait croire a un suivi encore vivant.
+interface LiveChip { label: string, bg: string, dot: string, text: string }
+const liveChip = computed<LiveChip>(() => {
+  if (authExpired.value) {
+    return { label: 'session expirée', bg: 'bg-red-50', dot: 'bg-red-500', text: 'text-red-700' }
+  }
+  if (reconnecting.value) {
+    return { label: 'reconnexion…', bg: 'bg-amber-50', dot: 'bg-amber-500 animate-pulse', text: 'text-amber-700' }
+  }
+  return { label: 'en direct', bg: 'bg-emerald-50', dot: 'bg-emerald-500', text: 'text-emerald-700' }
+})
 
 // `liveStatus` n'est amorce QU'UNE FOIS au setup puis mis a jour par les seuls evenements socket
 // `order-status`. Une action locale qui refetch la commande (annulation -> refresh()) le laissait
@@ -428,13 +442,17 @@ const etaLabel = computed<string | null>(() => {
                   <Icon name="ph:check-circle-fill" class="size-4 text-emerald-600" />
                   <span class="text-caption font-medium text-emerald-700">Livré</span>
                 </div>
-                <div v-else class="flex items-center gap-2 rounded-full px-3 py-1.5" :class="reconnecting ? 'bg-amber-50' : 'bg-emerald-50'">
-                  <span
-                    class="size-2 rounded-full"
-                    :class="reconnecting ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'"
-                  />
-                  <span class="text-caption font-medium" :class="reconnecting ? 'text-amber-700' : 'text-emerald-700'">
-                    {{ reconnecting ? 'reconnexion…' : 'en direct' }}
+                <div
+                  v-else
+                  role="status"
+                  aria-live="polite"
+                  data-testid="tracking-connection"
+                  class="flex items-center gap-2 rounded-full px-3 py-1.5"
+                  :class="liveChip.bg"
+                >
+                  <span class="size-2 rounded-full" :class="liveChip.dot" />
+                  <span class="text-caption font-medium" :class="liveChip.text">
+                    {{ liveChip.label }}
                   </span>
                 </div>
 
@@ -471,12 +489,23 @@ const etaLabel = computed<string | null>(() => {
               />
 
               <!-- Barre horodatage (jamais vide — last-known au chargement, D-05) -->
-              <div class="flex items-center gap-3 border-t border-neutral-100 bg-neutral-50 px-6 py-3">
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-neutral-100 bg-neutral-50 px-6 py-3">
                 <Icon name="ph:map-pin-line" class="size-4 text-primary-600" />
                 <p class="text-body-sm text-text-muted">
                   <template v-if="isDelivered">Commande livrée à destination</template>
                   <template v-else-if="lastUpdateLabel">Dernière position à {{ lastUpdateLabel }}</template>
                   <template v-else>En attente de la position du livreur…</template>
+                </p>
+                <!-- Le suivi ne peut plus revenir seul : la session doit etre renouvelee -->
+                <p v-if="!isDelivered && authExpired" class="w-full text-body-sm text-error">
+                  Session expirée.
+                  <NuxtLink
+                    :to="{ path: '/login', query: { redirect: `/orders/${orderId}` } }"
+                    class="font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50"
+                  >
+                    Reconnectez-vous
+                  </NuxtLink>
+                  pour reprendre le suivi en direct.
                 </p>
               </div>
             </div>

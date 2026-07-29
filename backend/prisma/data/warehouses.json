@@ -1,0 +1,29 @@
+[
+  {
+    "id": "wh_001",
+    "name": "EzTech République",
+    "address": "18 Place de la République, 75011 Paris",
+    "coordinates": { "lat": 48.8675, "lng": 2.3636 },
+    "serviceRadius": 5,
+    "operatingHours": { "open": "08:00", "close": "22:00" },
+    "isActive": true
+  },
+  {
+    "id": "wh_002",
+    "name": "EzTech Châtelet",
+    "address": "4 Place du Châtelet, 75001 Paris",
+    "coordinates": { "lat": 48.8580, "lng": 2.3476 },
+    "serviceRadius": 5,
+    "operatingHours": { "open": "08:00", "close": "22:00" },
+    "isActive": true
+  },
+  {
+    "id": "wh_003",
+    "name": "EzTech Nation",
+    "address": "6 Place de la Nation, 75012 Paris",
+    "coordinates": { "lat": 48.8484, "lng": 2.3960 },
+    "serviceRadius": 5,
+    "operatingHours": { "open": "09:00", "close": "21:00" },
+    "isActive": true
+  }
+]

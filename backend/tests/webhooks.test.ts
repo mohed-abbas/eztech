@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import { buildApp } from '../src/app.js';
 import { truncateRiderTables, truncateCatalogTables, testPrisma } from './helpers/db.js';
-import { stripeMockFactory, resetStripeMock, stripeMockState, fakePaymentIntentSucceeded } from './helpers/stripeMock.js';
+import { stripeMockFactory, resetStripeMock, stripeMockState, fakePaymentIntentSucceeded, fakeChargeRefunded } from './helpers/stripeMock.js';
 import { sendEmail } from '../src/lib/resend.js';
 import type * as ResendModule from '../src/lib/resend.js';
 
@@ -168,6 +168,35 @@ describe('stripe webhook', () => {
     expect(emailedAddresses).not.toContain('admin-c@eztech.fr');
   });
 
+  // Deux livraisons SEQUENTIELLES etaient deja couvertes ; c'est le CHEVAUCHEMENT qui ne l'etait
+  // pas. En READ COMMITTED la relecture dans la transaction ne protegeait rien : les deux
+  // decrements conditionnels reussissaient l'un apres l'autre sur la nouvelle version de la ligne.
+  it('deux livraisons SIMULTANEES du meme evenement ne decrementent le stock qu\'une fois', async () => {
+    const token = await customerToken();
+    const { orderId, warehouseId, productId } = await seedOrder(token);
+
+    stripeMockState.nextEvent = fakePaymentIntentSucceeded(orderId);
+
+    // les deux requetes partent ensemble : leurs transactions se chevauchent reellement
+    const [a, b] = await Promise.all([postHook(), postHook()]);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+
+    // 5 - 2 = 3 : un seul decrement a pris effet, jamais 1
+    const stock = await testPrisma.warehouseStock.findFirst({ where: { warehouseId, productId } });
+    expect(stock?.quantity).toBe(3);
+
+    const order = await testPrisma.order.findUnique({ where: { id: orderId } });
+    expect(order?.paymentStatus).toBe('paid');
+    expect(order?.status).toBe('pending_assignment');
+
+    // une seule transition journalisee, une seule confirmation client
+    const events = await testPrisma.orderEvent.findMany({ where: { orderId, note: 'payment confirmed' } });
+    expect(events).toHaveLength(1);
+    const confirmations = await testPrisma.notification.findMany({ where: { orderId, event: 'order_confirmed' } });
+    expect(confirmations).toHaveLength(1);
+  });
+
   it('alerte stock bas : notifie aussi le manager de l\'entrepot concerne', async () => {
     const token = await customerToken();
     const manager = await testPrisma.user.create({
@@ -182,5 +211,99 @@ describe('stripe webhook', () => {
     const rows = await testPrisma.notification.findMany({ where: { event: 'low_stock' } });
     const recipientIds = new Set(rows.map((r) => r.userId));
     expect(recipientIds.has(manager.id)).toBe(true);
+  });
+});
+
+// Un remboursement declenche depuis le DASHBOARD Stripe (hors de toute action applicative) passait
+// la commande en refunded/cancelled sans jamais rendre le stock — et la route de cancel, seul autre
+// endroit qui restitue, refuse ensuite d'agir (`already_cancelled`). Les unites etaient perdues.
+describe('stripe webhook — charge.refunded', () => {
+  beforeEach(async () => {
+    resetStripeMock();
+    vi.mocked(sendEmail).mockClear();
+    await truncateRiderTables();
+    await truncateCatalogTables();
+  });
+
+  // amene une commande jusqu'a payee (stock reellement decremente par le webhook), avec un
+  // PaymentIntent rattache comme le ferait le checkout
+  async function paidOrder(email: string, paymentIntentId = 'pi_refund_test') {
+    const token = await customerToken(email);
+    const seeded = await seedOrder(token);
+    stripeMockState.nextEvent = fakePaymentIntentSucceeded(seeded.orderId);
+    expect((await postHook()).status).toBe(200);
+    await testPrisma.order.update({ where: { id: seeded.orderId }, data: { stripePaymentIntentId: paymentIntentId } });
+    // 5 - 2 = 3
+    const stock = await testPrisma.warehouseStock.findFirst({ where: { warehouseId: seeded.warehouseId, productId: seeded.productId } });
+    expect(stock?.quantity).toBe(3);
+    return { ...seeded, paymentIntentId };
+  }
+
+  it('remboursement INTEGRAL depuis le dashboard : annule, rembourse ET remet le stock', async () => {
+    const { orderId, warehouseId, productId, paymentIntentId } = await paidOrder('refund-full@example.com');
+
+    // la Charge d'un remboursement dashboard ne porte aucune metadata : resolution par payment_intent
+    stripeMockState.nextEvent = fakeChargeRefunded({ amount: 1000, amountRefunded: 1000, paymentIntentId });
+    expect((await postHook()).status).toBe(200);
+
+    const order = await testPrisma.order.findUnique({ where: { id: orderId } });
+    expect(order?.paymentStatus).toBe('refunded');
+    expect(order?.status).toBe('cancelled');
+
+    // les 2 unites decrementees a l'encaissement sont revenues : 3 + 2 = 5
+    const stock = await testPrisma.warehouseStock.findFirst({ where: { warehouseId, productId } });
+    expect(stock?.quantity).toBe(5);
+  });
+
+  it('rejouer le meme remboursement integral ne restitue PAS le stock deux fois', async () => {
+    const { orderId, warehouseId, productId, paymentIntentId } = await paidOrder('refund-replay@example.com');
+
+    stripeMockState.nextEvent = fakeChargeRefunded({ amount: 1000, amountRefunded: 1000, paymentIntentId });
+    expect((await postHook()).status).toBe(200);
+    const afterFirst = await testPrisma.warehouseStock.findFirst({ where: { warehouseId, productId } });
+    expect(afterFirst?.quantity).toBe(5);
+
+    // Stripe livre au moins une fois : le rejeu doit etre un no-op
+    expect((await postHook()).status).toBe(200);
+    const afterSecond = await testPrisma.warehouseStock.findFirst({ where: { warehouseId, productId } });
+    expect(afterSecond?.quantity).toBe(5);
+
+    // une seule ligne d'evenement d'annulation
+    const events = await testPrisma.orderEvent.findMany({ where: { orderId, note: 'remboursement Stripe' } });
+    expect(events).toHaveLength(1);
+  });
+
+  // charge.refunded est emis A L'IDENTIQUE pour un remboursement partiel : un geste commercial de
+  // 5 EUR sur une commande livree la reecrivait en `cancelled`.
+  it('remboursement PARTIEL sur une commande livree : ne l\'annule pas et ne restitue rien', async () => {
+    const { orderId, warehouseId, productId, paymentIntentId } = await paidOrder('refund-partial@example.com');
+    await testPrisma.order.update({ where: { id: orderId }, data: { status: 'delivered', deliveredAt: new Date() } });
+
+    // 5 EUR rendus sur 10 EUR encaisses
+    stripeMockState.nextEvent = fakeChargeRefunded({ amount: 1000, amountRefunded: 500, paymentIntentId });
+    expect((await postHook()).status).toBe(200);
+
+    const order = await testPrisma.order.findUnique({ where: { id: orderId } });
+    expect(order?.status).toBe('delivered'); // la livraison a bien eu lieu, elle ne s'efface pas
+    expect(order?.paymentStatus).toBe('paid');
+
+    const stock = await testPrisma.warehouseStock.findFirst({ where: { warehouseId, productId } });
+    expect(stock?.quantity).toBe(3); // le colis est chez le client : rien ne revient en rayon
+  });
+
+  // marchandise deja partie : on enregistre le remboursement, mais incrementer le stock
+  // inventerait des unites qui ne sont pas sur l'etagere
+  it('remboursement integral APRES ramassage : marque rembourse sans restituer le stock', async () => {
+    const { orderId, warehouseId, productId, paymentIntentId } = await paidOrder('refund-picked@example.com');
+    await testPrisma.order.update({ where: { id: orderId }, data: { status: 'in_transit' } });
+
+    stripeMockState.nextEvent = fakeChargeRefunded({ amount: 1000, amountRefunded: 1000, paymentIntentId });
+    expect((await postHook()).status).toBe(200);
+
+    const order = await testPrisma.order.findUnique({ where: { id: orderId } });
+    expect(order?.paymentStatus).toBe('refunded');
+    expect(order?.status).toBe('in_transit'); // pas de reecriture en cancelled
+    const stock = await testPrisma.warehouseStock.findFirst({ where: { warehouseId, productId } });
+    expect(stock?.quantity).toBe(3);
   });
 });

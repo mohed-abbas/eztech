@@ -199,7 +199,7 @@ describe('warehouses API — commandes a preparer', () => {
     expect(res.body.orders[0].status).toBe('pending_assignment');
   });
 
-  it('un manager marque une commande prete pour le ramassage', async () => {
+  it('un manager marque une commande prete pour le ramassage et recoit un code', async () => {
     const mgr = await createManager('prep-mgr2@example.com');
     const wh = await createWarehouse(mgr.id);
     const order = await createOrder(wh.id);
@@ -207,6 +207,26 @@ describe('warehouses API — commandes a preparer', () => {
     const res = await request(app).patch(`/api/warehouses/${wh.id}/orders/${order.id}/prepare`).set('Authorization', `Bearer ${mgr.token}`);
     expect(res.status).toBe(200);
     expect(res.body.order.preparedAt).not.toBeNull();
+    // code court, majuscules/chiffres, sans O/0/I/1 (lu a voix haute au comptoir)
+    expect(res.body.order.pickupCode).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+
+    const row = await testPrisma.order.findUnique({ where: { id: order.id } });
+    expect(row?.pickupCode).toBe(res.body.order.pickupCode);
+  });
+
+  // Reemettre un code a chaque appel invaliderait celui deja note par le livreur en route.
+  it('une seconde preparation renvoie le MEME code et ne le regenere pas', async () => {
+    const mgr = await createManager('prep-idem@example.com');
+    const wh = await createWarehouse(mgr.id);
+    const order = await createOrder(wh.id);
+
+    const first = await request(app).patch(`/api/warehouses/${wh.id}/orders/${order.id}/prepare`).set('Authorization', `Bearer ${mgr.token}`);
+    const second = await request(app).patch(`/api/warehouses/${wh.id}/orders/${order.id}/prepare`).set('Authorization', `Bearer ${mgr.token}`);
+
+    expect(second.status).toBe(200);
+    expect(second.body.order.pickupCode).toBe(first.body.order.pickupCode);
+    // preparedAt n'est pas repousse non plus : la commande reste prete depuis le premier appel
+    expect(second.body.order.preparedAt).toBe(first.body.order.preparedAt);
   });
 
   it('un manager ne peut pas preparer une commande d\'un autre entrepot (403)', async () => {

@@ -178,6 +178,17 @@ jobs:
           E2E_EMAIL: marie@example.com
           E2E_PASSWORD: password123
         run: cd frontend && npx playwright test
+      # Traces are written per failed attempt (playwright.config retains them on failure). Without
+      # this upload a CI-only flake leaves nothing to inspect: diagnosing the 2026-07-28 cross-rider
+      # failure meant reconstructing the timeline from pino request logs instead of opening a trace.
+      - if: failure()
+        name: Upload Playwright traces
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: frontend/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
       - if: always()
         name: Dump logs and tear down stack
         run: docker compose logs && docker compose down -v

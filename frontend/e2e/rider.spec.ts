@@ -5,8 +5,12 @@ import { waitForHydration } from './helpers'
 // d'une commande → mises à jour de statut jusqu'à livrée → gains crédités.
 //
 // Determinisme : le test crée SA propre commande via l'API (référence unique) puis la piste par
-// cette référence dans l'UI — insensible aux autres commandes du pool. S'exécute contre une stack
-// fraîchement seedée (comme le smoke client) : le livreur approuvé n'a pas de livraison active.
+// cette référence dans l'UI — insensible aux autres commandes du pool. ATTENTION : même sur une
+// stack fraîchement seedée le livreur peut déjà porter une livraison active (l'historique
+// analytique du seed en laisse une en cours), et un run interrompu de CE test en laisse une aussi
+// — la retry échouait alors dès l'acceptation, la liste des commandes disponibles n'étant pas
+// rendue tant qu'une livraison est active. On solde donc toute livraison active avant de commencer,
+// comme le fait déjà cross-rider-customer.spec.ts.
 
 const API = process.env.E2E_API_URL ?? 'http://localhost:3001'
 const RIDER_EMAIL = process.env.E2E_RIDER_EMAIL ?? 'rider@eztech.fr'
@@ -16,6 +20,31 @@ const CUSTOMER_PASSWORD = process.env.E2E_PASSWORD ?? 'password123'
 
 // Les 4 transitions successives déclenchées par le livreur (libellés = NEXT_STATUS, stores/rider.ts).
 const ADVANCE_LABELS = ["Arrivé à l'entrepôt", 'Colis récupéré', 'En route vers le client', 'Livraison effectuée']
+
+const FLOW = ['rider_assigned', 'at_warehouse', 'picked_up', 'in_transit', 'delivered']
+
+// Solde la livraison active éventuelle du livreur (API), pour que l'acceptation ne réponde pas
+// 409 already_on_delivery et que la section « Commandes disponibles » soit bien rendue.
+async function clearActiveDelivery(): Promise<void> {
+  const ctx = await playwrightRequest.newContext()
+  const login = await ctx.post(`${API}/api/auth/login`, {
+    data: { email: RIDER_EMAIL, password: RIDER_PASSWORD },
+  })
+  expect(login.ok(), 'login livreur (API) doit réussir').toBeTruthy()
+  const { token } = await login.json() as { token: string }
+  const headers = { Authorization: `Bearer ${token}` }
+
+  const res = await ctx.get(`${API}/api/rider/orders/active`, { headers })
+  if (res.ok()) {
+    const { order } = await res.json() as { order: { id: string, status: string } | null }
+    if (order) {
+      for (const status of FLOW.slice(FLOW.indexOf(order.status) + 1)) {
+        await ctx.patch(`${API}/api/orders/${order.id}/status`, { headers, data: { status } })
+      }
+    }
+  }
+  await ctx.dispose()
+}
 
 // Crée une commande pending_assignment directement dans le pool via l'API et renvoie sa référence
 // unique. Auth par bearer token (les mutations en cookie exigent un jeton CSRF ; le bearer non).
@@ -38,6 +67,7 @@ async function createPendingOrder(): Promise<string> {
 }
 
 test('parcours livreur : connexion → en ligne → acceptation → livraison → gains', async ({ page }) => {
+  await clearActiveDelivery()
   const reference = await createPendingOrder()
 
   // 1. Connexion livreur (compte approuvé seedé)

@@ -74,11 +74,9 @@ async function save(s: StockLine) {
 
 <template>
   <div class="mx-auto max-w-5xl px-4 py-8 space-y-6">
-    <div class="flex items-center justify-between gap-4 flex-wrap">
-      <div>
-        <h1 class="text-h2 font-bold text-text-primary">Inventaire</h1>
-        <p class="text-body-sm text-text-muted">{{ wh.selected?.name ?? 'Aucun entrepôt' }}</p>
-      </div>
+    <div class="space-y-1">
+      <h1 class="text-h2 font-bold text-text-primary">Inventaire</h1>
+      <p class="text-body-sm text-text-muted">{{ wh.selected?.name ?? 'Aucun entrepôt' }}</p>
     </div>
 
     <ErrorState v-if="wh.error" variant="inline" :title="wh.error">
@@ -102,10 +100,11 @@ async function save(s: StockLine) {
     <!-- Recherche + filtre catégorie -->
     <div class="flex flex-wrap gap-3">
       <Input v-model="search" placeholder="Rechercher un produit..." class="max-w-xs" />
+      <!-- meme gabarit que Input (px-4 py-3, rounded-md) pour que les deux champs s'alignent -->
       <select
         v-model="categoryFilter"
         aria-label="Filtrer par catégorie"
-        class="rounded-md border border-border bg-white px-3 py-2 text-body-sm text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2"
+        class="rounded-md border border-neutral-200 bg-white px-4 py-3 text-body-sm text-text-primary transition focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
       >
         <option value="">Toutes les catégories</option>
         <option v-for="c in categories" :key="c" :value="c">{{ c }}</option>
@@ -113,33 +112,33 @@ async function save(s: StockLine) {
     </div>
 
     <Card v-if="filtered.length">
-      <CardContent class="p-0 overflow-x-auto">
+      <CardContent class="overflow-x-auto p-0">
         <table class="w-full text-body-sm">
-          <thead class="border-b border-border text-left text-text-muted">
+          <thead class="border-b border-border text-left text-caption font-semibold uppercase tracking-wide text-text-muted">
             <tr>
-              <th class="px-4 py-2">Produit</th>
-              <th class="px-4 py-2">Catégorie</th>
-              <th class="px-4 py-2">Quantité</th>
-              <th class="px-4 py-2 text-right">Action</th>
+              <th class="px-5 py-3">Produit</th>
+              <th class="px-5 py-3">Catégorie</th>
+              <th class="px-5 py-3">Quantité</th>
+              <th class="px-5 py-3 text-right">Action</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="s in filtered" :key="s.id" class="border-b border-border/50 last:border-0">
-              <td class="px-4 py-2 font-medium text-text-primary">
+            <tr v-for="s in filtered" :key="s.id" class="border-b border-border/50 align-middle last:border-0">
+              <td class="px-5 py-3 font-medium text-text-primary">
                 {{ s.product.name }}
-                <span v-if="s.quantity <= LOW_STOCK_THRESHOLD" class="ml-2 rounded-full bg-error/10 px-2 py-0.5 text-caption font-semibold text-error">stock bas</span>
+                <span v-if="s.quantity <= LOW_STOCK_THRESHOLD" class="ml-2 whitespace-nowrap rounded-full bg-error/10 px-2 py-0.5 text-caption font-semibold text-error">stock bas</span>
               </td>
-              <td class="px-4 py-2 text-text-muted">{{ s.product.category?.name ?? '—' }}</td>
-              <td class="px-4 py-2">
+              <td class="px-5 py-3 text-text-muted">{{ s.product.category?.name ?? '—' }}</td>
+              <td class="px-5 py-3">
                 <input
                   v-model.number="edits[s.productId]"
                   type="number"
                   min="0"
                   :aria-label="`Quantité en stock pour ${s.product.name}`"
-                  class="w-24 rounded-md border border-border bg-white px-2 py-1 text-body-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2"
+                  class="w-24 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-body-sm text-text-primary tabular-nums transition focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
               </td>
-              <td class="px-4 py-2 text-right">
+              <td class="px-5 py-3 text-right">
                 <Button size="sm" :disabled="!isDirty(s) || savingId === s.productId" @click="save(s)">
                   <Icon name="ph:check" class="mr-1 size-4" /> Enregistrer
                 </Button>

@@ -105,14 +105,22 @@ returnsRouter.patch('/:id/process', requireAuth, requireRole('warehouse_manager'
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const r = await tx.return.update({
-        where: { id },
+      // Claim gardee : le controle `inspectionResult !== null` plus haut vit HORS transaction, donc
+      // deux requetes concurrentes (double-clic, deux onglets) le franchissaient toutes les deux et
+      // rejouaient toutes les deux la remise en stock — un seul colis physique, stock incremente
+      // deux fois et deux lignes StockAdjustment. C'est ce updateMany qui tranche : il ne matche
+      // que tant que l'inspection n'est pas enregistree, donc la seconde obtient count = 0.
+      // Meme motif que la claim de POST /api/orders/:id/cancel.
+      const claim = await tx.return.updateMany({
+        where: { id, status: 'completed', inspectionResult: null },
         data: {
           inspectionResult: parsed.data.result,
           inspectedAt: new Date(),
           ...(parsed.data.note ? { inspectionNote: parsed.data.note } : {}),
         },
       });
+      if (claim.count !== 1) throw new HttpError(409, 'return_already_processed');
+      const r = await tx.return.findUniqueOrThrow({ where: { id } });
 
       // remise en stock des articles de la commande liee (si presente)
       if (parsed.data.result === 'available' && warehouseId && r.orderId) {

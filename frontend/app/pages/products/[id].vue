@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { availableUnits, type DurationUnit } from '~/stores/cart'
+
 const route = useRoute()
 const productId = route.params.id as string
 const cart = useCartStore()
@@ -7,6 +9,8 @@ const added = ref(false)
 const quantity = ref(1)
 const activeImageIndex = ref(0)
 
+type TierPrices = { flat?: number, hourly?: number, daily?: number, weekly?: number }
+
 type Product = {
   id: string
   slug?: string
@@ -14,7 +18,10 @@ type Product = {
   description: string
   categoryId: string
   image: string
+  /** Prix d'appel affiche en tete de fiche. Ce n'est PAS le prix facture pour un palier donne. */
   price: number
+  /** Prix reels par palier, tels que le serveur les refacture. Un palier absent n'existe pas. */
+  prices?: TierPrices
   pricingType?: string
   rating?: number
   reviewCount?: number
@@ -63,15 +70,59 @@ const stockColor = computed(() => {
   return 'text-success bg-success/10'
 })
 
-const formattedPrice = computed(() => {
-  if (!product.value) return ''
-  return Number(product.value.price).toFixed(2)
+const isTiered = computed(() => product.value?.pricingType === 'tiered')
+
+// Prix reels par palier. Le BFF ne recopie plus un scalaire unique sur les trois paliers, donc un
+// palier absent ici est un palier que le produit ne tarife pas.
+const tierPrices = computed<TierPrices>(() => product.value?.prices ?? {})
+
+const sellableUnits = computed<DurationUnit[]>(() => {
+  if (!product.value) return []
+  return availableUnits({
+    pricingType: isTiered.value ? 'tiered' : 'flat',
+    price: tierPrices.value,
+  })
 })
 
-const priceSuffix = computed(() => {
-  if (!product.value) return ''
-  return product.value.pricingType === 'tiered' ? '/jour' : '/location'
+// Produit non commandable : aucun palier tarife. Mieux vaut le dire que d'afficher 0,00 €.
+const hasNoPrice = computed(() => !!product.value && sellableUnits.value.length === 0)
+
+const canAddToCart = computed(() => !isOutOfStock.value && !hasNoPrice.value)
+
+// Le prix affiche et son unite viennent du MEME palier, sinon l'en-tete annonce un tarif horaire
+// suivi de « /jour ». Le jour est prefere quand il existe, sinon le premier palier tarife.
+const headlineUnit = computed<DurationUnit | null>(() => {
+  const units = sellableUnits.value
+  if (units.length === 0) return null
+  if (!isTiered.value) return 'flat'
+  return units.includes('daily') ? 'daily' : units[0]!
 })
+
+const formattedPrice = computed(() => {
+  const unit = headlineUnit.value
+  if (!unit) return ''
+  return Number(tierPrices.value[unit] ?? 0).toFixed(2)
+})
+
+const UNIT_SUFFIX: Record<DurationUnit, string> = {
+  flat: '/location',
+  hourly: '/heure',
+  daily: '/jour',
+  weekly: '/semaine',
+}
+
+const priceSuffix = computed(() => {
+  const unit = headlineUnit.value
+  return unit ? UNIT_SUFFIX[unit] : ''
+})
+
+// Les autres paliers, listes sous le prix d'appel — c'est la seule page ou le client peut les voir
+// avant de choisir dans le panier.
+const otherTiers = computed(() =>
+  sellableUnits.value
+    .filter(u => u !== headlineUnit.value)
+    .map(u => ({ unit: u, label: UNIT_SUFFIX[u].slice(1), amount: Number(tierPrices.value[u] ?? 0).toFixed(2) })),
+)
 
 const categoryLabels: Record<string, string> = {
   cat_chargers: 'Chargeurs',
@@ -88,17 +139,19 @@ const categoryLabel = computed(() => {
 })
 
 function addToCart() {
-  if (!product.value || isOutOfStock.value) return
+  if (!product.value || isOutOfStock.value || hasNoPrice.value) return
   const p = product.value
   cart.addItem({
     productId: p.id,
     name: p.name,
     image: p.image,
-    pricingType: (p.pricingType as 'flat' | 'tiered') ?? 'flat',
-    price: p.pricingType === 'tiered'
-      ? { hourly: p.price, daily: p.price, weekly: p.price }
-      : { flat: p.price },
+    pricingType: isTiered.value ? 'tiered' : 'flat',
+    // Les prix par palier tels que le serveur les refacture, jamais un scalaire recopie : le panier
+    // multiplie par le palier choisi (computeLinePrice) et le serveur fait le meme calcul depuis les
+    // colonnes Product, donc les deux ne peuvent plus diverger.
+    price: { ...tierPrices.value },
     quantity: quantity.value,
+    durationUnit: headlineUnit.value ?? undefined,
     stock: p.stock,
     warehouseIds: p.warehouseIds ?? [],
   })
@@ -107,7 +160,7 @@ function addToCart() {
     product_id: p.id,
     product_name: p.name,
     quantity: quantity.value,
-    price: Number(p.price),
+    price: Number(formattedPrice.value),
   })
   added.value = true
   setTimeout(() => { added.value = false }, 2000)
@@ -251,10 +304,30 @@ function addToCart() {
                 {{ product.name }}
               </h1>
 
-              <!-- Price block -->
-              <div class="mt-5 flex items-baseline gap-2">
-                <span class="text-h1 font-bold text-text-primary leading-none">{{ formattedPrice }} €</span>
-                <span class="text-body-lg text-text-muted">{{ priceSuffix }}</span>
+              <!-- Price block. Le montant et son unite viennent du meme palier ; les autres paliers
+                   reellement tarifes sont listes dessous, et seuls ceux-la seront proposes dans le panier. -->
+              <div v-if="hasNoPrice" class="mt-5">
+                <p class="inline-flex items-center gap-2 rounded-xl bg-error/5 border border-error/20 px-4 py-3 text-body-sm font-medium text-error">
+                  <Icon name="lucide:alert-circle" class="size-4 shrink-0" />
+                  Tarif indisponible pour ce produit. Il ne peut pas être loué pour le moment.
+                </p>
+              </div>
+              <div v-else class="mt-5">
+                <div class="flex items-baseline gap-2">
+                  <span class="text-h1 font-bold text-text-primary leading-none">{{ formattedPrice }} €</span>
+                  <span class="text-body-lg text-text-muted">{{ priceSuffix }}</span>
+                </div>
+                <div v-if="otherTiers.length" class="mt-3 flex flex-wrap gap-2">
+                  <span
+                    v-for="tier in otherTiers"
+                    :key="tier.unit"
+                    class="inline-flex items-center gap-1.5 rounded-lg bg-surface-purple px-3 py-1.5 text-body-sm text-text-secondary"
+                  >
+                    <Icon name="lucide:clock" class="size-3.5 text-primary-500" />
+                    <span class="font-semibold text-text-primary">{{ tier.amount }} €</span>
+                    <span class="text-text-muted">/ {{ tier.label }}</span>
+                  </span>
+                </div>
               </div>
 
               <!-- Description -->
@@ -300,7 +373,7 @@ function addToCart() {
                      vertical axis and collapses the button's h-14 to ~26px. -->
                 <div class="flex flex-col sm:flex-row gap-3">
                   <Button
-                    v-if="!isOutOfStock"
+                    v-if="canAddToCart"
                     size="lg"
                     :variant="added ? 'default' : 'gradient'"
                     class="w-full sm:flex-1 rounded-full h-14 text-base"
@@ -323,7 +396,7 @@ function addToCart() {
                   </Button>
 
                   <Button
-                    v-if="!isOutOfStock"
+                    v-if="canAddToCart"
                     as-child
                     size="lg"
                     variant="glass"

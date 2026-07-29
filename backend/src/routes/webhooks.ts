@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type Stripe from 'stripe';
+import type { OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { getStripe } from '../lib/stripe.js';
 import { env } from '../config/env.js';
@@ -58,16 +59,7 @@ webhooksRouter.post('/', async (req, res, next) => {
         break;
       }
       case 'charge.refunded': {
-        // metadata.orderId lives on the PaymentIntent, NOT the Charge, so a dashboard-initiated
-        // refund arrives with no charge metadata — resolve via the charge's payment_intent (WR-04)
-        const where = refundedOrderWhere(event);
-        if (where) {
-          // idempotent: only flip an order that is not already refunded
-          await prisma.order.updateMany({
-            where: { ...where, paymentStatus: { not: 'refunded' } },
-            data: { paymentStatus: 'refunded', status: 'cancelled' },
-          });
-        }
+        await handleChargeRefunded(event);
         break;
       }
       default:
@@ -102,6 +94,93 @@ function refundedOrderWhere(
   return null;
 }
 
+// Stripe emet le MEME evenement `charge.refunded` pour un remboursement partiel et pour un
+// remboursement integral. Seul l'integral doit annuler la commande : sans ce test, 5 EUR rendus en
+// geste commercial sur une commande deja livree la reecrivaient en `cancelled`.
+// `amount` est le montant capture, `amount_refunded` le cumul rembourse sur cette charge.
+function isFullRefund(event: Stripe.Event): boolean {
+  const charge = event.data.object as { amount?: number | null; amount_refunded?: number | null };
+  const amount = charge.amount ?? 0;
+  const refunded = charge.amount_refunded ?? 0;
+  // amount <= 0 : charge inexploitable, on ne devine pas — traitee comme non integrale
+  return amount > 0 && refunded >= amount;
+}
+
+// Statuts pour lesquels la marchandise est encore a l'entrepot. Un remboursement integral y annule
+// la commande ET remet le stock. Des `picked_up`, le colis est physiquement chez le livreur ou chez
+// le client : on enregistre bien le remboursement, mais on n'incremente PAS le stock, sinon on
+// inventerait des unites qui ne sont pas sur l'etagere — et on ne repasse pas la commande en
+// `cancelled`, ce qui effacerait une livraison qui a bel et bien eu lieu.
+const REFUND_RESTOCKABLE_STATUSES: readonly OrderStatus[] = [
+  'awaiting_payment',
+  'pending_assignment',
+  'rider_assigned',
+  'at_warehouse',
+];
+
+// charge.refunded → reconcilie la commande avec le remboursement constate chez Stripe (y compris un
+// remboursement lance depuis le dashboard, hors de toute action applicative).
+//
+// Le stock etait ici purement et simplement PERDU : l'ancien handler basculait la commande en
+// `refunded`/`cancelled` sans jamais reincrementer WarehouseStock, et la route de cancel — le seul
+// autre endroit qui restitue du stock — refuse ensuite d'agir (`already_cancelled` des que
+// paymentStatus vaut `refunded`). Les unites ne revenaient qu'a la main, par un ajustement absolu.
+async function handleChargeRefunded(event: Stripe.Event): Promise<void> {
+  // metadata.orderId lives on the PaymentIntent, NOT the Charge, so a dashboard-initiated
+  // refund arrives with no charge metadata — resolve via the charge's payment_intent (WR-04)
+  const where = refundedOrderWhere(event);
+  if (!where) return;
+
+  // remboursement partiel : la commande reste ce qu'elle est, aucune ecriture
+  if (!isFullRefund(event)) return;
+
+  await prisma.$transaction(async (tx) => {
+    const current = await tx.order.findFirst({ where });
+    if (!current) return;
+    // Idempotence (Stripe livre au moins une fois) : une commande deja remboursee ne rejoue rien.
+    // C'est aussi ce qui empeche la DOUBLE restitution quand le remboursement vient de notre propre
+    // route de cancel : elle a deja pose paymentStatus=refunded et rendu le stock avant d'appeler
+    // Stripe, donc le webhook qui s'ensuit ressort ici sans rien toucher.
+    if (current.paymentStatus === 'refunded') return;
+
+    const wasPaid = current.paymentStatus === 'paid';
+    const restockable = REFUND_RESTOCKABLE_STATUSES.includes(current.status);
+
+    // Claim gardee, meme motif que la route de cancel : deux livraisons concurrentes du meme
+    // evenement ne peuvent pas gagner toutes les deux, la perdante obtient count = 0 et sort avant
+    // la boucle de restitution.
+    const claim = await tx.order.updateMany({
+      where: { id: current.id, status: current.status, paymentStatus: current.paymentStatus },
+      data: { paymentStatus: 'refunded', ...(restockable ? { status: 'cancelled' as const } : {}) },
+    });
+    if (claim.count !== 1) return;
+
+    // stock restitue seulement s'il avait ete decremente (le decrement a lieu au passage a `paid`)
+    // ET si le colis n'a pas quitte l'entrepot
+    if (wasPaid && restockable && current.warehouseId) {
+      const items = await tx.orderItem.findMany({
+        where: { orderId: current.id },
+        select: { productId: true, quantity: true },
+      });
+      for (const item of items) {
+        if (!item.productId) continue;
+        await tx.warehouseStock.updateMany({
+          where: { warehouseId: current.warehouseId, productId: item.productId },
+          data: { quantity: { increment: item.quantity } },
+        });
+      }
+    }
+
+    await tx.orderEvent.create({
+      data: {
+        orderId: current.id,
+        status: restockable ? 'cancelled' : current.status,
+        note: 'remboursement Stripe',
+      },
+    });
+  });
+}
+
 // payment_intent.succeeded → atomically decrement stock and release the order into the rider
 // pool. Idempotent (acts only while awaiting_payment); auto-refunds + cancels on a stock
 // conflict so a paid-but-unfulfillable order can never exist (Pitfall 2 / A6).
@@ -123,14 +202,34 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
   const warehouseId = order.warehouseId;
 
   let stockConflict = false;
+  // true uniquement si CETTE execution a remporte la claim ci-dessous — les effets de bord
+  // post-transaction (email de confirmation, alerte livreurs) ne doivent partir que pour elle.
+  let claimed = false;
   // populated inside the txn on a successful decrement that crosses the low-stock threshold;
   // only acted on AFTER the txn commits without conflict (a rolled-back txn discards these too).
   const lowStockItems: { name: string; quantity: number }[] = [];
   try {
     await prisma.$transaction(async (tx) => {
-      // re-read the gate inside the tx so two concurrent webhooks can't both decrement (TOCTOU)
-      const current = await tx.order.findUnique({ where: { id: orderId } });
-      if (!current || current.paymentStatus !== 'awaiting_payment') return;
+      // Claim gardee AVANT tout decrement — c'est elle, et non une relecture, qui serialise deux
+      // livraisons simultanees du meme evenement. Une simple relecture ne suffisait pas : en READ
+      // COMMITTED (isolation par defaut, ce $transaction n'en demande aucune autre) deux
+      // transactions qui se chevauchent lisaient toutes les deux `awaiting_payment`, puis leurs
+      // `updateMany ... WHERE quantity >= n` reevaluaient chacune la nouvelle version de la ligne
+      // de stock et reussissaient toutes les deux : le stock partait deux fois. Un UPDATE, lui,
+      // pose un verrou sur la ligne Order : la seconde transaction attend le commit de la
+      // premiere, reevalue son WHERE sur la version commitee et obtient count = 0.
+      // Les rejeux SEQUENTIELS restent couverts par le meme WHERE.
+      const claim = await tx.order.updateMany({
+        where: { id: orderId, paymentStatus: 'awaiting_payment' },
+        data: {
+          paymentStatus: 'paid',
+          status: 'pending_assignment',
+          assignmentExpiresAt: nextAssignmentExpiry(),
+          ...(paymentMethodId ? { stripePaymentMethodId: paymentMethodId } : {}),
+        },
+      });
+      if (claim.count !== 1) return; // une autre livraison a gagne : ne rien decrementer
+      claimed = true;
 
       for (const item of order.items) {
         if (!item.productId) continue;
@@ -150,15 +249,6 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
         }
       }
 
-      await tx.order.update({
-        where: { id: orderId },
-        data: {
-          paymentStatus: 'paid',
-          status: 'pending_assignment',
-          assignmentExpiresAt: nextAssignmentExpiry(),
-          ...(paymentMethodId ? { stripePaymentMethodId: paymentMethodId } : {}),
-        },
-      });
       await tx.orderEvent.create({
         data: { orderId, status: 'pending_assignment', note: 'payment confirmed' },
       });
@@ -183,6 +273,11 @@ async function handlePaymentSucceeded(event: Stripe.Event): Promise<void> {
     });
     return;
   }
+
+  // Livraison perdante d'un evenement concurrent (ou rejeu) : la commande a bien ete encaissee,
+  // mais par l'autre execution, qui a deja envoye les notifications. Sortir ici evite de les
+  // dedoubler.
+  if (!claimed) return;
 
   // customer-facing payment confirmation (NOTIF-01) — essential, idempotent on
   // (orderId,event,channel); a webhook replay never reaches here (paid-guard above).

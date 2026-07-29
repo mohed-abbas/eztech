@@ -15,9 +15,28 @@ export interface CartItem {
   stock: number
 }
 
-const CART_STORAGE_KEY = 'ez-cart'
+// v2: les paniers v1 stockaient un prix par palier RECOPIE depuis un seul scalaire renvoye par le
+// BFF (heure = jour = semaine). Ces lignes affichaient donc un total que le serveur ne reprend pas
+// a son compte. On repart d'un panier vide plutot que de rejouer ces prix faux.
+const CART_STORAGE_KEY = 'ez-cart-v2'
 // offline fallback only — the live fee comes from the server (D-07) via loadDeliveryFee()
 const DELIVERY_FEE_FALLBACK = 4.99
+
+/** Paliers de location, dans l'ordre d'affichage. `flat` n'en est pas un : c'est l'autre mode. */
+export const TIER_UNITS = ['hourly', 'daily', 'weekly'] as const
+
+/**
+ * Paliers reellement tarifes pour cette ligne. Un palier sans prix ne doit jamais etre propose :
+ * computeLinePrice le compterait 0 alors que le serveur, lui, reprend le prix du palier depuis la
+ * colonne Product correspondante (backend/src/lib/pricing.ts computeLineTotal).
+ */
+const priced = (v: number | undefined): boolean => typeof v === 'number' && v > 0
+
+export function availableUnits(item: Pick<CartItem, 'pricingType' | 'price'>): DurationUnit[] {
+  // Un produit a prix fixe sans flatPrice n'a pas plus de tarif qu'un produit a paliers sans palier.
+  if (item.pricingType === 'flat') return priced(item.price.flat) ? ['flat'] : []
+  return TIER_UNITS.filter(u => priced(item.price[u]))
+}
 
 function computeLinePrice(item: CartItem): number {
   const qty = item.quantity
@@ -89,19 +108,30 @@ export const useCartStore = defineStore('cart', {
       return computeLinePrice(item)
     },
 
+    /** Paliers proposables pour cette ligne — a utiliser pour peupler le selecteur de duree. */
+    unitsFor(item: CartItem): DurationUnit[] {
+      return availableUnits(item)
+    },
+
     addItem(payload: Omit<CartItem, 'quantity' | 'durationUnit' | 'durationValue'> & {
       quantity?: number
       durationUnit?: DurationUnit
       durationValue?: number
     }) {
       if (payload.stock <= 0) return
+      // Un produit sans aucun palier tarife n'est pas commandable : le serveur le facturerait 0.
+      const units = availableUnits(payload)
+      if (units.length === 0) return
+
       const existing = this.items.find(i => i.productId === payload.productId)
       if (existing) {
         existing.quantity = Math.min(existing.quantity + (payload.quantity ?? 1), existing.stock)
         this.persist()
         return
       }
-      const defaultUnit: DurationUnit = payload.pricingType === 'flat' ? 'flat' : 'daily'
+      // Le jour reste le palier par defaut quand il existe, sinon le premier reellement tarife.
+      const defaultUnit: DurationUnit = units.includes('daily') ? 'daily' : units[0]!
+      const requested = payload.durationUnit
       this.items.push({
         productId: payload.productId,
         name: payload.name,
@@ -109,7 +139,7 @@ export const useCartStore = defineStore('cart', {
         pricingType: payload.pricingType,
         price: payload.price,
         quantity: payload.quantity ?? 1,
-        durationUnit: payload.durationUnit ?? defaultUnit,
+        durationUnit: requested && units.includes(requested) ? requested : defaultUnit,
         durationValue: payload.durationValue ?? 1,
         warehouseIds: payload.warehouseIds,
         stock: payload.stock,
@@ -132,6 +162,9 @@ export const useCartStore = defineStore('cart', {
     updateDuration(productId: string, unit: DurationUnit, value: number) {
       const item = this.items.find(i => i.productId === productId)
       if (!item || item.pricingType === 'flat') return
+      // Garde-fou : un palier sans prix serait affiche 0 ici et facture autrement par le serveur.
+      // Le selecteur ne devrait deja plus le proposer (voir unitsFor), ceci en est le filet.
+      if (!availableUnits(item).includes(unit)) return
       item.durationUnit = unit
       item.durationValue = Math.max(1, value)
       this.persist()

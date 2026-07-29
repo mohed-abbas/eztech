@@ -14,6 +14,7 @@ import {
   MAX_DOC_BYTES,
 } from '../schemas/rider.js';
 import { notify, dispatch } from '../lib/notifications.js';
+import { RIDER_ORDER_SELECT, RIDER_ORDER_WITH_EVENTS_SELECT } from '../lib/orderProjection.js';
 import { riderAssignedEmail } from '../lib/email/templates.js';
 import { getIO } from '../lib/socket.js';
 import { orderRoom } from '../socket/rooms.js';
@@ -212,6 +213,10 @@ riderRouter.get('/documents', async (req, res, next) => {
 // Orders — available pool, accept / decline, active delivery
 // ---------------------------------------------------------------------------
 
+// La projection livreur (RIDER_ORDER_SELECT / RIDER_ORDER_WITH_EVENTS_SELECT) est definie dans
+// lib/orderProjection.ts : PATCH /api/orders/:id/status sert la meme forme, les deux routeurs
+// doivent lire la meme source pour ne plus pouvoir diverger.
+
 // GET /api/rider/orders/available — unclaimed orders this rider has not declined
 riderRouter.get('/orders/available', async (req, res, next) => {
   try {
@@ -233,6 +238,7 @@ riderRouter.get('/orders/available', async (req, res, next) => {
       },
       orderBy: { createdAt: 'asc' },
       take: 50,
+      select: RIDER_ORDER_SELECT,
     });
     res.json({ orders });
   } catch (err) {
@@ -248,7 +254,7 @@ riderRouter.get('/orders/active', async (req, res, next) => {
         riderId: req.user!.sub,
         status: { in: ['rider_assigned', 'at_warehouse', 'picked_up', 'in_transit'] },
       },
-      include: { events: { orderBy: { createdAt: 'asc' } } },
+      select: RIDER_ORDER_WITH_EVENTS_SELECT,
       orderBy: { updatedAt: 'desc' },
     });
     res.json({ order: order ?? null });
@@ -287,7 +293,7 @@ riderRouter.post('/orders/:id/accept', async (req, res, next) => {
         await tx.orderEvent.create({ data: { orderId, status: 'rider_assigned', note: 'rider accepted' } });
         return tx.order.findUnique({
           where: { id: orderId },
-          include: { events: { orderBy: { createdAt: 'asc' } } },
+          select: RIDER_ORDER_WITH_EVENTS_SELECT,
         });
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -339,7 +345,12 @@ riderRouter.post('/orders/:id/decline', async (req, res, next) => {
     const riderId = req.user!.sub;
     const orderId = String(req.params['id']);
 
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    // lecture de controle uniquement (rien n'est serialise ici, la reponse est un 204) — on ne
+    // charge donc que les deux colonnes du garde-fou plutot que la ligne entiere
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true, riderId: true },
+    });
     if (!order) return next(new HttpError(404, 'order_not_found'));
     if (order.status !== 'pending_assignment' || order.riderId !== null) {
       return next(new HttpError(409, 'order_not_offered'));

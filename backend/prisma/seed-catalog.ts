@@ -1,8 +1,16 @@
-// Catalog data seeded from the frontend mock — run with: npm run seed:catalog
+// Catalog data seeded from prisma/data — run with: npm run seed:catalog
 // Upserts categories, warehouses, brands, products and per-warehouse stock so the
 // catalog API serves the same data the frontend currently renders from mock JSON.
 // Idempotent: re-running upserts by slug/name without creating duplicates.
-import { readFileSync } from 'node:fs';
+//
+// Les JSON vivent dans backend/prisma/data/, PAS dans frontend/app/data/mock/. L'ancien chemin
+// (`../../frontend/app/data/mock`) ne fonctionnait qu'en dev, grace au bind mount
+// ./frontend/app/data/mock:/frontend/app/data/mock de docker-compose.yml. En production le
+// contexte de build est ./backend : le dossier mock du frontend n'existe a aucun chemin dans
+// l'image, donc readFileSync levait ENOENT et le seed sortait en code 1. Impossible de reamorcer
+// le catalogue sur le VPS. prisma/data/ est copie dans l'image par le `COPY prisma ./prisma` du
+// Dockerfile, en dev comme en prod.
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { PrismaClient } from '@prisma/client';
@@ -10,8 +18,23 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const here = dirname(fileURLToPath(import.meta.url));
-const mockDir = resolve(here, '../../frontend/app/data/mock');
-const load = <T>(file: string): T => JSON.parse(readFileSync(resolve(mockDir, file), 'utf8')) as T;
+
+// Le seed tourne depuis deux emplacements : prisma/ sous tsx en dev, et dist/seed/prisma/ une fois
+// compile (tsconfig.seed.json enracine au package). On teste donc les candidats dans l'ordre plutot
+// que de coder en dur un chemin qui n'est juste que dans un des deux cas.
+function resolveDataDir(): string {
+  const candidates = [
+    resolve(here, 'data'), // tsx : backend/prisma/data
+    resolve(here, '../../../prisma/data'), // compile : /app/dist/seed/prisma -> /app/prisma/data
+    resolve(process.cwd(), 'prisma/data'), // filet de securite (cwd = racine du package)
+  ];
+  const found = candidates.find((dir) => existsSync(dir));
+  if (!found) throw new Error(`seed data directory not found, looked in:\n  ${candidates.join('\n  ')}`);
+  return found;
+}
+
+const dataDir = resolveDataDir();
+const load = <T>(file: string): T => JSON.parse(readFileSync(resolve(dataDir, file), 'utf8')) as T;
 
 type MockCategory = { id: string; name: string; slug: string; description: string; icon: string };
 type MockWarehouse = {

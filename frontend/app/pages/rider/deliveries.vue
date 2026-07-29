@@ -1,5 +1,13 @@
 <script setup lang="ts">
-import { DELIVERY_STATUS_LABEL, NEXT_STATUS, type DeliveryStatus, type DeliveryOrder } from '~/stores/rider'
+import {
+  DELIVERY_STATUS_LABEL,
+  NEXT_STATUS,
+  PICKUP_CODE_LENGTH,
+  advanceErrorMessage,
+  requiresPickupCode,
+  type DeliveryStatus,
+  type DeliveryOrder,
+} from '~/stores/rider'
 
 definePageMeta({ layout: 'default', middleware: 'auth' })
 useHead({ title: 'Livraisons - EzTech' })
@@ -42,13 +50,40 @@ function syncGpsEmitter() {
 watch(() => [rider.activeDelivery?.id, rider.activeDelivery?.status], syncGpsEmitter)
 onBeforeUnmount(() => { emitter?.stop(); emitter = null })
 
+// ─── Passage de relais au comptoir ──────────────────────────────────────────
+// Meme garde que sur le tableau de bord : sans le code remis par l'entrepot, le backend refuse
+// at_warehouse -> picked_up. Le code est saisi, jamais affiche.
+const pickupCode = ref('')
+const advanceError = ref<string | null>(null)
+
+const needsPickupCode = computed(() => {
+  const d = rider.activeDelivery
+  return !!d && d.status === 'at_warehouse' && requiresPickupCode(d)
+})
+const pickupCodeFilled = computed(() => pickupCode.value.trim().length > 0)
+
+function onPickupCodeInput(value: string | number) {
+  pickupCode.value = String(value).toUpperCase().replace(/\s+/g, '')
+}
+
 const advancing = ref(false)
 async function advance() {
-  if (!rider.activeDelivery) return
-  const step = NEXT_STATUS[rider.activeDelivery.status]
+  const d = rider.activeDelivery
+  if (!d) return
+  const step = NEXT_STATUS[d.status]
   if (!step) return
+  const code = needsPickupCode.value ? pickupCode.value.trim() : undefined
+  if (needsPickupCode.value && !code) {
+    advanceError.value = 'Saisissez le code remis par le comptoir.'
+    return
+  }
   advancing.value = true
-  try { await rider.advanceDelivery(step.next) }
+  advanceError.value = null
+  try {
+    await rider.advanceDelivery(step.next, undefined, code)
+    pickupCode.value = ''
+  }
+  catch (e) { advanceError.value = advanceErrorMessage(e) }
   finally { advancing.value = false }
 }
 const nextStep = computed(() => rider.activeDelivery ? NEXT_STATUS[rider.activeDelivery.status] : undefined)
@@ -67,6 +102,7 @@ function deliveryMapsUrl(d: DeliveryOrder) {
 function fmt(iso: string | null) {
   return iso ? new Date(iso).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
 }
+function hhmm(iso: string) { return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }
 function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' }) }
 </script>
 
@@ -76,15 +112,80 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
 
     <!-- Active delivery -->
     <Card v-if="rider.activeDelivery">
-      <CardHeader>
+      <CardHeader class="gap-2">
         <CardTitle>Livraison en cours · {{ rider.activeDelivery.reference }}</CardTitle>
-        <CardDescription>{{ DELIVERY_STATUS_LABEL[rider.activeDelivery.status] }} · {{ eur(rider.activeDelivery.riderFee) }}</CardDescription>
+        <div class="flex flex-wrap items-center gap-2">
+          <CardDescription>{{ DELIVERY_STATUS_LABEL[rider.activeDelivery.status] }} · {{ eur(rider.activeDelivery.riderFee) }}</CardDescription>
+          <span
+            v-if="rider.activeDelivery.preparedAt"
+            class="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-caption font-medium text-success"
+          >
+            <Icon name="ph:check-circle" class="size-3.5" />
+            Colis prêt · {{ hhmm(rider.activeDelivery.preparedAt) }}
+          </span>
+          <span
+            v-else-if="needsPickupCode"
+            class="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-caption font-medium text-warning"
+          >
+            <Icon name="ph:hourglass" class="size-3.5" />
+            En préparation
+          </span>
+        </div>
       </CardHeader>
       <CardContent class="space-y-4">
         <div class="space-y-1.5 text-body-sm">
-          <div class="flex gap-2"><Icon name="ph:package" class="size-4 mt-0.5 text-text-muted" /><span>{{ rider.activeDelivery.pickupAddress }}</span></div>
-          <div class="flex gap-2"><Icon name="ph:map-pin" class="size-4 mt-0.5 text-text-muted" /><span>{{ rider.activeDelivery.dropoffAddress }}</span></div>
+          <p class="flex items-start gap-2.5"><Icon name="ph:package" class="mt-0.5 size-4 shrink-0 text-text-muted" /><span>{{ rider.activeDelivery.pickupAddress }}</span></p>
+          <p class="flex items-start gap-2.5"><Icon name="ph:map-pin" class="mt-0.5 size-4 shrink-0 text-text-muted" /><span>{{ rider.activeDelivery.dropoffAddress }}</span></p>
         </div>
+
+        <!-- Contenu du colis -->
+        <div v-if="rider.activeDelivery.items?.length" class="space-y-2 border-t border-neutral-200 pt-4">
+          <p class="text-caption font-medium uppercase tracking-wide text-text-muted">Contenu du colis</p>
+          <ul class="space-y-2 text-body-sm">
+            <li v-for="item in rider.activeDelivery.items" :key="item.id" class="flex items-center gap-3">
+              <span class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
+                <ProductImage
+                  :src="item.imageUrl"
+                  :alt="item.name"
+                  fallback-icon="ph:package"
+                  img-class="size-full object-cover"
+                  icon-class="size-5 text-neutral-400"
+                />
+              </span>
+              <span class="min-w-0 flex-1 truncate text-text-primary">{{ item.name }}</span>
+              <span class="shrink-0 text-text-muted">×{{ item.quantity }}</span>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Code de ramassage : remis de la main a la main par le comptoir, jamais affiche -->
+        <div v-if="needsPickupCode" class="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-3 text-body-sm">
+          <label for="pickup-code-deliveries" class="block font-medium text-text-primary">Code de ramassage</label>
+          <p class="text-caption text-text-muted">Le comptoir de l'entrepôt vous le remet avec le colis.</p>
+          <Input
+            id="pickup-code-deliveries"
+            :model-value="pickupCode"
+            type="text"
+            name="pickup-code"
+            inputmode="text"
+            autocapitalize="characters"
+            autocomplete="off"
+            autocorrect="off"
+            spellcheck="false"
+            :maxlength="PICKUP_CODE_LENGTH"
+            placeholder="XXXXXX"
+            class="max-w-40 text-center font-mono uppercase tracking-[0.35em]"
+            :aria-invalid="advanceError ? 'true' : undefined"
+            aria-describedby="pickup-code-deliveries-help"
+            @update:model-value="onPickupCodeInput"
+          />
+          <p id="pickup-code-deliveries-help" class="text-caption text-text-muted">{{ PICKUP_CODE_LENGTH }} caractères.</p>
+        </div>
+
+        <p v-if="advanceError" role="alert" class="flex items-start gap-2 text-body-sm text-error">
+          <Icon name="ph:warning-circle" class="mt-0.5 size-4 shrink-0" />
+          <span>{{ advanceError }}</span>
+        </p>
 
         <!-- Indicateur de partage de position -->
         <div v-if="gpsActive" class="flex items-center gap-2 rounded-lg bg-success/10 px-3 py-2 text-body-sm text-success">
@@ -105,7 +206,7 @@ function eur(n: number) { return n.toLocaleString('fr-FR', { style: 'currency', 
         </ol>
       </CardContent>
       <CardFooter class="flex-wrap gap-2">
-        <Button v-if="nextStep" :disabled="advancing" @click="advance">
+        <Button v-if="nextStep" :disabled="advancing || (needsPickupCode && !pickupCodeFilled)" @click="advance">
           <Icon name="ph:check-circle" class="mr-2 size-4" /> {{ nextStep.label }}
         </Button>
         <span v-else class="text-body-sm text-text-muted">Livraison terminée.</span>

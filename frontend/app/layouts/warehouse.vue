@@ -11,15 +11,15 @@ const links = [
     <TheAppBar />
     <main class="pt-16">
       <div class="mx-auto max-w-5xl px-4 pt-6">
-        <nav class="flex gap-2 border-b border-border pb-3">
+        <nav aria-label="Navigation entrepôt" class="flex gap-2 overflow-x-auto border-b border-border pb-3">
           <NuxtLink
             v-for="l in links"
             :key="l.to"
             :to="l.to"
-            class="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-text-muted transition-colors hover:bg-neutral-100 hover:text-text-primary"
+            class="inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-body-sm font-medium text-text-muted transition-colors hover:bg-neutral-100 hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 focus-visible:ring-offset-2"
             active-class="bg-primary-50 text-primary-700"
           >
-            <Icon :name="l.icon" class="size-4" />
+            <Icon :name="l.icon" class="size-4 shrink-0" />
             {{ l.label }}
           </NuxtLink>
         </nav>

@@ -43,6 +43,13 @@ x-backend-base: &backend-base
     SENTRY_DSN: ${SENTRY_DSN:-}
     RESEND_API_KEY: ${RESEND_API_KEY:-}
     RESEND_FROM: ${RESEND_FROM:-EzTech <no-reply@eztech.fr>}
+  # Rider licence/insurance scans are written to disk (backend/src/routes/rider.ts) while only the
+  # metadata row lives in Postgres. Without this volume every blue-green deploy replaced the
+  # container and destroyed the files, leaving RiderDocument rows pointing at paths that no longer
+  # exist. Shared by both colors on purpose: a document uploaded against blue must still open after
+  # a flip to green.
+  volumes:
+    - eztech_uploads:/app/uploads
   networks:
     - proxy-net
     - data-net
@@ -139,3 +146,4 @@ networks:
 
 volumes:
   eztech_mongo_data:
+  eztech_uploads:

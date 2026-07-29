@@ -13,30 +13,41 @@ export interface ZoneCheckResult {
   zoneName: string | null
 }
 
+/** Aucune zone chargée en mode live : impossible de dire si une adresse est desservie. */
+export const ZONES_UNAVAILABLE = 'Zones de livraison indisponibles pour le moment. Réessayez dans quelques instants.'
+
 const mockFeatures = (zonesData as unknown as { features: ZoneFeature[] }).features
 
 // Client-side delivery-zone gate. In live mode this must read the SAME polygons the backend
 // enforces on POST /api/orders, otherwise a zone edited in the DB lets the UI green-light an
-// address the backend then rejects with outside_delivery_zone (H4). The mock JSON is only a
-// fallback under isMock (or if the BFF is unreachable) — never the live source of truth.
+// address the backend then rejects with outside_delivery_zone (H4). The mock JSON is used ONLY
+// under isMock — never as a live fallback. If /api/zones fails in live mode we hold no zones and
+// report the outage, because a wrong "adresse desservie" is worse than an honest "indisponible".
 export function useServiceZone() {
   const { isMock } = useMock()
   const zones = ref<ZoneFeature[]>(isMock.value ? mockFeatures : [])
+  const loading = ref(false)
+  const error = ref<string | null>(null)
 
   async function load(): Promise<void> {
     if (isMock.value) {
       zones.value = mockFeatures
       return
     }
+    loading.value = true
+    error.value = null
     try {
       // /api/zones returns a GeoJSON FeatureCollection remapped from the backend's DB zones.
       const fc = await $fetch<{ features: ZoneFeature[] }>('/api/zones')
       zones.value = fc.features
     }
     catch (err) {
-      // Degrade to the local hint rather than blocking checkout outright.
-      console.error('[useServiceZone] /api/zones fetch failed, falling back to mock:', err)
-      zones.value = mockFeatures
+      console.error('[useServiceZone] /api/zones fetch failed:', err)
+      zones.value = []
+      error.value = ZONES_UNAVAILABLE
+    }
+    finally {
+      loading.value = false
     }
   }
 
@@ -55,5 +66,5 @@ export function useServiceZone() {
     return { inZone: false, zoneName: null }
   }
 
-  return { check, load, zones }
+  return { check, load, zones, loading, error }
 }

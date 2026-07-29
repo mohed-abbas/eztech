@@ -30,7 +30,25 @@ export default defineNuxtConfig({
     // real dependency mismatch. No override/resolution can fix a version skew that doesn't exist.
     plugins: [tailwindcss()],
     optimizeDeps: {
-      include: ['chart.js', 'vue-chartjs'],
+      // chart.js/vue-chartjs: SSR bundling quirk (see `build.transpile` below). The rest is the
+      // exact list the dev server discovered lazily during the CI e2e run ("new dependencies
+      // optimized: ..."), each discovery triggering "optimized dependencies changed. reloading" —
+      // a FORCED full page reload of every open page, mid-test. One of those reloads landed while
+      // the customer tracking page was between socket subscriptions and made it miss an
+      // order-status event for good. Pre-bundling them at server start makes dev-mode e2e
+      // deterministic; production builds are unaffected (optimizeDeps is dev-only).
+      include: [
+        'chart.js',
+        'vue-chartjs',
+        'socket.io-client',
+        'leaflet',
+        'reka-ui',
+        'zod',
+        'clsx',
+        'tailwind-merge',
+        'class-variance-authority',
+        'lucide-vue-next',
+      ],
     },
   },
   // chart.js ships ES modules that Nitro's SSR bundler can't handle without explicit transpilation.

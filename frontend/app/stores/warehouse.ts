@@ -42,6 +42,9 @@ export interface OrderToPrepare {
   reference: string
   status: string
   preparedAt: string | null
+  // code remis de vive voix au livreur au comptoir : l'API ne l'expose qu'a l'admin et au
+  // responsable d'entrepot, jamais au livreur ni au client. Null tant que la commande n'est pas prete.
+  pickupCode: string | null
   createdAt: string
   dropoffAddress: string
   items: { name: string, quantity: number }[]
@@ -87,30 +90,19 @@ export const useWarehouseStore = defineStore('warehouse', {
     },
     async _api(path: string, opts: Record<string, unknown> = {}) {
       const config = useRuntimeConfig()
-      const auth = this._auth()
+      this._auth()
+      const { withAuthRetry, authHeaders, csrfHeaders } = useAuthedFetch()
       const url = `${config.public.apiUrl}${path}`
-      const csrf = useCookie('ez_csrf').value
-      const call = () => $fetch(url, {
+      // 401 -> refresh -> retry une fois -> clearSession : centralise dans useAuthedFetch
+      return withAuthRetry(() => $fetch(url, {
         ...opts,
         credentials: 'include',
         headers: {
-          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-          ...(csrf ? { 'x-csrf-token': csrf } : {}),
+          ...authHeaders(),
+          ...csrfHeaders(),
           ...(opts.headers as object ?? {}),
         },
-      })
-      try {
-        return await call()
-      }
-      catch (e) {
-        const status = (e as { statusCode?: number, response?: { status?: number } })?.statusCode
-          ?? (e as { response?: { status?: number } })?.response?.status
-        if (status === 401) {
-          if (await auth.refresh()) return await call()
-          auth.logout()
-        }
-        throw e
-      }
+      }))
     },
 
     async fetchWarehouses() {
@@ -165,11 +157,17 @@ export const useWarehouseStore = defineStore('warehouse', {
       }
     },
 
-    // marque une commande prete pour le ramassage par le livreur
+    // Marque une commande prete pour le ramassage. La reponse porte le code de remise que le
+    // comptoir devra dicter au livreur : l'appel est idempotent cote backend, donc rejouer la
+    // preparation renvoie le meme code et la meme date plutot que d'en reemettre un nouveau.
     async markPrepared(warehouseId: string, orderId: string) {
-      const res = await this._api(`/warehouses/${warehouseId}/orders/${orderId}/prepare`, { method: 'PATCH' }) as { order: { preparedAt: string } }
+      const res = await this._api(`/warehouses/${warehouseId}/orders/${orderId}/prepare`, { method: 'PATCH' }) as {
+        order: { preparedAt: string, pickupCode: string | null }
+      }
       const order = this.ordersToPrepare.find(o => o.id === orderId)
-      if (order) order.preparedAt = res.order.preparedAt
+      if (!order) return
+      order.preparedAt = res.order.preparedAt
+      order.pickupCode = res.order.pickupCode
     },
 
     async fetchReturns() {
