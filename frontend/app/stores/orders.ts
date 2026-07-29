@@ -389,21 +389,20 @@ export const useOrdersStore = defineStore('orders', {
     /** Planifie un retour pour une commande livree — le livreur viendra recuperer l'article. */
     async scheduleReturn(payload: { orderId: string, pickupAddress: string, scheduledFor?: string }): Promise<string> {
       const config = useRuntimeConfig()
-      const auth = useAuthStore()
-      const csrf = useCookie('ez_csrf').value
-      const res = await $fetch<{ return: { id: string, reference: string } }>(`${config.public.apiUrl}/returns`, {
+      // 401 -> refresh -> retry une fois : sans ce passage par useAuthedFetch, un jeton d'acces
+      // expire (15 min) faisait echouer la planification alors que la session etait rattrapable —
+      // la page commande reste typiquement ouverte pendant toute la livraison avant le retour.
+      const { withAuthRetry, authHeaders, csrfHeaders } = useAuthedFetch()
+      const res = await withAuthRetry(() => $fetch<{ return: { id: string, reference: string } }>(`${config.public.apiUrl}/returns`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-          ...(csrf ? { 'x-csrf-token': csrf } : {}),
-        },
+        headers: { ...authHeaders(), ...csrfHeaders() },
         body: {
           orderId: payload.orderId,
           pickupAddress: payload.pickupAddress,
           ...(payload.scheduledFor ? { scheduledFor: payload.scheduledFor } : {}),
         },
-      })
+      }))
       return res.return.reference
     },
 
@@ -420,8 +419,9 @@ export const useOrdersStore = defineStore('orders', {
       }
 
       const config = useRuntimeConfig()
-      const auth = useAuthStore()
-      const csrf = useCookie('ez_csrf').value
+      // meme motif que scheduleReturn : 401 -> refresh -> retry via useAuthedFetch, sinon un
+      // jeton expire fait echouer l'annulation d'une session pourtant rattrapable
+      const { withAuthRetry, authHeaders, csrfHeaders } = useAuthedFetch()
 
       try {
         // /admin/orders/:id/cancel, PAS /orders/:id/cancel : en production nginx detourne
@@ -433,17 +433,14 @@ export const useOrdersStore = defineStore('orders', {
         // Ce n'est PAS une escalade de privileges : ordersRouter ne porte aucun requireRole, le
         // handler est requireAuth seul et autorise lui-meme `role === 'admin' || customerId === sub`.
         // Le prefixe /admin n'est ici qu'un contournement du routage nginx.
-        const res = await $fetch<{ order: { id: string, status: string } }>(
+        const res = await withAuthRetry(() => $fetch<{ order: { id: string, status: string } }>(
           `${config.public.apiUrl}/admin/orders/${orderId}/cancel`,
           {
             method: 'POST',
             credentials: 'include',
-            headers: {
-              ...(auth.token ? { Authorization: `Bearer ${auth.token}` } : {}),
-              ...(csrf ? { 'x-csrf-token': csrf } : {}),
-            },
+            headers: { ...authHeaders(), ...csrfHeaders() },
           },
-        )
+        ))
 
         // Le handler renvoie la commande au format BRUT Prisma ; la liste parle le vocabulaire
         // d'affichage, donc on passe par la table de correspondance au lieu d'ecrire 'cancelled'.
